@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-29 23:03 UTC · Estado do loop: **rodando (ciclo 7 ok)**
-Heartbeat: ver `HEARTBEAT` · HALT: ausente · Próxima tarefa elegível: **F0.4** (após planner semear na queue)
+Última atualização: 2026-06-29 23:12 UTC · Estado do loop: **rodando (ciclo 8: F0.4 semeada)**
+Heartbeat: ver `HEARTBEAT` · HALT: ausente · Próxima tarefa elegível: **F0.4** (semeada na `queue/`; risco: maturidade do `ubrn`)
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -15,7 +15,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: ausente · Próxima tarefa elegível: **F0.4
 | F0.1 | Bootstrap do repo + docs de processo (DECISIONS/PROGRESS/.gitignore) | ✅ aceito | F0.0 | passed (595c70c) |
 | F0.2 | Crate `core/` com UniFFI compilando (sem lógica) | ✅ aceito | F0.1 | passed (7b922eb) |
 | F0.3 | `parse_reference` na fronteira + teste | ✅ aceito | F0.2 | passed (9881c72) |
-| F0.4 | Script de geração de bindings TS | ⬜ | F0.3 | — |
+| F0.4 | Script de geração de bindings TS | 🟡 ready | F0.3 | — |
 | F0.5 | App Expo mínimo (expo-router) + tela | ⬜ | F0.1 | — |
 | F0.6 | Ligar core no **web (WASM)**: chamar parse_reference | ⬜ | F0.4, F0.5 | — |
 | F0.7 | Ligar core no **iOS**: chamar parse_reference | ⬜ | F0.4, F0.5 | — |
@@ -43,3 +43,4 @@ fechar.
 | 2026-06-29 | Ciclo 5: F0.2 executada e verificada → **passed** (7b922eb); arquivada. Crate `the-light-app-core` compila com uniffi 0.31.2 (modo library); ADR-0003. |
 | 2026-06-29 | Planner semeou **F0.3** na `queue/` (`parse_reference` delegando ao `the-light-core::reference`). Git dep pinada no rev `0888ac0…` (the-light público); API descoberta via fonte clonada em `~/.cargo/git/checkouts/`. |
 | 2026-06-29 | Ciclo 7: F0.3 executada e verificada → **passed** (9881c72); arquivada. **Ponte real ao core provada**: git dep pinada (the-light-core v1.2.0), `parse_reference` delega ao core, "Jo 3.16"=="John 3:16" → (43,3,Single 16). Sem fork/cópia. |
+| 2026-06-29 | Planner semeou **F0.4** na `queue/` (status ready): script reproduzível `scripts/gen-bindings.sh` que instala+fixa o `ubrn`, configura e gera os bindings TS da fronteira UniFFI em `bindings/`. Escopo atômico = só os `.ts` (não liga app ainda; isso é F0.6/7/8). `.ts` gerados são ignorados por design; ADR-0004 fixará a versão do `ubrn`. Bloqueio legítimo se o `ubrn` não instalar/rodar/gerar (maturidade / incompat. com uniffi 0.31.2). |
