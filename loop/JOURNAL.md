@@ -10,3 +10,4 @@
 2026-06-29 22:36 UTC · ciclo 3 · executor+reviewer em F0.1 (bootstrap do repo) · tarefa F0.1 · passed (595c70c), arquivada · estrutura+docs criados; ADR-0002 consumir the-light como git dep pinada; pendência: resolução real do core na F0.2
 2026-06-29 22:38 UTC · ciclo 4 · queue vazia → planner semeou F0.2 (crate core/ com UniFFI trivial, sem lógica/sem dep do core) · resolução real do the-light-core transferida p/ F0.3 · sem execução neste ciclo
 2026-06-29 22:49 UTC · ciclo 5 · executor+reviewer em F0.2 (crate core UniFFI trivial) · tarefa F0.2 · passed (7b922eb), arquivada · the-light-app-core compila com uniffi 0.31.2 (modo library); ADR-0003 registrado
+2026-06-29 22:55 UTC · ciclo 6 · queue vazia → planner semeou F0.3 (parse_reference delegando ao core) · Driver apurou the-light público, HEAD 0888ac0 (pin) · risco: resolução/build/API do the-light-core · sem execução neste ciclo
