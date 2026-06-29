@@ -15,3 +15,4 @@
 2026-06-29 23:12 UTC · ciclo 8 · queue vazia → planner semeou F0.4 (script gen-bindings.sh: instala/fixa ubrn e gera bindings TS) · risco: maturidade do ubrn / incompat. com uniffi 0.31.2 · sem execução neste ciclo
 2026-06-29 23:25 UTC · ciclo 9 · executor+reviewer em F0.4 (gen-bindings via ubrn) · tarefa F0.4 · passed (e19064a), arquivada · RISCO #1 VENCIDO: ubrn 0.31.0-3 gera bindings/*.ts reprodutíveis, compat. uniffi 0.31.2 sem tocar fronteira; ADR-0004
 2026-06-29 23:40 UTC · ciclo 10 · queue vazia → planner semeou F0.5 (app Expo mínimo SDK 56 + 1 tela, sem core; verif. não-interativa web+tsc) · run nativo adiado p/ F0.7/F0.8 · risco: Node v25.8.1 vs Expo SDK 56 · sem execução neste ciclo
+2026-06-29 23:41 UTC · ciclo 11 · executor+reviewer em F0.5 (app Expo mínimo) · tarefa F0.5 · passed (3262f56), arquivada · app Expo SDK 56 (expo-router) compila p/ web (export estático), tsc limpo; Node 25 compat. SDK 56 (risco descartado)
