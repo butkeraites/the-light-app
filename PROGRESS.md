@@ -7,3 +7,4 @@
 | ID    | Data       | Resumo                                                                 | Commit    |
 | ----- | ---------- | --------------------------------------------------------------------- | --------- |
 | F0.0  | 2026-06-29 | Confirmou toolchain e registrou versões do ambiente (sem código de produto). | `efe334f` |
+| F0.1  | 2026-06-29 | Bootstrap da estrutura do repo + docs de processo (DECISIONS/PROGRESS/.gitignore). | `595c70c` |
