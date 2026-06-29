@@ -1,0 +1,33 @@
+{
+  "$comment": "Permissões do loop autônomo. O run-loop.sh roda headless; este arquivo define o que os agentes podem fazer sem prompt. Ações fora disto ou que toquem ../the-light devem virar HALT.",
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Edit",
+      "Write",
+      "Read",
+      "Bash(cargo:*)",
+      "Bash(npx expo:*)",
+      "Bash(npm:*)",
+      "Bash(pnpm:*)",
+      "Bash(node:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(rustup:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)"
+    ],
+    "deny": [
+      "Bash(git push:*)",
+      "Read(../the-light/**)",
+      "Edit(../the-light/**)",
+      "Write(../the-light/**)",
+      "Read(./**/secrets.toml)",
+      "Read(./**/.env)"
+    ]
+  }
+}

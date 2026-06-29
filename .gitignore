@@ -1,0 +1,43 @@
+# ── the-light-app · .gitignore ───────────────────────────────────────────────
+# Regras: offline-first / BYOK. Segredos NUNCA entram no git.
+# O bloco de verificação da F0.1 procura por: node_modules, target, bindings,
+# secrets e .env neste arquivo.
+
+# ── Node / JS / Expo ─────────────────────────────────────────────────────────
+node_modules/
+.expo/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Rust ─────────────────────────────────────────────────────────────────────
+# Artefatos de build (qualquer crate: core/target, etc.)
+**/target/
+**/*.rs.bk
+Cargo.lock.orig
+
+# ── Bindings gerados ─────────────────────────────────────────────────────────
+# bindings/ guarda apenas código GERADO por ferramenta (ubrn/uniffi). Não
+# versionar o conteúdo gerado; manter só o placeholder do diretório.
+/bindings/*
+!/bindings/.gitkeep
+
+# ── Segredos (BYOK) — chaves de IA jamais no git nem em logs ──────────────────
+secrets.toml
+.env
+.env.*
+*.key
+*.pem
+*.keystore
+*.p8
+*.p12
+*.mobileprovision
+
+# ── OS / editor ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
