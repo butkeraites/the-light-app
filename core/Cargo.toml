@@ -1,0 +1,21 @@
+[package]
+name = "the-light-app-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Fronteira UniFFI do app. Esqueleto mínimo (F0.2): apenas prova que um crate
+# Rust com UniFFI compila/formata/passa clippy+test neste ambiente. SEM lógica
+# de produto e SEM dependência do core externo ainda (resolvida na F0.3).
+
+[lib]
+# `lib` para os testes Rust; `cdylib`/`staticlib` para a ponte nativa/WASM das
+# tarefas futuras (F0.4+). Já deixamos os três prontos.
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[dependencies]
+# Caminho UniFFI escolhido: modo *library* (proc-macros + setup_scaffolding!),
+# sem UDL e sem build.rs. Versão FIXADA (sem "*") — ver ADR-0003.
+uniffi = "0.31.2"
+# Display/std::error::Error do enum de erro UniFFI (padrão da fronteira).
+thiserror = "2.0.18"

@@ -127,3 +127,52 @@ nascer. No momento da F0.1:
 `core/Cargo.toml`; (3) provar a resolução com `cargo metadata`. Se nesse momento
 o crate ainda não existir/for resolvível, **aí sim** é bloqueio da F0.2 (decisão
 humana: publicar/expor o crate no `the-light`), **não** da F0.1.
+
+> **Atualização (F0.2):** a *resolução real* do `the-light-core` (git dep pinada +
+> `cargo metadata`) foi **transferida para a F0.3**. A definição autoritativa da
+> F0.2 (backlog `PHASE-0.md`) é "crate com UniFFI compilando, **SEM LÓGICA**";
+> adicionar a dependência do core já na F0.2 seria escopo da F0.3, onde
+> `parse_reference` de fato delega ao `the-light-core::reference`. Por isso a F0.2
+> **não** declara `the-light` como dependência — só prova a fronteira UniFFI vazia.
+
+---
+
+## ADR-0003 — Caminho e versão do UniFFI na fronteira `core/`
+
+- **Data:** 2026-06-29 · **Status:** aceito · **Tarefa:** F0.2
+
+### Contexto
+A F0.2 cria o crate `core/` (`the-light-app-core`) com **uma** função UniFFI
+trivial que apenas compila, fixando o esqueleto da fronteira e o **padrão de
+erro**. O UniFFI oferece dois fluxos de scaffolding: (a) **modo *library***
+(proc-macros `#[uniffi::export]` + `uniffi::setup_scaffolding!()`, sem `.udl`),
+ou (b) **UDL + `build.rs`** (`uniffi::generate_scaffolding`, feature `build`). A
+versão exata do crate `uniffi` ficou para ser fixada na instalação (ADR-0001).
+
+### Decisão
+- **Caminho UniFFI:** modo *library* / proc-macros, **sem UDL e sem `build.rs`**.
+  O `core/src/lib.rs` usa `uniffi::setup_scaffolding!();` + `#[uniffi::export]`.
+- **Versão fixada:** `uniffi = "0.31.2"` (sem `*`), última estável no crates.io no
+  momento desta tarefa (índice esparso: `0.31.0/0.31.1/0.31.2`). `Cargo.lock`
+  (`core/Cargo.lock`) é **versionado** para travar a resolução de forma
+  reprodutível.
+- **Erro da fronteira:** enum `CoreError` derivando `thiserror::Error`
+  (`thiserror = "2.0.18"`, para `Display`/`std::error::Error`) + `uniffi::Error`.
+  Exercitado por `ping_checked(ok: bool) -> Result<String, CoreError>`, que
+  constrói a variante de erro e evita `dead_code` sob `clippy -D warnings`.
+
+### Justificativa
+- **Menos peças móveis:** sem `.udl` nem `build.rs`, a fronteira é só Rust +
+  proc-macros — compila limpo neste ambiente (verificado: `fmt`/`clippy -D
+  warnings`/`build`/`test` verdes) e é o fluxo recomendado pelo UniFFI moderno.
+- **Compatível com a F0.4:** o gerador de bindings TS
+  (`uniffi-bindgen-react-native`/`-javascript`) consome o scaffolding do modo
+  library a partir da `cdylib`; já deixamos `crate-type = ["lib","cdylib",
+  "staticlib"]`.
+
+### Consequências
+- A geração de bindings TS e a instalação do `ubrn` continuam sendo da **F0.4**.
+- Subir a versão do `uniffi` é trocar a linha no `core/Cargo.toml` + `Cargo.lock`
+  num commit/ADR — auditável.
+- A **resolução real do `the-light-core`** permanece transferida para a **F0.3**
+  (ver atualização no ADR-0002); a F0.2 não adiciona essa dependência.
