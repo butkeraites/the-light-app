@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-29 22:36 UTC · Estado do loop: **rodando (ciclo 3 ok)**
-Heartbeat: ver `HEARTBEAT` · HALT: ausente · Próxima tarefa elegível: **F0.2** (semeada na `queue/` pelo planner)
+Última atualização: 2026-06-29 22:49 UTC · Estado do loop: **rodando (ciclo 5 ok)**
+Heartbeat: ver `HEARTBEAT` · HALT: ausente · Próxima tarefa elegível: **F0.3** (após planner semear na queue)
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -13,7 +13,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: ausente · Próxima tarefa elegível: **F0.2
 |----|--------|--------|------------|-----------|
 | F0.0 | Confirmar toolchain e versões; registrar ADR | ✅ aceito | — | passed (efe334f) |
 | F0.1 | Bootstrap do repo + docs de processo (DECISIONS/PROGRESS/.gitignore) | ✅ aceito | F0.0 | passed (595c70c) |
-| F0.2 | Crate `core/` com UniFFI compilando (sem lógica) | 🟡 ready | F0.1 | — |
+| F0.2 | Crate `core/` com UniFFI compilando (sem lógica) | ✅ aceito | F0.1 | passed (7b922eb) |
 | F0.3 | `parse_reference` na fronteira + teste | ⬜ | F0.2 | — |
 | F0.4 | Script de geração de bindings TS | ⬜ | F0.3 | — |
 | F0.5 | App Expo mínimo (expo-router) + tela | ⬜ | F0.1 | — |
@@ -40,3 +40,4 @@ fechar.
 | 2026-06-29 | Ciclo 2: queue vazia → planner semeou F0.1. |
 | 2026-06-29 | Ciclo 3: F0.1 executada e verificada → **passed** (595c70c); arquivada. Repo estruturado; DECISIONS/PROGRESS/.gitignore criados. ADR-0002: consumir `the-light` como git dep pinada; resolução real pendente p/ F0.2. |
 | 2026-06-29 | Planner semeou **F0.2** na `queue/` (crate `core/` com UniFFI trivial `ping`, SEM lógica e SEM dep do `the-light-core`). Resolução real do `the-light-core` transferida da F0.2 p/ a **F0.3** (onde `parse_reference` delega ao core). |
+| 2026-06-29 | Ciclo 5: F0.2 executada e verificada → **passed** (7b922eb); arquivada. Crate `the-light-app-core` compila com uniffi 0.31.2 (modo library); ADR-0003. |

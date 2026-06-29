@@ -8,3 +8,4 @@
 | ----- | ---------- | --------------------------------------------------------------------- | --------- |
 | F0.0  | 2026-06-29 | Confirmou toolchain e registrou versões do ambiente (sem código de produto). | `efe334f` |
 | F0.1  | 2026-06-29 | Bootstrap da estrutura do repo + docs de processo (DECISIONS/PROGRESS/.gitignore). | `595c70c` |
+| F0.2  | 2026-06-29 | Crate `core/` (the-light-app-core) com fronteira UniFFI trivial (`ping`) compilando; uniffi 0.31.2, modo library. | `7b922eb` |
