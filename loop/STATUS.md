@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-29 23:55 UTC · Estado do loop: **rodando (ciclo 12: F0.6 semeada — risco alto de HALT)**
-Heartbeat: ver `HEARTBEAT` · HALT: ausente · Próxima tarefa elegível: **F0.6** (semeada; core sem features → wasm sem rusqlite improvável sem PR ao core)
+Última atualização: 2026-06-29 23:54 UTC · Estado do loop: **⛔ PARADO (HALT) — F0.6 blocked**
+Heartbeat: ver `HEARTBEAT` · HALT: **PRESENTE** (`loop/HALT`) · Motivo: gate estratégico SQLite-no-WASM (decisão humana/Guia) · Retomar: resolver `loop/HALT`
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -17,7 +17,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: ausente · Próxima tarefa elegível: **F0.6
 | F0.3 | `parse_reference` na fronteira + teste | ✅ aceito | F0.2 | passed (9881c72) |
 | F0.4 | Script de geração de bindings TS | ✅ aceito | F0.3 | passed (e19064a) |
 | F0.5 | App Expo mínimo (expo-router) + tela | ✅ aceito | F0.1 | passed (3262f56) |
-| F0.6 | Ligar core no **web (WASM)**: chamar parse_reference | 🟡 ready | F0.4, F0.5 | — |
+| F0.6 | Ligar core no **web (WASM)**: chamar parse_reference | 🔴 blocked | F0.4, F0.5 | blocked (SQLite-no-WASM) |
 | F0.7 | Ligar core no **iOS**: chamar parse_reference | ⬜ | F0.4, F0.5 | — |
 | F0.8 | Ligar core no **Android**: chamar parse_reference | ⬜ | F0.4, F0.5 | — |
 | F0.9 | Store nativo (`rusqlite`): ler 1 passagem do sample.sqlite | ⬜ | F0.6/7/8 | — |
@@ -48,3 +48,4 @@ fechar.
 | 2026-06-29 | Planner semeou **F0.5** na `queue/` (status ready): app Expo mínimo (SDK 56, expo-router) em `app/` (package.json próprio, independente da raiz/ubrn) com UMA tela `TextInput` + área de resultado (`testID="result"`) placeholder — **sem** chamar o core (guarda de escopo: ligar core é F0.6/web, F0.7/iOS, F0.8/Android). Verificação **não-interativa**: `tsc --noEmit` + `expo export --platform web` (gera `app/dist/`, sai 0). RUN nativo (`run:ios`/`run:android`) **adiado p/ F0.7/F0.8** (Xcode completo/Android NDK ausentes). `app/node_modules`,`.expo`,`dist` ignorados por design. |
 | 2026-06-29 | Ciclo 11: F0.5 executada e verificada → **passed** (3262f56); arquivada. App Expo SDK 56 (expo-router) em `app/` com tela input+resultado; export web compila (769 módulos), `tsc` limpo. **Node 25 compatível com SDK 56** (risco descartado). |
 | 2026-06-29 | Planner semeou **F0.6** na `queue/` (status ready, gate:false): ligar o core no **web/WASM** — `Jo 3.16` na tela web → referência resolvida pelo Rust (livro 43, cap. 3, v. 16) via wasm+bindings web, com **prova headless** (teste node). Portão decisivo = compilar a fronteira p/ `wasm32-unknown-unknown` **sem `rusqlite`**. **Risco alto de HALT (blocked):** o `the-light-core` (rev 0888ac0) **não tem `[features]` nem deps `optional`** — `rusqlite{bundled}`+`reqwest{blocking,default-tls}` são incondicionais; excluí-los exigiria **modificar o core (PR+ADR=HALT)**. Task instrui `blocked` com erro EXATO = gate estratégico de Fase 0 (Apêndice A #1 / VISION §4 fricção #1). |
+| 2026-06-29 | Ciclo 13: executor tentou F0.6, reviewer confirmou de forma independente → **`blocked`**. `cargo build --target wasm32-unknown-unknown` falha (exit 101) no `sqlite-wasm-rs` (SQLite-C). Core sem `[features]` → impossível excluir `rusqlite` sem PR ao `the-light`. **⛔ `loop/HALT` escrito — loop PARADO p/ decisão estratégica (store-web: wa-sqlite/OPFS, PR ao core, ou web leitura+IA pré-indexada → ADR-0005).** Core/fronteira intactos. |

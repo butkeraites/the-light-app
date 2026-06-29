@@ -1,0 +1,76 @@
+F0.6 blocked: gate estratégico SQLite-no-WASM — exige decisão humana/Guia (não retry).
+
+# HALT — Loop autônomo parado
+
+- **Quando:** 2026-06-29 23:54 UTC (ciclo 13)
+- **Tarefa:** F0.6 — Ligar o core no alvo web (WASM): `parse_reference` no navegador
+- **Desfecho:** `blocked` (confirmado independentemente pelo reviewer em
+  `loop/done/F0.6.result.md`). **Não** é `failed` — não há bug no nosso código;
+  é uma **barreira arquitetural externa** que exige decisão estratégica.
+- **Regra de parada acionada (PROTOCOL.md / CLAUDE.md):** tarefa `blocked` **e**
+  "precisaria modificar o repositório `the-light` (só via PR + ADR — decisão
+  humana)". Diante de conflito com regra não negociável, o loop **para** em vez de
+  improvisar.
+
+## Motivo (fricção #1 da VISION §4 / Apêndice A gate #1: "SQLite no WASM")
+
+A fronteira `the-light-app-core` (F0.3) consome o `the-light-core` (git dep pinada
+no rev `0888ac0…`, v1.2.0). O portão decisivo da F0.6 era compilar a fronteira para
+`wasm32-unknown-unknown` **sem** arrastar `rusqlite` (SQLite-C). Isso é **impossível
+sem modificar o core**, porque:
+
+- O `crates/the-light-core/Cargo.toml` (rev `0888ac0`, inspecionado na fonte clonada
+  em `~/.cargo/git/checkouts/`) **não tem seção `[features]`**, e `rusqlite` e
+  `reqwest` são dependências **incondicionais** (sem `optional`, sem
+  `[target.'cfg(...)']`):
+  - `rusqlite = { version = "0.40.1", features = ["bundled"] }`  (SQLite-C bundled)
+  - `reqwest = { version = "0.13.3", default-features = false, features = ["blocking","json","default-tls"] }`
+- O cargo compila o crate `the-light-core` **inteiro** mesmo que a fronteira só use
+  o módulo puro `reference`. No alvo wasm, `rusqlite["bundled"]` resolve para
+  `sqlite-wasm-rs v0.5.5`, cujo build script compila fonte C do SQLite via
+  `cc`/clang e **falha** (`exit 101`):
+  `error: unable to create target: 'No available targets are compatible with triple "wasm32-unknown-unknown"'`
+  (em `error: failed to run custom build command for sqlite-wasm-rs v0.5.5`).
+- Como **não há `[features]`** no core, **nenhuma** configuração de consumo
+  (`default-features = false` / seleção de features na git dep do `core/Cargo.toml`)
+  exclui o `rusqlite`. A única forma de excluí-lo é **adicionar feature-gating / split
+  de crate no PRÓPRIO `the-light-core`** → **PR no `the-light` + ADR = decisão
+  humana**. Isso é explicitamente proibido ao loop (não modificar `the-light`).
+
+Evidência completa (linhas do Cargo.toml do core + saída literal do
+`cargo build --target wasm32-unknown-unknown`) está em `loop/done/F0.6.result.md`.
+
+## O que está intacto (regras respeitadas)
+
+- `core/Cargo.toml`, `core/Cargo.lock` e a fronteira da F0.3 **não foram tocados**
+  (`git diff -- core/` vazio). Nenhum fork/cópia/vendor do `the-light`. Nenhum stub
+  de wasm/bindings. Parsing **não** reimplementado em TS. Working tree limpo.
+- O target `wasm32-unknown-unknown` foi instalado via `rustup` (global, fora do repo)
+  durante a tentativa — inócuo, pode ficar.
+
+## Como retomar (humano/Guia resolve e remove/edita este arquivo)
+
+É preciso uma **decisão estratégica de store/transporte no alvo web** (a VISION §4 já
+antecipa três caminhos). Candidatos a avaliar e registrar como **ADR-0005**:
+
+1. **`wa-sqlite` + OPFS no web, com store injetado no core** (recomendação inicial da
+   VISION): manter `rusqlite` no nativo e, no web, abstrair o store para que o Rust
+   acesse os dados via uma camada JS (`wa-sqlite`). Provavelmente exige que o
+   `the-light-core` permita injetar/abstrair o store (feature/trait) → **PR + ADR ao
+   `the-light`**.
+2. **PR ao `the-light` adicionando feature de exclusão de store/rede** (ex.:
+   `default-features=false` com `rusqlite`/`reqwest` `optional`) — permitiria compilar
+   só o módulo `reference` para wasm. Decisão de design do core → **PR + ADR**.
+3. **Web como "leitura + IA" com dados pré-indexados** (assets), reservando o store
+   completo (SQLite) ao nativo — re-escopo da F0.6/Fase 0.
+
+Para retomar o loop:
+- Guia/humano escolhe a estratégia e registra **ADR-0005**;
+- se a escolha envolver mudar o `the-light-core`, abrir **PR + ADR** no `the-light`
+  e re-pinar o rev quando mesclado;
+- **re-escopar a F0.6** (e possivelmente F0.10) no backlog/queue conforme a decisão;
+- então **remover/editar este `loop/HALT`** e o loop volta a rodar no próximo ciclo.
+
+> Observação: F0.7 (iOS) e F0.8 (Android) também esbarrarão em pendências de
+> ambiente já registradas na F0.0 (Xcode completo ausente; Android SDK/NDK ausentes),
+> que exigem setup humano — considerar ao planejar a retomada da Fase 0.
