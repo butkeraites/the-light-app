@@ -1,0 +1,11 @@
+# ── app/ (projeto Expo) · artefatos gerados, não versionar ───────────────────
+# Deps, cache do Expo e bundle web já são ignorados pelo .gitignore da raiz,
+# mas reforçamos aqui para o projeto Expo isolado em app/.
+node_modules/
+.expo/
+dist/
+web-build/
+
+# Tipos gerados pelo expo-router (determinístico; regenerado por expo start/export)
+expo-env.d.ts
+*.tsbuildinfo
