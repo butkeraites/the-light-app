@@ -28,7 +28,7 @@ referência (BYOK / offline-first; nada aqui exige rede ou conta).
 | pnpm                                    | 11.3.0                              | OK            |
 | yarn / bun                              | ausentes                            | não usados    |
 | Expo SDK                                | **56** (`expo@56.0.12` via npm)     | OK (a instalar na F0.5) |
-| Gerador de bindings UniFFI              | `uniffi-bindgen-react-native` (CLI `ubrn`), em transição p/ `uniffi-bindgen-javascript` | NÃO INSTALADO (instalar na fronteira, ~F0.2/F0.4) |
+| Gerador de bindings UniFFI              | `uniffi-bindgen-react-native` (CLI `ubrn`) **`0.31.0-3`** (devDependency npm, versão exata pinada em `package.json`+`package-lock.json`) | INSTALADO na F0.4 (ADR-0004) |
 | `uniffi-bindgen`                        | ausente do PATH                     | PENDÊNCIA     |
 | `cargo-ndk`                             | ausente                             | PENDÊNCIA (build Android) |
 | Xcode completo (`xcodebuild`)           | ausente (só Command Line Tools em `/Library/Developer/CommandLineTools`) | BLOQUEIO futuro (build iOS, ~F0.7) |
@@ -176,3 +176,66 @@ versão exata do crate `uniffi` ficou para ser fixada na instalação (ADR-0001)
   num commit/ADR — auditável.
 - A **resolução real do `the-light-core`** permanece transferida para a **F0.3**
   (ver atualização no ADR-0002); a F0.2 não adiciona essa dependência.
+
+---
+
+## ADR-0004 — Geração reprodutível dos bindings TS (`ubrn 0.31.0-3`)
+
+- **Data:** 2026-06-29 · **Status:** aceito · **Tarefa:** F0.4
+
+### Contexto
+A ADR-0001 fixou `uniffi-bindgen-react-native` (CLI `ubrn`, em transição para
+`uniffi-bindgen-javascript`) como gerador dos bindings TypeScript da fronteira
+UniFFI, deixando a **versão exata** para ser fixada na instalação. A F0.0 havia
+confirmado o `ubrn` **NÃO INSTALADO**. A VISION §9 marca **risco #1 = maturidade
+do `ubrn`** (release inicial) — a mitigação é provar a geração já na Fase 0. A
+fronteira do core usa `uniffi = "0.31.2"` (modo *library*, ADR-0003).
+
+### Decisão
+- **Ferramenta + versão exata:** `uniffi-bindgen-react-native@0.31.0-3`
+  (sem `^`/`~`/`*`), a última publicada no npm (dist-tag `latest`).
+- **Mecanismo de instalação:** **devDependency npm**, fixada em
+  `package.json` (`"uniffi-bindgen-react-native": "0.31.0-3"`) **e**
+  `package-lock.json` (resolução travada). Não via `cargo install`. O pacote npm
+  embute o código Rust do CLI; o wrapper `bin/cli.cjs` compila o binário `ubrn`
+  sob demanda na **primeira** invocação (`cargo run -p ubrn_cli`, dentro de
+  `node_modules/`, ignorado pelo git). Rede em dev/build é permitida (ADR-0001);
+  nada de rede entra no código gerado (offline-first é regra de runtime).
+- **Invocação (host-only, modo *library*):** `scripts/gen-bindings.sh` faz
+  `cargo build --manifest-path core/Cargo.toml` (cdylib do host) e então
+  `ubrn generate jsi bindings --library --no-format --ts-dir <ts> --cpp-dir
+  <cpp> <cdylib>`, rodando a partir de `core/` (para `cargo metadata` resolver
+  `core/Cargo.toml`). NÃO se compila wasm/iOS/Android aqui (isso é F0.6/7/8).
+  `--no-format` evita depender de `prettier`/`clang-format`.
+- **Config:** `ubrn.config.yaml` (schema `ProjectConfig` do `ubrn_cli`, chaves
+  camelCase) é a **fonte da verdade** dos caminhos: `rust.directory: core`,
+  `bindings.ts: bindings`, `bindings.cpp: bindings/cpp`. O script extrai daí os
+  diretórios de saída. As fases de build móvel reutilizarão este mesmo arquivo.
+- **Saída versionada vs. gerada:** os `.ts` (e o C++ JSI em `bindings/cpp/`) são
+  **gerados e IGNORADOS** pelo git (`.gitignore` da F0.1: `/bindings/*` +
+  `!/bindings/.gitkeep`). Toda a saída fica **sob `bindings/`** — nada vaza para
+  fora, então **não** foi preciso estender o `.gitignore`. Versiona-se apenas:
+  `scripts/gen-bindings.sh`, `ubrn.config.yaml`, `package.json`,
+  `package-lock.json` e este ADR.
+- **`tsc --noEmit`: ADIADO.** Não se inclui `tsconfig.json`/`typescript` agora.
+  Os `.ts` gerados importam o runtime `@ubjs/core` (do próprio `ubrn`), que só
+  será instalado com o app na F0.5. A porta dura da F0.4 é o script rodar limpo
+  e popular `bindings/`; o type-check nasce com o app.
+
+### Compatibilidade com `uniffi 0.31.2` (ADR-0003)
+- O `ubrn 0.31.0-3` embute `uniffi*/uniffi_bindgen = "=0.31.0"`. O core compila
+  com `uniffi 0.31.2`. **Verificado empiricamente:** a geração leu a metadata da
+  cdylib `0.31.2` **sem erro de contrato/checksum** e produziu `parseReference`,
+  `ping`, `pingChecked`, `Reference`, `VerseRange`, `CoreError`. As releases
+  `0.31.x` compartilham o mesmo *contract version*, então o patch diverge sem
+  quebrar a metadata. **Não** foi necessário (nem permitido) mudar `uniffi` nem a
+  forma da fronteira do core.
+
+### Consequências
+- `./scripts/gen-bindings.sh` regenera `bindings/` de forma determinística
+  (limpa preservando `.gitkeep`, rebuilda a cdylib, gera os `.ts`), saindo 0.
+- Subir o `ubrn` é trocar a versão exata em `package.json` + `package-lock.json`
+  num commit/ADR — auditável. Se o pacote for renomeado para
+  `uniffi-bindgen-javascript`, troca-se a dependência num novo ADR.
+- A F0.5 (app Expo) instalará `@ubjs/core` e poderá adicionar `tsc --noEmit`
+  sobre os bindings como validação extra.

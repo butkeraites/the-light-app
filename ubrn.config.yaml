@@ -1,0 +1,30 @@
+# ubrn.config.yaml — configuração do uniffi-bindgen-react-native (CLI `ubrn`)
+# para a fronteira UniFFI do The Light. Ver ADR-0004 em DECISIONS.md.
+#
+# É a FONTE DA VERDADE dos caminhos de geração: `scripts/gen-bindings.sh` (F0.4)
+# extrai daqui os diretórios de saída (`bindings.ts` / `bindings.cpp`); as fases
+# de build móvel (F0.6 web / F0.7 iOS / F0.8 Android) reutilizarão este mesmo
+# arquivo.
+#
+# Schema: `ProjectConfig` do crate `ubrn_cli` (chaves camelCase). Apenas as
+# chaves necessárias para a geração host-only da F0.4 estão preenchidas; targets
+# android/ios e o turbo-module ficam com defaults (pertencem à F0.6/7/8).
+
+# Nome do módulo da fronteira (namespace UniFFI do crate `the-light-app-core`).
+# Provisório para a F0.6 (turbo-module); a geração host-only da F0.4 não o usa.
+name: the_light_app_core
+
+# Crate Rust de fronteira (consome `the-light-core` via git dep pinada — ADR-0002).
+rust:
+  # Diretório do crate, relativo à raiz do repositório.
+  directory: core
+  # Caminho do manifesto, relativo a `directory` (precisa terminar em Cargo.toml).
+  manifestPath: Cargo.toml
+
+# Saídas geradas. Tudo sob `bindings/`, que é IGNORADO pelo git por design
+# (.gitignore da F0.1: `/bindings/*` + `!/bindings/.gitkeep`).
+bindings:
+  # Diretório dos .ts gerados (relativo à raiz). Conferido por gen-bindings.sh.
+  ts: bindings
+  # Diretório do C++ JSI (byproduct do flavor `jsi`); sob bindings/ => ignorado.
+  cpp: bindings/cpp
