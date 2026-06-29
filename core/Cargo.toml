@@ -19,3 +19,8 @@ crate-type = ["lib", "cdylib", "staticlib"]
 uniffi = "0.31.2"
 # Display/std::error::Error do enum de erro UniFFI (padrão da fronteira).
 thiserror = "2.0.18"
+# Core canônico do The Light, consumido como git dep PINADA por commit
+# (ADR-0002). É a ÚNICA fonte de verdade do parsing de referência: a fronteira
+# UniFFI delega a `the_light_core::reference` (regra "uma fonte da verdade").
+# Nunca forkar/copiar/vendorizar — mudanças no core só via PR + ADR.
+the-light-core = { git = "https://github.com/butkeraites/the-light", rev = "0888ac0bfed15222874c5462902a61ac3a39147c", package = "the-light-core" }
