@@ -14,3 +14,4 @@
 2026-06-29 23:03 UTC · ciclo 7 · executor+reviewer em F0.3 (parse_reference) · tarefa F0.3 · passed (9881c72), arquivada · PONTE REAL ao core provada: git dep pinada (the-light-core v1.2.0), delegação genuína, PT==EN, sem fork/cópia
 2026-06-29 23:12 UTC · ciclo 8 · queue vazia → planner semeou F0.4 (script gen-bindings.sh: instala/fixa ubrn e gera bindings TS) · risco: maturidade do ubrn / incompat. com uniffi 0.31.2 · sem execução neste ciclo
 2026-06-29 23:25 UTC · ciclo 9 · executor+reviewer em F0.4 (gen-bindings via ubrn) · tarefa F0.4 · passed (e19064a), arquivada · RISCO #1 VENCIDO: ubrn 0.31.0-3 gera bindings/*.ts reprodutíveis, compat. uniffi 0.31.2 sem tocar fronteira; ADR-0004
+2026-06-29 23:40 UTC · ciclo 10 · queue vazia → planner semeou F0.5 (app Expo mínimo SDK 56 + 1 tela, sem core; verif. não-interativa web+tsc) · run nativo adiado p/ F0.7/F0.8 · risco: Node v25.8.1 vs Expo SDK 56 · sem execução neste ciclo

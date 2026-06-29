@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-29 23:25 UTC · Estado do loop: **rodando (ciclo 9 ok)**
-Heartbeat: ver `HEARTBEAT` · HALT: ausente · Próxima tarefa elegível: **F0.5** (após planner semear na queue)
+Última atualização: 2026-06-29 23:40 UTC · Estado do loop: **rodando (planner semeou F0.5)**
+Heartbeat: ver `HEARTBEAT` · HALT: ausente · Próxima tarefa elegível: **F0.5** (semeada na `queue/`, status ready)
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -16,7 +16,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: ausente · Próxima tarefa elegível: **F0.5
 | F0.2 | Crate `core/` com UniFFI compilando (sem lógica) | ✅ aceito | F0.1 | passed (7b922eb) |
 | F0.3 | `parse_reference` na fronteira + teste | ✅ aceito | F0.2 | passed (9881c72) |
 | F0.4 | Script de geração de bindings TS | ✅ aceito | F0.3 | passed (e19064a) |
-| F0.5 | App Expo mínimo (expo-router) + tela | ⬜ | F0.1 | — |
+| F0.5 | App Expo mínimo (expo-router) + tela | 🟡 ready | F0.1 | — |
 | F0.6 | Ligar core no **web (WASM)**: chamar parse_reference | ⬜ | F0.4, F0.5 | — |
 | F0.7 | Ligar core no **iOS**: chamar parse_reference | ⬜ | F0.4, F0.5 | — |
 | F0.8 | Ligar core no **Android**: chamar parse_reference | ⬜ | F0.4, F0.5 | — |
@@ -45,3 +45,4 @@ fechar.
 | 2026-06-29 | Ciclo 7: F0.3 executada e verificada → **passed** (9881c72); arquivada. **Ponte real ao core provada**: git dep pinada (the-light-core v1.2.0), `parse_reference` delega ao core, "Jo 3.16"=="John 3:16" → (43,3,Single 16). Sem fork/cópia. |
 | 2026-06-29 | Planner semeou **F0.4** na `queue/` (status ready): script reproduzível `scripts/gen-bindings.sh` que instala+fixa o `ubrn`, configura e gera os bindings TS da fronteira UniFFI em `bindings/`. Escopo atômico = só os `.ts` (não liga app ainda; isso é F0.6/7/8). `.ts` gerados são ignorados por design; ADR-0004 fixará a versão do `ubrn`. Bloqueio legítimo se o `ubrn` não instalar/rodar/gerar (maturidade / incompat. com uniffi 0.31.2). |
 | 2026-06-29 | Ciclo 9: F0.4 executada e verificada → **passed** (e19064a); arquivada. **Risco #1 (maturidade do ubrn) vencido**: ubrn 0.31.0-3 gera `bindings/*.ts` (parseReference/ping/tipos) de forma reprodutível; compat. com uniffi 0.31.2 sem tocar a fronteira; ADR-0004. |
+| 2026-06-29 | Planner semeou **F0.5** na `queue/` (status ready): app Expo mínimo (SDK 56, expo-router) em `app/` (package.json próprio, independente da raiz/ubrn) com UMA tela `TextInput` + área de resultado (`testID="result"`) placeholder — **sem** chamar o core (guarda de escopo: ligar core é F0.6/web, F0.7/iOS, F0.8/Android). Verificação **não-interativa**: `tsc --noEmit` + `expo export --platform web` (gera `app/dist/`, sai 0). RUN nativo (`run:ios`/`run:android`) **adiado p/ F0.7/F0.8** (Xcode completo/Android NDK ausentes). `app/node_modules`,`.expo`,`dist` ignorados por design. |
