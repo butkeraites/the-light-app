@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-30 01:04 UTC · Estado do loop: **⛔ PARADO (HALT) — F0.6 re-escopada; aguardando PR ao core**
-Heartbeat: ver `HEARTBEAT` · HALT: **PRESENTE** (`loop/HALT`) · Direção decidida: **ADR-0005** (feature-gating `store`/`net` no core + matriz por alvo) · Retomar: **PR mesclado no `the-light` + re-pin do rev** → semear F0.6a
+Última atualização: 2026-06-30 01:30 UTC · Estado do loop: **⛔ PARADO (HALT) — núcleo destravado/verificado; aguardando push+merge+re-pin**
+Heartbeat: ver `HEARTBEAT` · HALT: **PRESENTE** (`loop/HALT`) · **Núcleo IMPLEMENTADO** no `the-light` (branch `feat/core-wasm-feature-gating`, `8f66004`; feature `embedded`; wasm OK; 177 testes) · Retomar: **push+merge no GitHub + re-pin do rev** → F0.6a (depois F0.6b: caminho web do ubrn; achado uniffi-wasm)
 
 ## Fase 0 — Prova da ponte Rust → Expo
 

@@ -330,5 +330,49 @@ leitura permitida — **não** é o `../the-light` bloqueado):
   `the-light` e o `rev` ser **re-pinado** no `core/Cargo.toml`. Até lá, o
   **`loop/HALT` permanece** (ajustado para refletir este plano). Quem abre/mescla o
   PR é o humano (Renan); o loop não toca o `the-light`.
-- Decisão pendente do humano ao abrir o PR: nome/recorte das features — adotado
-  **`store` + `net`**; alternativa registrada era um único `embedded`.
+- Decisão sobre o recorte das features: ver "Implementação" abaixo — adotado
+  **um único `embedded`** (não `store`+`net`), por causa do entrelaçamento real.
+
+### Implementação (2026-06-30) — feita no `the-light` (autorizada pelo humano)
+
+O humano autorizou trabalhar diretamente no repositório `the-light` (sign-off do
+HALT). A mudança foi implementada e **verificada** num branch:
+
+- **Repo/branch/commit:** `the-light` · `feat/core-wasm-feature-gating` · **`8f66004`**
+  (sobre `0888ac0`). Pendente de **push + merge** no GitHub e **re-pin** do rev no
+  `the-light-app` (ação humana/coordenada — ver F0.6a).
+- **Recorte adotado: UMA feature `embedded` (default-on)**, não `store`+`net`
+  separados. Motivo (apurado na fonte do core): as camadas store/net estão
+  **entrelaçadas** — `source::SourceError` referencia `rusqlite::Error` e
+  `store::StoreError` **estruturalmente**; `scholarly` usa store **e** net;
+  `ai` mistura net (`providers`/`research`), store (`lexicon`) e tipos puros
+  (`Denomination`/`StudyMode`, usados por `config`). Separar store/net exigiria
+  refatorar tipos de erro e criaria estados intermediários frágeis. Um único
+  `embedded` (toggle puro↔completo) é mínimo, robusto e **exatamente** o que os
+  alvos precisam (web = parser puro; nativo = completo). Era a alternativa já
+  registrada neste ADR.
+- **O que mudou no core (2 arquivos, aditivo):**
+  - `Cargo.toml`: `[features] default = ["embedded"]`; `embedded` ativa
+    `rusqlite`/`reqwest`/`directories`/`tempfile`/`toml`/`serde_json`/`chrono`
+    (todas marcadas `optional`). Sempre disponíveis (puras/wasm-safe):
+    `regex`/`serde`/`thiserror`.
+  - `lib.rs`: `model` e `reference` sempre; `ai`/`config`/`export`/`scholarly`/
+    `search`/`source`/`store`/`userdata`/`util`/`xref` atrás de
+    `#[cfg(feature = "embedded")]`.
+- **Verificação (toda verde):** `cargo build`/`test -p the-light-core` (default) —
+  **177 testes + 2 doc-tests** passam; `cargo build` (workspace CLI/TUI/xtask) OK;
+  `cargo build -p the-light-core --no-default-features --target
+  wasm32-unknown-unknown` **OK**; `cargo tree --no-default-features` sem
+  `rusqlite`/`reqwest`/SQLite/`directories`/`tempfile`; `clippy` (default e
+  `--no-default-features`) e `fmt --check` limpos. **Não-quebrante** confirmado.
+
+### Achado downstream para a F0.6b — uniffi no wasm
+Com o core puro destravado, um teste local da fronteira (`the-light-app-core`
+consumindo o core com `default-features = false`) para `wasm32-unknown-unknown`
+revelou um **segundo obstáculo, no nível do `uniffi`**, independente do SQLite:
+`uniffi_core 0.31.2` não compila num `cargo build` cru para
+`wasm32-unknown-unknown` (`UniffiCompatibleFuture: … + Send`; wasm é single-thread,
+futures não são `Send`). Isso pertence à **F0.6b**, que deve usar o **caminho web
+do `ubrn`** (não `cargo build` cru) — possivelmente com uma feature/config do
+`uniffi` p/ wasm. Se o caminho web do `ubrn 0.31.0-3` não tratar isso, é `blocked`
+legítimo da F0.6b (decisão sobre o caminho web do ubrn), **não** do core.

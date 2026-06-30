@@ -1,4 +1,16 @@
-# Proposta de PR ao `the-light` — feature-gating de `store`/`net` no `the-light-core`
+> ## ✅ STATUS: IMPLEMENTADO (2026-06-30) — branch `feat/core-wasm-feature-gating` (`8f66004`)
+> A mudança foi feita e **verificada** no `the-light` (autorizada pelo humano).
+> **Ajuste vs. esta spec original:** adotada **UMA feature `embedded`** (default-on),
+> não `store`+`net` separados — porque `store`/`net` estão entrelaçados
+> (`source::SourceError` referencia `rusqlite`/`store` estruturalmente; `scholarly`
+> e `ai` misturam ambos). Detalhes e verificação em `DECISIONS.md` (ADR-0005 →
+> "Implementação"). **Falta:** push + merge no GitHub e re-pin do rev no
+> `the-light-app` (F0.6a). A seção 2/3 abaixo é a proposta original (store/net);
+> o que foi de fato aplicado é o recorte `embedded`.
+
+---
+
+# Proposta de PR ao `the-light` — feature-gating no `the-light-core`
 
 > **Quem executa:** humano (Renan), no repositório `the-light` (o loop **não** toca
 > o core). Este documento é a especificação do PR; ao mesclar, re-pinar o `rev` no

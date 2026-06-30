@@ -59,8 +59,15 @@ ADR-0005). Resolvida via **feature-gating no core (PR — `loop/proposals/the-li
 + matriz de features por alvo no app. Re-escopada em F0.6a e F0.6b.
 
 ### F0.6a — Consumir o core com features por alvo + compilar a fronteira p/ wasm
-**Pré-condição (humano/Guia):** PR de feature-gating **mesclado** no `the-light` e
-**rev re-pinado** disponível. **NÃO semear na queue antes disso** (senão re-bloqueia).
+**Estado:** a mudança de habilitação no core **JÁ FOI IMPLEMENTADA e verificada**
+(branch `the-light` `feat/core-wasm-feature-gating`, commit `8f66004`; feature
+única `embedded` default-on; `the-light-core --no-default-features` compila p/
+`wasm32`). Ver ADR-0005 → "Implementação".
+**Pré-condição restante (humano/coordenada):** **push + merge** do branch no GitHub
+e obtenção do **rev mesclado**, para então **re-pinar** `core/Cargo.toml` (ADR-0002 =
+git dep por commit). **NÃO semear na queue antes do rev estar no remoto** (senão a
+git-dep pinada não resolve). Alternativa de verificação local: `[patch]`/`path` para
+o core local (usado temporariamente já na validação; revertido).
 **Objetivo:** re-pinar `core/Cargo.toml` no rev pós-PR com `default-features = false`
 e configurar a **matriz de features por alvo** (web/wasm: sem features pesadas → só
 `reference`/`model`; nativo: `["store","net"]`); compilar a fronteira para
@@ -83,8 +90,13 @@ web, e provar de forma **headless**.
 referência resolvida pelo Rust (não eco/lógica TS); `npx expo export --platform web`
 (de `app/`) sai 0; working tree limpo (wasm/bindings ignorados).
 **Verificação:** script de bindings web + teste node headless + expo export web.
-**Depende:** F0.6a. Se o caminho web do `ubrn 0.31.0-3` for imaturo/inoperante →
-`blocked` legítimo com erro exato (decisão sobre o caminho web do ubrn).
+**Depende:** F0.6a. **Achado já registrado (ADR-0005):** um `cargo build` cru da
+fronteira p/ `wasm32-unknown-unknown` falha em `uniffi_core 0.31.2`
+(`UniffiCompatibleFuture: …+Send`; wasm é single-thread). Portanto a F0.6b **deve**
+usar o **caminho web do `ubrn`** (não build cru), possivelmente com feature/config do
+`uniffi` p/ wasm. Se o caminho web do `ubrn 0.31.0-3` for imaturo/inoperante →
+`blocked` legítimo com erro exato (decisão sobre o caminho web do ubrn) — **não** é
+bloqueio do core (esse já foi resolvido na F0.6a).
 
 ## F0.7 — Ligar core no iOS
 **Objetivo:** `parse_reference` via Turbo Module nativo no simulador iOS.

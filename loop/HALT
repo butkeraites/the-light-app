@@ -1,6 +1,35 @@
-F0.6 re-escopada (ADR-0005): aguardando PR de feature-gating mesclado no the-light + re-pin do rev. Loop segue parado até lá.
+F0.6: núcleo destravado e VERIFICADO no the-light (branch feat/core-wasm-feature-gating, 8f66004). Falta push+merge no GitHub + re-pin do rev p/ retomar (F0.6a).
 
 # HALT — Loop autônomo parado
+
+## ATUALIZAÇÃO 2026-06-30 (b) — núcleo IMPLEMENTADO e verificado
+
+O humano autorizou trabalhar no `the-light`. A mudança de habilitação do ADR-0005
+foi **implementada e verificada** (branch `feat/core-wasm-feature-gating`, commit
+**`8f66004`**): feature única **`embedded`** (default-on); `model`/`reference`
+sempre disponíveis; `the-light-core --no-default-features` compila para
+`wasm32-unknown-unknown`. Defaults intactos (177 testes + workspace OK), clippy/fmt
+limpos, não-quebrante. **O bloqueio original (SQLite-no-WASM) está RESOLVIDO no core.**
+
+### Por que o HALT ainda permanece
+- O commit do core está **só num branch local** do `the-light`. Para o `the-light-app`
+  re-pinar via git dep por commit (ADR-0002), o branch precisa ir ao **GitHub
+  (push + merge)** — **ação outward, a confirmar com o humano** (o loop não faz push
+  sozinho).
+- Há um **2º obstáculo downstream** (F0.6b): `uniffi_core 0.31.2` não compila num
+  `cargo build` cru para wasm (`…+Send`); a F0.6b deve usar o **caminho web do ubrn**.
+
+### Condição EXATA para retomar (atualizada)
+1. **Push** do branch `feat/core-wasm-feature-gating` ao GitHub e **merge** (ou ao
+   menos push de um commit alcançável); anotar o **rev mesclado**.
+2. **Re-pinar** `core/Cargo.toml` do `the-light-app` para esse rev com
+   `default-features = false` + matriz de features por alvo (1ª ação da **F0.6a**).
+3. **Remover/editar** este `loop/HALT` → o planner semeia F0.6a → F0.6b (caminho web
+   do ubrn).
+
+---
+
+## ATUALIZAÇÃO 2026-06-30 (a) — direção decidida (humano aprovou)
 
 ## ATUALIZAÇÃO 2026-06-30 — direção decidida (humano aprovou)
 
