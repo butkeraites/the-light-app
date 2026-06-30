@@ -1,20 +1,25 @@
-// app/web/reading.web.ts — F1.13 (ADR-0018/ADR-0019) · F1.14 (ADR-0020: busca)
+// app/web/reading.web.ts — F1.13 (ADR-0018/ADR-0019) · F1.14 (ADR-0020: busca) ·
+// F1.15 (ADR-0021: xref)
 //
-// GLUE web de LEITURA + BUSCA (hand-written, VERSIONADO). A paridade web lê do
-// SUBSET `reading-sample.sqlite` (~4,4 MB; o MESMO que o nativo empacota, ADR-0014)
-// via `wa-sqlite` (OPFS no browser / MemoryVFS na prova), ESPELHANDO os SELECTs da
-// fronteira nativa (F1.2/F1.5):
+// GLUE web de LEITURA + BUSCA + XREF (hand-written, VERSIONADO). A paridade web lê
+// do SUBSET `reading-sample.sqlite` (~4,4 MB; o MESMO que o nativo empacota,
+// ADR-0014) via `wa-sqlite` (OPFS no browser / MemoryVFS na prova), ESPELHANDO os
+// SELECTs da fronteira nativa (F1.2/F1.5/F1.8):
 //   - `listBooks`        → cânon do RUST (wasm `listBooks`), SÍNCRONO (não relista à mão);
 //   - `listTranslations` → `EmbeddedSource::translations` (queryTranslations);
 //   - `getChapter`       → `has_translation` + `EmbeddedSource::passage`/WholeChapter
 //                          (queryChapter + composeChapterPassage);
 //   - `chapterCount`     → `EmbeddedSource::chapter_count` (queryChapterCount);
 //   - `search`           → `EmbeddedSource::search` + `search::search` (FTS5: MATCH +
-//                          bm25 + highlight), via `searchOnHandle` (sqlite-search.web).
-// NÃO reimplementa parsing/cânon/ranqueamento/lógica de domínio — só os SELECTs de
-// leitura/busca (infra) + composição dos Records (o índice FTS5/BM25/highlight vive
-// no SQLite, ADR-0020). Anti-alucinação: o TEXTO vem SEMPRE do store local,
-// verbatim. `crossRefs`/userdata seguem stubs (F1.15–F1.16).
+//                          bm25 + highlight), via `searchOnHandle` (sqlite-search.web);
+//   - `crossRefs`        → `xref::for_verse` (filtro `from_*` + `votes >= min_votes`,
+//                          `ORDER BY votes DESC, …`, `LIMIT`, montagem Single/Range),
+//                          via `crossRefsOnHandle` (sqlite-xref.web).
+// NÃO reimplementa parsing/cânon/ranqueamento/ordenação/lógica de domínio — só os
+// SELECTs de leitura/busca/xref (infra) + composição dos Records (o índice
+// FTS5/BM25/highlight e a ordem por votos vivem no SQLite, ADR-0020/0021).
+// Anti-alucinação: o TEXTO vem SEMPRE do store local, verbatim; a xref é só
+// referência+votos do store. Userdata segue stub (F1.16).
 //
 // As MESMAS telas React `app/app/read/**` (compartilhadas com o nativo `reading.ts`)
 // passam a funcionar no browser só por este glue + `db.web.ts` (sentinela).
@@ -38,15 +43,10 @@ import {
   queryTranslations,
 } from './sqlite-reading.web';
 import { searchOnHandle } from './sqlite-search.web';
+import { crossRefsOnHandle } from './sqlite-xref.web';
 import { openReadingDbWeb } from './sqlite-reading-opfs.web';
 
 export type { Book, Passage, Translation, SearchHit, CrossRef, Note, Highlight };
-
-// Xref no web (cross_refs sobre o store wa-sqlite/OPFS) = F1.15 (pós-gate F1.12). Até
-// lá, o glue web de xref é um stub que lança em runtime, mantendo `tsc`/build web
-// verdes. O par nativo (`reading.ts`) faz a xref real via a fronteira `cross_refs`.
-const WEB_XREF_MSG =
-  'referências cruzadas web (cross_refs sobre wa-sqlite/OPFS) = F1.15; a xref nativa usa o the_light_core::xref via Turbo Module.';
 
 // Notas/highlights no web (userdata sobre wa-sqlite/OPFS) = F1.16 (pós-gate F1.12).
 // Até lá, o glue web de userdata é um stub que lança em runtime, mantendo `tsc`/build
@@ -150,15 +150,34 @@ export async function search(
   }
 }
 
+/**
+ * Referências cruzadas (xref) de um versículo de ORIGEM, do store local (subset),
+ * espelhando `the_light_core::xref::for_verse` (filtro `from_book/from_chapter/
+ * from_verse` + `votes >= min_votes`, `ORDER BY votes DESC, to_book, to_chapter,
+ * to_verse_start`, `LIMIT`, montagem `Single`/`Range` por `start >= end`). REUSA o
+ * store da F1.13/F1.14 (`openReadingDbWeb` — sem recarregar o subset) e delega a
+ * `crossRefsOnHandle`. A xref é INDEPENDENTE de tradução (sem `translation`/
+ * `has_translation`). NENHUMA ordenação/filtro/semântica é reimplementada em TS: a
+ * ordem por votos (com tiebreakers) e o corte `votes >= ?` vivem no SQLite.
+ * Defaults do core: `minVotes ?? 1`, `limit ?? 20`. Versículo sem xref → `[]` (sem
+ * throw). `_dbPath` é aceito por paridade de assinatura com o nativo; o store web
+ * abre o subset internamente. Anti-alucinação: refs/votos vêm do store; a UI (F1.9)
+ * exibe a atribuição CC-BY (ADR-0016) sempre que xrefs aparecem.
+ */
 export async function crossRefs(
   _dbPath: string,
-  _book: number,
-  _chapter: number,
-  _verse: number,
-  _minVotes?: bigint,
-  _limit?: number,
+  book: number,
+  chapter: number,
+  verse: number,
+  minVotes?: bigint,
+  limit?: number,
 ): Promise<CrossRef[]> {
-  throw new Error(WEB_XREF_MSG);
+  const handle = await openReadingDbWeb();
+  try {
+    return await crossRefsOnHandle(handle, book, chapter, verse, minVotes, limit);
+  } finally {
+    await handle.close();
+  }
 }
 
 // ── USERDATA (notas/highlights) — STUB web (F1.16) ───────────────────────────

@@ -1787,3 +1787,32 @@ A F1.14 dá **paridade web de BUSCA** (FTS5) sobre o **subset `reading-sample.sq
 - **Offline-first:** `.mjs`+`.wasm` (FTS5) + subset empacotados como assets locais (`expo export --platform web` os inclui; o `.wasm` FTS5 confirmado no bundle); rede só em dev/build (docker/emscripten), zero em runtime; sem SharedArrayBuffer/COOP-COEP.
 - **Sem regressão:** leitura web (`reading.web.test.mjs` verde com o wasm novo) e caminho NATIVO de busca (`core/src/lib.rs`/`app/web/reading.ts`/`app/web/search-selftest.ts` intactos; the-light em `8f66004`); `core/` não modificado.
 - **Reprodutibilidade:** `scripts/build-wa-sqlite-fts5.sh` pina repo+commit+imagem emsdk+flags; o artefato é versionado p/ build determinístico (o ambiente de build — docker/emsdk — não é exigido no build do app nem em runtime).
+
+---
+
+## ADR-0021 — Xref WEB (A1): espelho TS do SELECT de `xref::for_verse` (votos DESC + `min_votes` + `LIMIT` + Single/Range) sobre o subset, REUSANDO `openReadingDbWeb`, destubando `crossRefs`; atribuição CC-BY (ADR-0016) renderizada no web
+
+- **Data:** 2026-06-30 · **Status:** aceito · **Tarefa:** F1.15 · **Depende:** ADR-0018 (Opção A/A1), ADR-0019 (store WEB de leitura — REUSA `openReadingDbWeb`), ADR-0020 (wa-sqlite vendored — MESMO wasm, sem recarregar o subset), ADR-0016 (atribuição CC-BY OpenBible.info obrigatória), ADR-0011/0012 (wa-sqlite+OPFS, build SYNC sem SharedArrayBuffer, MemoryVFS), ADR-0014 (subset bundled), ADR-0010/0005 (gating por alvo / anti-alucinação)
+
+### Contexto
+A F1.15 dá **paridade web de REFERÊNCIAS CRUZADAS (xref)** sobre o **subset `reading-sample.sqlite` (~4,4 MB)** — o MESMO que o nativo empacota (ADR-0014; 22.413 xrefs). `app/web/reading.web.ts::crossRefs` era **stub** (`throw WEB_XREF_MSG`); as telas da F1.9/F1.11 (`app/app/read/[book]/[chapter].tsx` + `ReaderXrefPanel`/`ReaderVersePanel`) são compartilhadas com o nativo (`reading.ts` → Turbo Module → `cross_refs` → `the_light_core::xref::for_verse`). Era preciso espelhar em TS o SELECT que a fronteira nativa (F1.8) delega ao `xref::for_verse`, **sem** reimplementar domínio (ordenação/filtro) e **sem** tocar o `the-light`/core.
+
+### Decisão
+**Destubar `crossRefs` espelhando, como pura infraestrutura, o SELECT de `xref::for_verse`** (`the-light-core/src/xref.rs`, rev pinado `8f66004`), REUSANDO o store das F1.13/F1.14 (`openReadingDbWeb` — MESMO wasm, sem recarregar o subset nem criar novo backend OPFS).
+- **`app/web/sqlite-xref.web.ts`** (par de `sqlite-search.web.ts`, VFS-agnóstico): `XREF_SELECT` espelhando o SELECT do core (`SELECT to_book, to_chapter, to_verse_start, to_verse_end, votes FROM cross_references WHERE from_book = ? AND from_chapter = ? AND from_verse = ? AND votes >= ? ORDER BY votes DESC, to_book, to_chapter, to_verse_start LIMIT ?` — os tiebreakers `to_book, to_chapter, to_verse_start` fazem PARTE do mirror, anti-drift); `DEFAULT_MIN_VOTES = 1n` e `DEFAULT_LIMIT = 20` (espelham `xref::DEFAULT_*`); `queryCrossRefs` (bind na ordem do core: book/chapter/verse como int; `min_votes`/`limit` como `bind_int64`, com `limit` clampado `Math.max(1, …)` = `limit.clamp(1, i64::MAX)`; `votes` lido via `column_int64` → bigint); `composeCrossRef` (Record `CrossRef` com `reference` Single se `start >= end`, senão Range `{start,end}`, e `votes` bigint — espelha a regra de `xref.rs`); `crossRefsOnHandle` (aplica defaults `?? 1n`/`?? 20`, roda a query, mapeia). A xref é **INDEPENDENTE de tradução** → **SEM** `translation`/`has_translation` (≠ `getChapter`/`search`); versículo sem xref → `[]` (sem throw).
+- **`app/web/reading.web.ts::crossRefs`** destubado: abre o store via `openReadingDbWeb()` e delega a `crossRefsOnHandle`, `finally { close() }`. **Nenhuma** ordenação/filtro/semântica em TS — a ordem por votos (com tiebreakers), o corte `votes >= ?` e o clamp do `LIMIT` vivem no SQLite.
+- **Atribuição CC-BY (ADR-0016):** a string EXATA `Cross references courtesy of OpenBible.info (CC-BY)` (`XREF_ATTRIBUTION` em `ReaderXrefPanel.tsx`, reusada por `ReaderVersePanel.tsx`) renderiza no web sempre que xrefs aparecem — confirmada NO bundle `expo export --platform web` (componente compartilhado, sem reimplementação).
+- **Prova determinística HEADLESS node** (`app/web/__tests__/xref.web.test.mjs` + `xref-headless-entry.ts`, molde F1.14): MemoryVFS sobre os bytes do subset + funções de produção + o wasm vendored → asserta, do RETORNO REAL: `crossRefs(43,3,16)` = **9 xrefs**; **1º por votos DESC = João 3:15** (Single, **439** votos bigint); ≥1 Range (João 11:25-26, 400 votos); versículo sem xref e `minVotes` acima do máximo → `[]` sem throw; `minVotes=400` → exatamente 2; `limit=1`→1 / `limit=3`→3. **Paridade** com o `TLA_XREF` nativo (F1.9: `first_ref="John 3:15" first_votes=439`).
+
+### Alternativas rejeitadas
+- **Ordenar/filtrar a xref em TS (`.sort`/`.filter` por votos):** drift do `ORDER BY votes DESC, …` e do `votes >= min_votes` do core — **proibido**. A ordem/corte/clamp vêm do SQLite.
+- **Recarregar o subset / novo backend OPFS p/ xref:** desnecessário — o MESMO `openReadingDbWeb` (um único wasm/store p/ leitura+busca+xref, ADR-0019/0020) atende.
+- **Checar `has_translation` (como em `getChapter`/`search`):** a tabela `cross_references` é chaveada por `from_*` e independe de tradução — adicionar o filtro divergiria do core.
+
+### Consequências
+- **Paridade comprovada:** João 3:15 é o 1º por votos (439), IGUAL ao nativo (`TLA_XREF`); Single vs Range provados (João 11:25-26); defaults/min_votes/limit travados pela prova.
+- **Anti-drift/anti-stub:** `XREF_SELECT` cita a fonte do core; sem `.sort`/`.filter` de domínio em TS; `crossRefs` deixou de ser stub (sem `WEB_XREF_MSG`).
+- **Anti-alucinação preservada:** xref é só referência+votos do store local (NENHUM texto bíblico); nada hardcoded no produto (constantes só nas asserções do teste); zero rede em runtime.
+- **Atribuição CC-BY (ADR-0016) visível no web:** string EXATA no componente compartilhado, confirmada no bundle web.
+- **Offline-first:** subset + wasm vendored empacotados como assets locais; sem SharedArrayBuffer/COOP-COEP. **Tipo `votes` i64 → bigint** (binding fiel via `column_int64`/`bind_int64`).
+- **Sem regressão:** leitura/busca web (`reading.web.test.mjs`/`search.web.test.mjs` verdes) e caminho NATIVO (`core/src/lib.rs`/`app/web/reading.ts`/selftests nativos intactos; the-light em `8f66004`, working tree limpo); `core/` não modificado.
