@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-30 01:45 UTC · Estado do loop: **▶️ RETOMADO — F0.6a concluída; próxima: F0.6b**
-Heartbeat: ver `HEARTBEAT` · HALT: **ausente** (resolvido — core mesclado na `main` do `the-light` + re-pin `8f66004`) · **F0.6a OK** (matriz por alvo: web puro / nativo embedded; 5 testes) · Próxima elegível: **F0.6b** (caminho web do ubrn; achado uniffi-wasm)
+Última atualização: 2026-06-30 02:10 UTC · Estado do loop: **▶️ RODANDO — F0.6b semeada na queue (ready)**
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** (resolvido — core mesclado na `main` do `the-light` + re-pin `8f66004`) · **F0.6a OK** (matriz por alvo: web puro / nativo embedded; 5 testes) · Elegível agora: **F0.6b** (`loop/queue/F0.6b-bindings-web-wasm.task.md` — caminho web do ubrn `ubrn web build`; achado uniffi-wasm `+Send`)
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -19,7 +19,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** (resolvido — core mesclado na 
 | F0.5 | App Expo mínimo (expo-router) + tela | ✅ aceito | F0.1 | passed (3262f56) |
 | F0.6 | Ligar core no **web (WASM)** | 🔴 blocked → ♻️ re-escopada | F0.4, F0.5 | blocked (SQLite-no-WASM); ADR-0005 |
 | F0.6a | Consumir core c/ features por alvo (re-pin `8f66004`) | ✅ aceito | F0.4, F0.5, core | matriz por alvo OK; SQLite-no-WASM resolvido |
-| F0.6b | Bindings web (ubrn) + glue + tela + prova headless | 🟡 próxima | F0.6a | achado: uniffi_core não compila cru p/ wasm (Send) |
+| F0.6b | Bindings web (ubrn) + glue + tela + prova headless | 🟡 ready | F0.6a | achado: uniffi_core não compila cru p/ wasm (Send) → usar caminho web do ubrn |
 | F0.7 | Ligar core no **iOS**: chamar parse_reference | ⬜ | F0.4, F0.5 | — |
 | F0.8 | Ligar core no **Android**: chamar parse_reference | ⬜ | F0.4, F0.5 | — |
 | F0.9 | Store nativo (`rusqlite`): ler 1 passagem do sample.sqlite | ⬜ | F0.6/7/8 | — |
@@ -52,3 +52,4 @@ fechar.
 | 2026-06-29 | Planner semeou **F0.6** na `queue/` (status ready, gate:false): ligar o core no **web/WASM** — `Jo 3.16` na tela web → referência resolvida pelo Rust (livro 43, cap. 3, v. 16) via wasm+bindings web, com **prova headless** (teste node). Portão decisivo = compilar a fronteira p/ `wasm32-unknown-unknown` **sem `rusqlite`**. **Risco alto de HALT (blocked):** o `the-light-core` (rev 0888ac0) **não tem `[features]` nem deps `optional`** — `rusqlite{bundled}`+`reqwest{blocking,default-tls}` são incondicionais; excluí-los exigiria **modificar o core (PR+ADR=HALT)**. Task instrui `blocked` com erro EXATO = gate estratégico de Fase 0 (Apêndice A #1 / VISION §4 fricção #1). |
 | 2026-06-29 | Ciclo 13: executor tentou F0.6, reviewer confirmou de forma independente → **`blocked`**. `cargo build --target wasm32-unknown-unknown` falha (exit 101) no `sqlite-wasm-rs` (SQLite-C). Core sem `[features]` → impossível excluir `rusqlite` sem PR ao `the-light`. **⛔ `loop/HALT` escrito — loop PARADO p/ decisão estratégica (store-web: wa-sqlite/OPFS, PR ao core, ou web leitura+IA pré-indexada → ADR-0005).** Core/fronteira intactos. |
 | 2026-06-30 | **Resolução de direção (humano aprovou):** ADR-0005 — feature-gating `store`/`net` no `the-light-core` (PR não-quebrante, spec em `loop/proposals/the-light-PR-feature-gating.md`) + matriz de features por alvo no app. Verificado que `reference`/`model` são puros/desacoplados. F0.6 arquivada (blocked) e **re-escopada em F0.6a/F0.6b** (backlog). HALT **ajustado**: retomar exige PR mesclado + re-pin do rev. Core ainda intocado (PR é ação humana). |
+| 2026-06-30 | F0.6a aceita (re-pin `8f66004`, matriz por alvo: web puro / nativo embedded). Planner semeou **F0.6b** na `queue/` (status ready, gate:false, depende de F0.6a): caminho **web** do `ubrn 0.31.0-3` (subcomando `ubrn web build`, wasm-pack/wasm-bindgen) → bindings wasm + glue em `app/web/` + ligar `app/app/index.tsx` (a guarda "sem core" da F0.5 não vale mais) + **prova headless** (node: `parseReference` via wasm = book 43/cap 3/v Single 16 p/ "Jo 3.16" e "John 3:16") + `expo export --platform web` sai 0. **Achado embutido (ADR-0005):** build cru falha em `uniffi_core 0.31.2` (`UniffiCompatibleFuture: …+Send`) → DEVE usar caminho web do ubrn, não build cru. Risco de `blocked` por imaturidade do caminho web do ubrn / uniffi-wasm: instrui `blocked` com saída EXATA (decisão estratégica; ADR-0006 se decidido). |
