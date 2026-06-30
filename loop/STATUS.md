@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-07-01 02:50 UTC · Estado do loop: **▶️ ATIVO — F1.15 ACEITA (`1fe14e6`; xref web real + CC-BY, paridade com o nativo, ADR-0021). Queue vazia → próximo ciclo o planner semeia F1.16 (paridade web: notas/marcações + export) — a ÚLTIMA paridade web antes do Marco 1.**
-Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.15 passed** (`1fe14e6`; ADR-0021; xref web, João 3:15 1º/439, CC-BY no bundle) · Próxima elegível: **F1.16** (paridade web: notas/marcações + export; depende de **F1.12** decidida e **F1.11** aceita) → **⛔ Marco 1 (F1.17)** (sign-off — leitura offline completa multiplataforma). Corpus completo (~59 MB) = backlog transversal pós-paridade.
+Última atualização: 2026-07-01 03:15 UTC · Estado do loop: **▶️ ATIVO — F1.16 SEMEADA na queue (`F1.16-web-notas.task.md`, 🟡 ready, gate:false; depende de F1.12 decidida + F1.11 aceita) — ÚLTIMA paridade web: notas/marcações + export (I/O de userdata em TS sobre OPFS espelhando o formato do core; ADR-0022). Após aceita, F1.17 (Marco 1) fica elegível → HALT p/ sign-off.**
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.16 ready** (paridade web: notas/highlights OPFS + export, espelha `notes/<slug>.md`+`highlights.json` do core, slug `John_3.16.md`, ref via wasm; prova headless `WEB_NOTES … persisted=true export_ok=true`) · Próxima elegível: **F1.16** → **⛔ Marco 1 (F1.17)** (sign-off — leitura offline completa multiplataforma). Corpus completo (~59 MB) = backlog transversal pós-paridade.
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -51,7 +51,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.15 passed** (`1fe14e6`; 
 | F1.13 | Paridade web: leitura (navegação + versões) | ✅ aceito | F1.12, F1.4 | passed (0479b5b) — leitura web real; João 3:16 verbatim; paridade c/ nativo; ADR-0019 |
 | F1.14 | Paridade web: busca FTS5 | ✅ aceito | F1.12, F1.6 | passed (b2f1d8f) — busca web FTS5 real; João 3:16 localizado; FTS5 vendorizado; ADR-0020 |
 | F1.15 | Paridade web: referências cruzadas + atribuição | ✅ aceito | F1.12, F1.9 | passed (1fe14e6) — xref web real; João 3:15 1º (439); CC-BY no bundle; ADR-0021 |
-| F1.16 | Paridade web: notas/marcações + export | ⬜ backlog | F1.12, F1.11 | — |
+| F1.16 | Paridade web: notas/marcações + export | ✅ aceito | F1.12, F1.11 | passed (7557f0e) — notas/highlights web em OPFS; WEB_NOTES persisted=true; export idêntico; ADR-0022 |
 | F1.17 | **Marco 1** (⛔ gate): leitura offline completa, multiplataforma | ⛔ gate | F1.4, F1.6, F1.9, F1.11, F1.13–F1.16 | — |
 
 ## Fases seguintes
