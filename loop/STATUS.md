@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-30 22:35 UTC · Estado do loop: **▶️ ATIVO — F1.10 ACEITA (`b6381d0`); queue vazia → próximo ciclo o planner semeia F1.11 (UI de notas/highlights nativa + export + persistência) — ÚLTIMA tarefa antes do GATE estratégico F1.12**
-Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.10 passed** (`b6381d0`; 7 funções de notas/highlights delegam a `userdata::{NoteStore,HighlightStore}`, 34 testes, web puro) · Próxima elegível: **F1.11** (UI notas + export; depende de **F1.10** e **F1.3**, ambas aceitas) → **⛔ gate F1.12** (store web do corpus completo — HALT p/ decisão humana) → … → Marco 1 (F1.17)
+Última atualização: 2026-06-30 23:05 UTC · Estado do loop: **▶️ ATIVO — F1.11 SEMEADA (`queue/F1.11-ui-notas-export.task.md`, ready, gate:false); próximo ciclo o executor a implementa — ÚLTIMA tarefa nativa antes do GATE estratégico F1.12**
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.10 passed** (`b6381d0`; 7 funções de notas/highlights delegam a `userdata::{NoteStore,HighlightStore}`, 34 testes, web puro) · Elegível AGORA: **F1.11** (UI notas/highlights nativa + export + persistência; depende de **F1.10** e **F1.3**, ambas aceitas) → após aceita, o Driver semeia **⛔ gate F1.12** (store web do corpus completo — HALT p/ decisão humana) → … → Marco 1 (F1.17)
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -46,7 +46,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.10 passed** (`b6381d0`; 
 | F1.8 | Xref na fronteira (core, nativo): cross_refs → xref::for_verse | ✅ aceito | F1.7, F1.2 | passed (36b2cb0) — Rm 5:8 em [0]; 26 testes; web puro |
 | F1.9 | UI de xref nativa + atribuição CC-BY visível | ✅ aceito | F1.8, F1.3 | passed (2ff73c5) — TLA_XREF João 3:16 count=9; CC-BY visível |
 | F1.10 | Notas/marcações na fronteira (core userdata, file-based) | ✅ aceito | F1.2 | passed (b6381d0) — 7 funções → userdata; 34 testes; web puro |
-| F1.11 | UI de notas/highlights nativa + export + persistência | ⬜ backlog | F1.10, F1.3 | — |
+| F1.11 | UI de notas/highlights nativa + export + persistência | ✅ aceito | F1.10, F1.3 | passed (deb3b0c) — TLA_NOTES João 3:16 persisted=true export_ok=true |
 | F1.12 | **GATE estratégico** (⛔): store web do corpus completo (FTS5/OPFS/Opção A vs B) | ⛔ gate | F1.2, F1.5, F1.8, F1.10 | — |
 | F1.13 | Paridade web: leitura (navegação + versões) | ⬜ backlog | F1.12, F1.4 | — |
 | F1.14 | Paridade web: busca FTS5 | ⬜ backlog | F1.12, F1.6 | — |
