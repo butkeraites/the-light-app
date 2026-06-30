@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-30 13:50 UTC · Estado do loop: **⛔ GATE — Marco 0 (F0.11): aguardando SIGN-OFF humano**
-Heartbeat: ver `HEARTBEAT` · HALT: **PRESENTE** (`loop/HALT`) · **Fase 0 técnica COMPLETA e verificada** (web+iOS+Android + store nativo+web) · F0.11 é `gate:true` → loop parado p/ sign-off do Marco 0 · Retomar: humano aprova e remove `loop/HALT` → planner decompõe a Fase 1
+Última atualização: 2026-06-30 14:00 UTC · Estado do loop: **▶️ RETOMADO — 🎯 MARCO 0 APROVADO; Fase 1 liberada**
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** (Marco 0 aprovado pelo humano, `aed825d`) · **Fase 0 COMPLETA** (F0.0–F0.11) · Próximo: **planner decompõe a Fase 1** (leitura offline: navegação, versões PT/EN, busca FTS5, xrefs, notas)
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -25,7 +25,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **PRESENTE** (`loop/HALT`) · **Fase 0 técn
 | F0.8 | Ligar core no **Android**: chamar parse_reference | ✅ aceito | F0.4, F0.5 | passed (36af016) — Turbo Module nativo, run real no emulador |
 | F0.9 | Store nativo (`rusqlite`): ler 1 passagem do sample.sqlite | ✅ aceito | F0.6b, F0.7, F0.8 | passed (1d16897) — get_passage lê João 3:16 do store |
 | F0.10 | Store web (`wa-sqlite`+OPFS): ler 1 passagem | ✅ aceito | F0.9 | passed (d6e968d) — getPassage web lê João 3:16 do store |
-| F0.11 | **Marco 0** (⛔ gate): revisão dos 3 alvos + store; ADR + PROGRESS | ⛔ HALT (sign-off) | F0.6b/7/8/9/10 | gate — aguardando aprovação humana |
+| F0.11 | **Marco 0** (⛔ gate): revisão dos 3 alvos + store; ADR + PROGRESS | ✅ **APROVADO** | F0.6b/7/8/9/10 | sign-off humano (aed825d) — **Fase 1 liberada** |
 
 ## Fases seguintes
 
