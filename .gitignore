@@ -63,6 +63,20 @@ Cargo.lock.orig
 **/.gradle/
 local.properties
 
+# ── Banco bíblico COMPLETO (F1.1) — artefato de BUILD gerado por script ───────
+# `assets/data/bible.sqlite` (KJV + Almeida 1911, ~27 MB) é GERADO por
+# `scripts/gen-bible-db.sh` rodando o `xtask import` canônico do the-light (rev
+# pinado 8f66004). É um artefato de build reprodutível (como bindings/, rust_modules/),
+# NÃO versionado — ver ADR-0013. (O `sample.sqlite` ~128 KB da F0.9 PERMANECE
+# VERSIONADO — NÃO ignorar; por isso o alvo abaixo é específico de bible.sqlite.)
+/assets/data/bible.sqlite
+/assets/data/bible.sqlite-wal
+/assets/data/bible.sqlite-shm
+/assets/data/bible.sqlite-journal
+# Cache de dev/build: datasets brutos JSON baixados (seed-dir) + CARGO_TARGET_DIR
+# do xtask (fora do checkout do the-light). SEMPRE ignorado.
+/.cache/
+
 # ── Segredos (BYOK) — chaves de IA jamais no git nem em logs ──────────────────
 secrets.toml
 .env

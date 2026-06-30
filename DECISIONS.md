@@ -1089,3 +1089,102 @@ vivem **só no `the-light-app`** (core/fronteira intactos).
   --platform web` **0** com `wa-sqlite` + `sample.sqlite` no bundle.
 - **Quando o web precisar de search/xref ou de OPFS "ao vivo"** (Worker), reavaliar
   (Opção B da ADR-0011 / VFS OPFS em Worker) — novo ADR então.
+
+---
+
+## ADR-0013 — Banco bíblico COMPLETO embarcado: gerado pelo `xtask import` canônico (rev pinado `8f66004`) + armazenamento como artefato de build IGNORADO
+
+- **Data:** 2026-06-30 · **Status:** aceito · **Tarefa:** F1.1 · **Depende:** ADR-0002, ADR-0010
+
+### Contexto
+A F1.1 sobe do `sample.sqlite` (subset de 1 versículo, ~128 KB, versionado —
+ADR-0010) para o **corpus completo embarcado**: duas versões de **domínio
+público** — **KJV** (EN, 31.102 versículos) e **Almeida 1911** (PT, 31.101) — com
+FTS5. A lógica de download/parse/insert e o registro das fontes livres (`SPECS`)
+vivem **só** no member `xtask` do `the-light` (não no `the-light-core` que
+consumimos como lib). Por isso o plano manda **rodar o importador canônico**, não
+reimplementá-lo (uma fonte da verdade; anti-alucinação). Duas decisões eram
+necessárias: **(1) como invocar o `xtask` sem tocar o `the-light`** (ADR-0002:
+repo leitura-apenas, consumo via git dep pinada) e **(2) como armazenar** o asset
+gerado (binário grande, ~27 MB) sem versionar um blob pesado.
+
+### Decisão
+
+1. **Invocação do `xtask` sem tocar o `the-light` — checkout PINADO do cargo +
+   `CARGO_TARGET_DIR` fora.** O `scripts/gen-bible-db.sh` roda o member `xtask` do
+   **checkout que o cargo já clonou** do GitHub para resolver a git dep pinada:
+   `~/.cargo/git/checkouts/the-light-9eb8809a6d68281a/8f66004/xtask/Cargo.toml`
+   (HEAD = `8f6600460c3680a537d2f5df81b6980ed7e630d5` — **mesmo rev** que
+   `core/Cargo.toml` consome). Esse checkout é um **clone do `https://github.com/
+   butkeraites/the-light`** gerenciado pelo cargo, **independente** do repo local
+   protegido `/Users/butkeraites/Documents/the-light` (que **não** é tocado e
+   permanece em `8f66004`, working tree limpo — verificado antes/depois).
+   - `cargo run --quiet --locked --manifest-path <checkout>/xtask/Cargo.toml --
+     import --version kjv,alm1911 --db assets/data/bible.sqlite --seed-dir .cache/seed`.
+   - **`CARGO_TARGET_DIR=.cache/xtask-target`** (fora do checkout) → **nenhum**
+     artefato de build é escrito no source do `the-light`; **`--locked`** → o
+     `Cargo.lock` do checkout **não** é reescrito. Verificado: `git status` do
+     checkout inalterado (só o `.cargo-ok` pré-existente).
+   - **Subcomando/flags reais confirmados na fonte** (`xtask/src/{main,import}.rs`
+     do rev `8f66004`): subcomando `import`; flags `--version <a,b>` (obrigatória),
+     `--db <path>`, `--seed-dir <dir>`, `--force`, `--offline`. Versões livres no
+     `SPECS`: `kjv` (`expected_verses` 31.102) e `alm1911` (31.101); o importador
+     **falha** se < 30.000 e **avisa** se ≠ exato (guarda de drift). O script
+     repassa só `--offline`/`--force` (validados); rede em **build** é permitida.
+
+2. **Fontes (domínio público, URLs FIXADAS no `SPECS` do `xtask` — não
+   parametrizáveis pelo app):**
+   - `kjv` — *King James Version*, licença `public-domain`, formato scrollmapper:
+     `https://raw.githubusercontent.com/scrollmapper/bible_databases/master/formats/json/KJV.json`
+     (~8,4 MB; baixado: 8.395.929 bytes), **31.102** versículos.
+   - `alm1911` — *Almeida 1911*, licença `public-domain`, formato
+     thiagobodruk/damarals (segue redirects):
+     `https://github.com/damarals/biblias/releases/download/v1.0.0/ALM1911.json`
+     (~4 MB; baixado: 4.037.522 bytes), **31.101** versículos.
+   - **Anti-alucinação / licenciamento:** o texto vem **sempre** do importador
+     sobre essas fontes; **nenhum** texto bíblico hardcoded no app; **nenhuma**
+     versão protegida (o `xtask` rejeita ids fora do `SPECS`).
+
+3. **Armazenamento: gerar-por-script + IGNORAR `assets/data/bible.sqlite`.** O
+   banco completo (2 versões + FTS5) mede **~27 MB** (medido: 28.012.544 bytes na
+   geração fresca; ~31 MB após reimport idempotente, por páginas livres do SQLite
+   no delete+reinsert — sem `VACUUM`, que não alteraria as contagens). Versionar um
+   binário de dezenas de MB é indesejável (incha história/clone). Decisão: o
+   `bible.sqlite` é **artefato de build** (como `bindings/`, `rust_modules/`),
+   **gerado pelo `scripts/gen-bible-db.sh`** (a fonte reprodutível) e **IGNORADO**
+   no git. O **seed-dir** (`.cache/seed/` — JSON brutos) e o `CARGO_TARGET_DIR`
+   (`.cache/xtask-target/`) são **sempre ignorados**. O `.gitignore` ganha alvos
+   **específicos** de `bible.sqlite` (+ `-wal`/`-shm`/`-journal`) e `/.cache/` —
+   **sem** afetar o `sample.sqlite` ~128 KB, que **permanece VERSIONADO** (ADR-0010).
+   O **bundling** do `bible.sqlite` no app nativo/web é fase posterior (F1.13+).
+
+### Alternativas rejeitadas
+- **Versionar `bible.sqlite` no git:** ❌ blob de ~27 MB infla o repo a cada
+  regeneração; o script + as URLs pinadas já dão reprodutibilidade determinística.
+- **Git LFS:** ❌ exige `git lfs` configurado por dev/CI e um remoto LFS; sem ganho
+  sobre gerar-por-script enquanto o asset é 100% reconstruível a partir de fontes
+  públicas pinadas. (Reavaliar se um dia o asset deixar de ser regenerável.)
+- **Reimplementar o importador no app** (parse das fontes): ❌ viola "uma fonte da
+  verdade" e o anti-alucinação — o `xtask` é o único que conhece os formatos.
+- **Clone efêmero do `the-light` no rev `8f66004`** (alternativa do plano): viável,
+  porém re-baixa o source; o checkout do cargo já é o **mesmo rev** e é mais barato.
+  Mantida como fallback documentado no script se o checkout do cargo sumir.
+
+### Consequências
+- `./scripts/gen-bible-db.sh` (re)gera o `bible.sqlite` de forma **reprodutível** e
+  **idempotente** (o `import_translation` do `xtask` apaga+reinsere por versão):
+  2ª execução mantém `kjv`=31.102, `alm1911`=31.101, 66 livros/versão, `verses_fts`
+  estável (62.203 linhas). FTS5 **acento-insensível** validada (`MATCH 'ceus'` casa
+  384 versos com "céus" no `alm1911`, ex.: Gn 1:1).
+- **Offline-first preservado:** a **única** rede é em **dev/build** (download dos
+  datasets de domínio público para o seed-dir; deps de cargo). O app em **runtime
+  não faz rede**. Nenhum segredo em git/log.
+- **`the-light` intocado** (ADR-0002): rev `8f66004`, working tree limpo; o `xtask`
+  roda do checkout do cargo com target/lock fora do source.
+- **Versionado nesta tarefa:** `scripts/gen-bible-db.sh`, `.gitignore` (alvos de
+  `bible.sqlite` + `/.cache/`), `DECISIONS.md` (este ADR), `PROGRESS.md`.
+  **Gerado/IGNORADO:** `assets/data/bible.sqlite`, `.cache/`.
+- **Escopo:** F1.1 entrega **pipeline + banco + validação de contagem**. A leitura
+  via fronteira (`list_books`/`get_chapter`/…) é **F1.2**; o bundling do banco no
+  app é F1.13+. Não antecipados aqui.
+
