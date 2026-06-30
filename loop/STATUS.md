@@ -40,7 +40,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.4 passed** (`24cd3b8`; l
 | F1.2 | Expor leitura no core (fronteira nativo): translations/books/chapter/passage | ✅ aceito | F1.1 | passed (e06b0c6) — 4 funções delegam ao core; web puro |
 | F1.3 | UI de leitura nativa: navegação livro→cap→texto + seletor de versão | ✅ aceito | F1.2 | passed (9cf4a9e) — leitura real no device (iOS); bundling ADR-0014 |
 | F1.4 | UI de leitura nativa: múltiplas versões lado a lado + tema | ✅ aceito | F1.3 | passed (24cd3b8) — lado a lado KJV|Almeida + tema (iOS) |
-| F1.5 | Busca FTS5 na fronteira (core, nativo) | 🟡 ready | F1.2 | — |
+| F1.5 | Busca FTS5 na fronteira (core, nativo) | ✅ aceito | F1.2 | passed (f006a31) — search delega ao core; 20/20 testes; web puro |
 | F1.6 | UI de busca nativa (resultados com referência clicável) | ⬜ backlog | F1.5, F1.3 | — |
 | F1.7 | Referências cruzadas: dados (xtask import-xref, OpenBible CC-BY ~344.799) | ⬜ backlog | F1.1 | — |
 | F1.8 | Xref na fronteira (core, nativo): for_verse/passage_labels | ⬜ backlog | F1.7, F1.2 | — |
