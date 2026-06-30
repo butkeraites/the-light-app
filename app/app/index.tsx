@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { parseReference, type Reference } from '../web/reference';
+import { runReferenceSelfTest } from '../web/selftest';
 
 // F0.6b — tela ligada à fronteira Rust no WEB (wasm). Ao submeter, a referência
 // digitada é resolvida PELO RUST (the-light-core via UniFFI→wasm), não por eco
@@ -30,6 +31,15 @@ function formatReference(ref: Reference): string {
 export default function HomeScreen() {
   const [query, setQuery] = useState('');
   const [result, setResult] = useState(PLACEHOLDER);
+
+  // F0.7 — prova HEADLESS: sob EXPO_PUBLIC_TLA_SELFTEST=1, resolve "Jo 3.16" e
+  // "John 3:16" pelo Turbo Module nativo e loga marcadores estáveis (capturados
+  // pelo simulador). Não muda a UI normal (só dispara sob o env de teste).
+  useEffect(() => {
+    if (process.env.EXPO_PUBLIC_TLA_SELFTEST === '1') {
+      void runReferenceSelfTest();
+    }
+  }, []);
 
   async function handleSubmit() {
     const input = query.trim();

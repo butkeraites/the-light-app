@@ -32,6 +32,20 @@ Cargo.lock.orig
 # diretamente em app/web/, NÃO sob generated/.
 /app/web/generated/
 
+# ── Caminho iOS NATIVO (F0.7) — artefatos GERADOS ────────────────────────────
+# A RN turbo-module library iOS é GERADA na raiz pelo `ubrn build ios`
+# (scripts/gen-bindings-ios.sh): glue Obj-C++/C++/TS, xcframework e podspec. A
+# raiz é a "library package" que o app autolinka — tudo aqui é gerado/ignorado.
+/ios/
+/cpp/
+/src/
+/TheLightAppCoreFramework.xcframework/
+/TheLightAppCore.podspec
+# Cópia da glue JS p/ dentro de app/ (resolução local do Metro/tsc; ver gen script).
+/app/web/native-generated/
+# Projeto iOS do prebuild do Expo + CocoaPods (gerados por `expo prebuild`/`pod install`).
+/app/ios/
+
 # ── Segredos (BYOK) — chaves de IA jamais no git nem em logs ──────────────────
 secrets.toml
 .env

@@ -574,3 +574,125 @@ e dois fatos do ecossistema precisaram de decisão.
   passará a ser ditada só pelo runtime web (`^0.2.97`); o script continua correto
   (lê do lock). A instanciação manual da prova depende do alvo `web` aceitar bytes
   no `init` — contrato estável do `wasm-bindgen`.
+
+---
+
+## ADR-0008 — Caminho iOS NATIVO do `ubrn`: `build ios`, config `ios:`/`turboModule:`, integração Expo (prebuild + autolink + New Arch codegen) e prova headless no simulador
+
+- **Data:** 2026-06-30 · **Status:** aceito · **Tarefa:** F0.7 · **Depende:** ADR-0004, ADR-0005, ADR-0006, ADR-0007
+
+### Contexto
+A F0.7 fecha o caminho **iOS NATIVO** end-to-end da ponte Rust→Expo: digitar
+`"Jo 3.16"` (PT) / `"John 3:16"` (EN) num app Expo no **simulador iOS** resolve a
+referência **pelo Rust** (`the-light-core::reference` via UniFFI → **Turbo Module
+JSI** gerado pelo `ubrn 0.31.0-3`), não por wasm nem parsing em TS. O subcomando é
+`ubrn build ios` (≠ `generate jsi bindings` host-only da F0.4; ≠ `build web` da
+F0.6b). O guia oficial do `ubrn` assume um layout `create-react-native-library`;
+**nosso app é Expo** (SDK 56, RN 0.85.3, New Arch), então a integração precisou de
+decisões próprias, todas **no `the-light-app`** (core e fronteira intactos).
+
+### Decisão
+
+1. **Subcomando + config.** `ubrn build ios --sim-only --and-generate --config
+   ubrn.config.yaml` (encapsulado em `scripts/gen-bindings-ios.sh`): `cargo build`
+   p/ `aarch64-apple-ios-sim` → `xcodebuild -create-xcframework` →
+   `--and-generate` gera os bindings TS/C++ (em `bindings/`, reusando o bloco
+   `bindings:` — ADR-0004) **+** a glue do Turbo Module. O `ubrn.config.yaml`
+   ganhou dois blocos novos (`rust:`/`bindings:`/`web:` **intactos**):
+   - **`ios:`** (schema `IOsConfig`): `directory: ios`, `frameworkName:
+     TheLightAppCoreFramework`, `codegenOutputDir: ios/generated`.
+   - **`turboModule:`** (schema `TurboModulesConfig`): `cpp: cpp`, `ts: src`,
+     `entrypoint: src/index.tsx`, `name: RNTheLightAppCoreSpec`.
+
+2. **A RAIZ do repo é a "RN turbo-module library".** O `project_root` do `ubrn` é
+   a pasta com o `package.json` mais próximo do cwd; como `rust.directory: core` é
+   relativo a ele (e os scripts web/host rodam da raiz), o `project_root` **é a
+   raiz**. As saídas da glue (`ios/`, `cpp/`, `src/`, `bindings/`) e — em locais
+   **não-configuráveis** — a **podspec** (`TheLightAppCore.podspec`) e o
+   **xcframework** aterrissam na raiz. Logo, a **raiz** é o "pacote" da library.
+   O `package.json` da raiz ganhou `codegenConfig` (`name: RNTheLightAppCoreSpec`,
+   `type: modules`, `jsSrcsDir: src`) + `homepage`/`license`/`author` (lidos pela
+   podspec). Tudo gerado é **IGNORADO** (`.gitignore`: `/ios/`, `/cpp/`, `/src/`,
+   `/TheLightAppCore*.podspec`/`.xcframework`, `/app/ios/`, `/app/web/native-generated/`).
+
+3. **Autolinking no Expo via `app/react-native.config.js`.** A library **não** é um
+   node_module publicado; o override `dependencies['the-light-app'].root = '..'`
+   aponta o autolinking RN (consumido pelo `use_native_modules!` do Podfile do
+   `expo prebuild`) para a raiz. **Verificado:** o
+   `expo-modules-autolinking react-native-config` descobre a podspec
+   `TheLightAppCore.podspec` (lib) **e** a `uniffi-bindgen-react-native.podspec`
+   (runtime C++/JSI, adicionada como dependência normal do `app/`). O **RN New Arch
+   codegen** lê o `codegenConfig` da raiz e gera `RNTheLightAppCoreSpec.h`/`…SpecJSI.h`
+   (consumidos pela glue Obj-C++/C++ do `ubrn`) durante o `pod install`.
+
+4. **Glue JS copiada p/ dentro de `app/` (resolução local do Metro/tsc).** O barrel
+   gerado (`src/index.tsx`, que chama `installRustCrate()` no runtime JSI e
+   reexporta os bindings) + os bindings TS importam `@ubjs/core` (em
+   `app/node_modules`) e ficam **fora** de `app/`. Resolver cross-root pelo Metro é
+   frágil (watchFolders ancestral quebra o file-map). Por isso o
+   `gen-bindings-ios.sh` **copia** `src/` + `bindings/*.ts` para
+   `app/web/native-generated/` (espelhando a estrutura, p/ o import relativo interno
+   do barrel valer), e o glue nativo `app/web/reference.ts` importa
+   `./native-generated/src/index`. Assim Metro e `tsc` resolvem tudo dentro do
+   `projectRoot` (e `@ubjs/core` em `app/node_modules`), sem hacks de monorepo.
+   `reference.web.ts` (wasm, F0.6b) **não** foi tocado — o Metro escolhe por
+   extensão (`.web.ts` no web, `.ts` no nativo).
+
+5. **Prova HEADLESS: build Debug + Metro + `simctl log stream`.** O
+   `scripts/run-ios-selftest.sh` (determinístico): boota um **iPhone 17** (iOS
+   26.5), buida o app (Debug, `iphonesimulator`) via `xcodebuild`, sobe o **Metro**
+   em background com `EXPO_PUBLIC_TLA_SELFTEST=1`, instala+lança, captura o log
+   unificado (`simctl spawn booted log stream`) e **asserta os DOIS marcadores**
+   (sai 0 só se ambos baterem):
+   `TLA_SELFTEST PT book=43 chapter=3 verse=16` **e**
+   `TLA_SELFTEST EN book=43 chapter=3 verse=16`. O gancho de self-test
+   (`app/web/selftest.ts`, disparado por `useEffect` na `HomeScreen` **só** sob o
+   env) chama o **mesmo** `parseReference` da tela → Turbo Module → Rust (sem eco,
+   sem parser TS). Optou-se por Debug+Metro (em vez de XCTest) por ser o caminho
+   canônico "console.log → log do simulador" e provar a UI real do app.
+
+6. **Ferramentas de build instaladas (dev/build, não-runtime):** **CocoaPods
+   1.16.2** via Homebrew (Ruby próprio; o Ruby 2.6 do sistema não serve).
+
+### Defeito de ambiente corrigido (configurável, não é muro)
+O `xcodebuild` falhava ao **assinar** frameworks embarcados (`codesign`:
+`"resource fork, Finder information, or similar detritus not allowed"`). Causa: o
+repo está sob `~/Documents`, **gerenciado por file-provider (iCloud)** — todo
+arquivo ali recebe xattrs `com.apple.FinderInfo`/`com.apple.fileprovider.fpfs#P`,
+que o `codesign` rejeita. **Correção não-invasiva:** o `run-ios-selftest.sh` builda
+com `-derivedDataPath` **FORA** do file-provider
+(`~/Library/Developer/Xcode/DerivedData/thelight-f07-ios`), produzindo artefatos
+limpos. Não toca a fronteira, o core, nem o autolinking.
+
+### Resultado (verde)
+- `gen-bindings-ios.sh` sai **0** → xcframework
+  (`TheLightAppCoreFramework.xcframework`, staticlib `aarch64-apple-ios-sim` com a
+  UniFFI scaffolding; o core arrasta a feature `embedded` → rusqlite SQLite-C +
+  reqwest, compila p/ iOS-sim) + glue do Turbo Module + bindings.
+- `expo prebuild -p ios` + `pod install` (100 deps, 99 pods) integram a library e o
+  runtime; New Arch codegen gera o spec. `xcodebuild` (Debug) **compila e linka** a
+  turbo-module C++/Obj-C++ contra os headers New Arch.
+- App **roda no iPhone 17** e o `run-ios-selftest.sh` capturou, do log do
+  simulador, **ambos** os marcadores PT e EN com `book=43 chapter=3 verse=16` —
+  `parse_reference` pelo **Rust nativo** via Turbo Module (PT==EN), sem wasm/TS.
+- **Sem regressão web** (F0.6b): `reference.web.ts`, `web:` do `ubrn.config.yaml`,
+  `app/web/generated/` intactos. `tsc --noEmit` do `app/` verde. **Core e fronteira
+  intactos** (`../the-light` e a forma de `core/` não mudaram).
+
+### Consequências / riscos a observar
+- **Versionado:** blocos `ios:`/`turboModule:` no `ubrn.config.yaml`;
+  `scripts/gen-bindings-ios.sh`, `scripts/run-ios-selftest.sh`;
+  `app/react-native.config.js`; `app/web/reference.ts` (glue nativo),
+  `app/web/selftest.ts`; o gancho em `app/app/index.tsx`; `app/app.json`
+  (`ios.bundleIdentifier`); `package.json` (raiz: `codegenConfig` + metadados da
+  podspec); `app/package.json`(+lock: dep `uniffi-bindgen-react-native`); `.gitignore`.
+- **Gerado/IGNORADO:** `ios/`/`cpp/`/`src/`/podspec/xcframework (raiz), `app/ios/`
+  (prebuild), `Pods/`, `app/web/native-generated/`, `bindings/`.
+- **Offline-first preservado:** rede só em dev/build (CocoaPods/cargo/npm); o
+  runtime do self-test é **offline** (referência resolvida localmente no Rust).
+  Nenhum segredo em git/log.
+- **Risco:** o `-derivedDataPath` fora do file-provider é necessário enquanto o
+  repo viver sob `~/Documents` (iCloud). A glue JS é **copiada** (não symlinkada):
+  re-rodar `gen-bindings-ios.sh` após mudar a fronteira mantém `app/web/native-generated/`
+  em sincronia. A `--sim-only` cobre o simulador; device físico exigirá o alvo
+  `aarch64-apple-ios` (já no default de `targets`) + assinatura (fora do escopo F0.7).

@@ -14,7 +14,12 @@ const { getDefaultConfig } = require('expo/metro-config');
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
-// Trata .wasm como asset (e não como módulo de código-fonte).
+// Trata .wasm como asset (e não como módulo de código-fonte) — caminho web (F0.6b).
 config.resolver.assetExts.push('wasm');
 
+// Nota (F0.7/ADR-0008): a glue JS do Turbo Module nativo (barrel + bindings TS)
+// é GERADA na raiz pelo `ubrn build ios`, mas o `scripts/gen-bindings-ios.sh` a
+// COPIA para `app/web/native-generated/` (ignorada) — dentro do projectRoot.
+// Assim o Metro e o tsc resolvem tudo localmente (inclusive `@ubjs/core` em
+// app/node_modules), sem watchFolders/ancestral nem resolução cross-root.
 module.exports = config;

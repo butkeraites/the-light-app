@@ -3,12 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "description": "The Light — geração de bindings TypeScript da fronteira UniFFI (the-light-app-core) via uniffi-bindgen-react-native. Ver ADR-0004.",
+  "homepage": "https://github.com/butkeraites/the-light-app",
+  "license": "UNLICENSED",
+  "author": "The Light",
   "repository": {
     "type": "git",
     "url": "https://github.com/butkeraites/the-light-app"
   },
   "scripts": {
     "gen-bindings": "./scripts/gen-bindings.sh"
+  },
+  "comment-codegenConfig": "F0.7/ADR-0008: a RAIZ é a RN turbo-module library (the-light-app-core, podspec TheLightAppCore.podspec) que o app Expo autolinka via app/react-native.config.js (root: ..). O RN New Arch codegen lê este bloco p/ gerar o spec C++ (RNTheLightAppCoreSpec.h) a partir de src/NativeTheLightAppCore.ts (jsSrcsDir). Tudo em src/ é GERADO/IGNORADO.",
+  "codegenConfig": {
+    "name": "RNTheLightAppCoreSpec",
+    "type": "modules",
+    "jsSrcsDir": "src"
   },
   "devDependencies": {
     "uniffi-bindgen-react-native": "0.31.0-3"

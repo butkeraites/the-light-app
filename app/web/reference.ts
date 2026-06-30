@@ -1,16 +1,25 @@
-// app/web/reference.ts — F0.6b (ADR-0007)
+// app/web/reference.ts — F0.7 (ADR-0008)
 //
-// Stub NATIVO do glue de referência. O caminho wasm é WEB-only (este `.ts` é o
-// fallback do Metro quando NÃO é web; o `.web.ts` ao lado é o real). A ligação
-// nativa (iOS/Android via JSI/turbo-module) chega nas fases F0.7/F0.8 — até lá,
-// nativo não resolve referências e isto deixa explícito (sem eco, sem parsing
-// em TS: a fronteira nativa é a única fonte futura).
-import type { Reference } from './generated/the_light_app_core';
+// GLUE NATIVO (hand-written, VERSIONADO) entre o app Expo e o Turbo Module JSI
+// GERADO pelo `ubrn build ios` (raiz do repo: src/index.tsx + bindings/, todos
+// ignorados). Resolução por extensão do Metro: este `.ts` vale no NATIVO
+// (iOS/Android); no web vale `reference.web.ts` (wasm, F0.6b — NÃO alterado).
+//
+// `../../src` é o barrel gerado do Turbo Module (repo-root/src/index.tsx): ao ser
+// importado ele instala o crate Rust no runtime JSI (`installRustCrate()`) e
+// reexporta os bindings UniFFI. `parseReference` NÃO faz parsing em TS: delega ao
+// `the_light_core::reference` compilado no xcframework (uma fonte da verdade).
+import { parseReference as parseReferenceNative } from './native-generated/src/index';
+import type { Reference } from './native-generated/bindings/the_light_app_core';
 
 export type { Reference };
 
-export async function parseReference(_input: string): Promise<Reference> {
-  throw new Error(
-    'parseReference (wasm) é WEB-only por enquanto; a ponte nativa chega em F0.7/F0.8.',
-  );
+/**
+ * Resolve uma referência bíblica (PT ou EN) PELO RUST NATIVO via Turbo Module
+ * (JSI → UniFFI → the-light-core). O binding nativo é síncrono (o crate já está
+ * instalado na importação do barrel); embrulhamos numa Promise para manter a
+ * mesma assinatura do glue web (`reference.web.ts`).
+ */
+export async function parseReference(input: string): Promise<Reference> {
+  return parseReferenceNative(input);
 }

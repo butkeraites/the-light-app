@@ -7,6 +7,9 @@
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.thelight.app"
+    },
     "web": {
       "bundler": "metro",
       "output": "static"

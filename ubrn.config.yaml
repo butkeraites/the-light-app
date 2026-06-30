@@ -45,6 +45,61 @@ bindings:
 # Tudo o que entra aqui é GERADO e IGNORADO pelo git (rust_modules/ e
 # app/web/generated/ no .gitignore). O glue hand-written em app/web/ (versionado)
 # importa de app/web/generated/.
+# ── Caminho iOS NATIVO (F0.7, ADR-0008) ──────────────────────────────────────
+# Bloco consumido por `ubrn build ios` (subcomando JSI/nativo, ≠ `build web`).
+# Schemas `IOsConfig` (ios:) e `TurboModulesConfig` (turboModule:), camelCase, em
+# node_modules/uniffi-bindgen-react-native/crates/ubrn_cli/src/jsi/{ios/config.rs,
+# crossplatform/config.rs}.
+#
+# Fluxo de `ubrn build ios --sim-only --and-generate`:
+#   1) cargo build --target aarch64-apple-ios-sim (fronteira core/, arrasta a
+#      feature `embedded` no nativo — rusqlite SQLite-C + reqwest) → staticlib;
+#   2) xcodebuild -create-xcframework → <frameworkName>.xcframework (na raiz);
+#   3) gera os .ts/.cpp em bindings/ (mesmo destino do host JSI — reusa bindings:)
+#      + a glue do Turbo Module (C++ JSI, Obj-C++, index.tsx, NativeXxx.ts) e a
+#      podspec, sob os diretórios abaixo.
+#
+# project_root é a RAIZ do repo (package.json daqui), pois rust.directory: core é
+# relativo a ela — por isso a glue e a podspec aterrissam na raiz (a raiz é a
+# "RN turbo-module library" que o app Expo autolinka via react-native.config.js;
+# ver ADR-0008). Tudo é GERADO e IGNORADO pelo git (ver .gitignore).
+ios:
+  # Diretório dos arquivos Obj-C++ do módulo (ModuleTemplate.h/.mm). Gerado/ignorado.
+  directory: ios
+  # Nome do xcframework com o staticlib Rust (vendored_frameworks na podspec).
+  frameworkName: TheLightAppCoreFramework
+  # Destino do codegen New Arch (RN) referenciado pela podspec. Gerado/ignorado.
+  codegenOutputDir: ios/generated
+
+turboModule:
+  # C++ JSI da turbo-module (TurboModuleTemplate.cpp/.h). Gerado/ignorado.
+  cpp: cpp
+  # TS da turbo-module: NativeTheLightAppCore.ts (spec) + index.tsx (entrypoint).
+  ts: src
+  # Barrel gerado que instala o crate Rust (installRustCrate) e reexporta os
+  # bindings UniFFI (parseReference, Reference, ...). É o módulo JS que o glue
+  # nativo (app/web/reference.ts) consome. Gerado/ignorado.
+  entrypoint: src/index.tsx
+  # Nome do spec de codegen New Arch (precisa casar com package.json
+  # codegenConfig.name da raiz, p/ o RN codegen gerar <name>.h).
+  name: RNTheLightAppCoreSpec
+
+# ── Caminho WEB / WASM (F0.6b, ADR-0007) ─────────────────────────────────────
+# Bloco consumido pelo subcomando `ubrn build web` (alias `wasm`). Schema
+# `WasmConfig` (chaves camelCase) em
+# node_modules/uniffi-bindgen-react-native/crates/ubrn_cli/src/wasm/config.rs.
+#
+# Fluxo de `ubrn build web`:
+#   1) cargo build (host, core/Cargo.toml) — extrai a metadata UniFFI;
+#   2) gera os .ts web (flavor wasm) + um *wasm-crate* wrapper (manifestPath) que
+#      path-depende da NOSSA fronteira (core/, pura no wasm32) e do runtime web do
+#      ubrn `uniffi-runtime-javascript` (feature wasm32 → resolve o `+Send`);
+#   3) cargo build --target wasm32-unknown-unknown do wasm-crate;
+#   4) wasm-bindgen (--target web) → app/web/generated/wasm-bindgen/.
+#
+# Tudo o que entra aqui é GERADO e IGNORADO pelo git (rust_modules/ e
+# app/web/generated/ no .gitignore). O glue hand-written em app/web/ (versionado)
+# importa de app/web/generated/.
 web:
   # Manifesto do wasm-crate wrapper GERADO (default do ubrn). Dir ignorado.
   manifestPath: rust_modules/wasm/Cargo.toml
