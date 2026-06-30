@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-30 05:10 UTC · Estado do loop: **▶️ RODANDO — F0.8 (Android) semeada na queue (🟡 ready)**
-Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F0.7 passed** (`a6f6797`; Turbo Module nativo iOS, run real no sim, prova headless PT==EN) · Alvos provados: **web + iOS**; próxima elegível: **F0.8 (Android)** → F0.9/F0.10 → **F0.11 (gate Marco 0)**
+Última atualização: 2026-06-30 05:40 UTC · Estado do loop: **▶️ RODANDO — 3 alvos provados (F0.8 passed); próxima F0.9 (store)**
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F0.8 passed** (`36af016`; Turbo Module nativo Android, run real no emulador, prova headless PT==EN) · **Alvos provados: web + iOS + Android** ✅; próxima elegível: **F0.9 (store nativo)** → F0.10 (store web) → **F0.11 (gate Marco 0)**
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -22,7 +22,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F0.7 passed** (`a6f6797`; T
 | F0.6c | Alinhar `uniffi` da fronteira a `=0.31.0` (compat. ubrn web) | ✅ aceito | F0.6a | passed (7b98644) |
 | F0.6b | Bindings web (ubrn) + glue + tela + prova headless | ✅ aceito | F0.6a, F0.6c | passed (1cdde6c) — web/WASM ponta a ponta |
 | F0.7 | Ligar core no **iOS**: chamar parse_reference | ✅ aceito | F0.4, F0.5 | passed (a6f6797) — Turbo Module nativo, run real no sim |
-| F0.8 | Ligar core no **Android**: chamar parse_reference | 🟡 ready | F0.4, F0.5 | semeada na queue; NDK 27.1 + emulador headless OK |
+| F0.8 | Ligar core no **Android**: chamar parse_reference | ✅ aceito | F0.4, F0.5 | passed (36af016) — Turbo Module nativo, run real no emulador |
 | F0.9 | Store nativo (`rusqlite`): ler 1 passagem do sample.sqlite | ⬜ | F0.6/7/8 | — |
 | F0.10 | Store web (`wa-sqlite`+OPFS): ler 1 passagem | ⬜ | F0.9 | — |
 | F0.11 | **Marco 0** (⛔ gate): revisão dos 3 alvos + store; ADR + PROGRESS | ⬜⛔ | F0.9, F0.10 | — |
