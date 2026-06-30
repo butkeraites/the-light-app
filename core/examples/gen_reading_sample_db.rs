@@ -115,6 +115,22 @@ fn main() {
     conn.execute("DETACH DATABASE src", [])
         .expect("desanexar src");
 
+    // ── Índice FTS5 (pipeline de DADOS, não busca) ───────────────────────────
+    // O schema do core cria `verses_fts` mas **não** tem trigger que o popule a
+    // partir de `verses` (gotcha documentado na F1.5: sem isto, `search(...)` no
+    // subset retorna 0 hits). Replicamos cada linha de `verses` no índice com
+    // `verse_id` = `verses.id` — exatamente o que a busca do core espera no JOIN
+    // `verses v ON v.id = verses_fts.verse_id` (idêntico ao fixture da F1.5 e ao
+    // importador do core). É DADO/fixture: o `MATCH`/BM25/`highlight` continuam no
+    // core, chamados pela fronteira `search` (F1.5) — nada de busca é reimplementado.
+    let indexed = conn
+        .execute(
+            "INSERT INTO verses_fts(text, translation_id, verse_id) \
+             SELECT text, translation_id, id FROM verses",
+            [],
+        )
+        .expect("popular verses_fts a partir do subset");
+
     // ── Sanidade (asserções do self-test) ───────────────────────────────────
     let john_chapters: u16 = conn
         .query_row(
@@ -144,9 +160,19 @@ fn main() {
         .query_row("SELECT count(*) FROM translations", [], |r| r.get(0))
         .expect("contar traduções");
 
+    // Sanidade do índice FTS5: 1 linha por versículo (a busca depende disto).
+    // A prova de que a BUSCA retorna hits vive no device (self-test TLA_SEARCH,
+    // que chama a fronteira `search` → core); aqui só garantimos que o índice
+    // está povoado (sem reimplementar `MATCH`/BM25 no pipeline).
+    assert_eq!(
+        indexed as i64, inserted as i64,
+        "verses_fts deve ter 1 linha por versículo copiado"
+    );
+
     println!(
         "reading-sample.sqlite gerado: {out}\n  \
-         traduções={translations} livros={:?} versículos={inserted} joão_capítulos_kjv={john_chapters}",
+         traduções={translations} livros={:?} versículos={inserted} verses_fts={indexed} \
+         joão_capítulos_kjv={john_chapters}",
         BOOKS
     );
 }

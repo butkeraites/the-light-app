@@ -15,12 +15,14 @@
 #      mount da HomeScreen;
 #   4) instala + lança o app, capturando o log unificado do simulador
 #      (`simctl spawn booted log stream`);
-#   5) ASSERTA os marcadores de PARSE (PT e EN), de LEITURA (F1.3/ADR-0014) E de
-#      LEITURA PARALELA (F1.4/ADR-0015). Sai 0 só se TODOS aparecerem:
+#   5) ASSERTA os marcadores de PARSE (PT e EN), de LEITURA (F1.3/ADR-0014), de
+#      LEITURA PARALELA (F1.4/ADR-0015) E de BUSCA (F1.6). Sai 0 só se TODOS
+#      aparecerem:
 #        TLA_SELFTEST PT book=43 chapter=3 verse=16
 #        TLA_SELFTEST EN book=43 chapter=3 verse=16
 #        TLA_READ books=66 john3_v16="For God so loved the world..." john_chapters=21
 #        TLA_PARALLEL kjv_john3_16="For God so loved the world..." alm_john3_16="Porque Deus amou o mundo de tal maneira..."
+#        TLA_SEARCH query="God" hits=<N>=1 first_ref="John 3:16" first_text="For God so loved..."
 #      (os textos de João 3:16 vêm do RETORNO de get_chapter — store local, KJV e
 #       Almeida 1911 verbatim — não hardcoded; o lado a lado lê AS DUAS traduções
 #       por DUAS chamadas de get_chapter. O app copia o banco bundled p/ um caminho
@@ -67,6 +69,13 @@ MARK_READ_CHAP="john_chapters=21"            # chapter_count(kjv,43) DB-backed
 # não hardcoded no glue/selftest; aqui o script só confere substrings esperados.
 MARK_PARALLEL="TLA_PARALLEL"                              # marcador composto da leitura paralela
 MARK_PARALLEL_ALM="Porque Deus amou o mundo de tal maneira"  # João 3:16 Almeida 1911 verbatim do store
+# F1.6 (ADR-0014/0015): PROVA DE BUSCA no device. O app chama a fronteira `search`
+# (FTS5/BM25 do core via JSI) p/ "God" na KJV e LOCALIZA João 3:16 no retorno; o
+# marcador é COMPOSTO do retorno real (ref de listBooks().nameEn; texto verbatim de
+# hit.text, SEM os marcadores de controle HL). Aqui o script só confere substrings.
+MARK_SEARCH_QUERY='TLA_SEARCH query="God"'   # busca executada via a fronteira (query "God")
+MARK_SEARCH_REF="John 3:16"                  # referência do hit (composta do retorno)
+MARK_SEARCH_TEXT="For God so loved"          # texto KJV verbatim do store (sem HL markers)
 
 export PATH="/opt/homebrew/bin:$PATH"  # cocoapods/node instalados via brew
 LOG_DIR="$(mktemp -d -t f07-ios-selftest)"
@@ -159,8 +168,8 @@ sleep 2
 
 xcrun simctl launch "$UDID" "$BUNDLE_ID" >/dev/null
 
-# ── [5/5] Asserção determinística: parse (PT+EN) + leitura (TLA_READ) ─────────
-echo "==> [5/5] Aguardando marcadores PT+EN + leitura (até ${LAUNCH_WAIT}s)"
+# ── [5/5] Asserção determinística: parse (PT+EN) + leitura + paralela + busca ─
+echo "==> [5/5] Aguardando marcadores PT+EN + leitura + paralela + busca (até ${LAUNCH_WAIT}s)"
 found=0
 for _ in $(seq 1 "$LAUNCH_WAIT"); do
   if grep -qF "$MARK_PT" "$STREAM_LOG" \
@@ -169,7 +178,11 @@ for _ in $(seq 1 "$LAUNCH_WAIT"); do
     && grep -qF "$MARK_READ_TEXT" "$STREAM_LOG" \
     && grep -qF "$MARK_READ_CHAP" "$STREAM_LOG" \
     && grep -qF "$MARK_PARALLEL" "$STREAM_LOG" \
-    && grep -qF "$MARK_PARALLEL_ALM" "$STREAM_LOG"; then
+    && grep -qF "$MARK_PARALLEL_ALM" "$STREAM_LOG" \
+    && grep -qF "$MARK_SEARCH_QUERY" "$STREAM_LOG" \
+    && grep -qE 'TLA_SEARCH .*hits=[1-9][0-9]*' "$STREAM_LOG" \
+    && grep -qF "$MARK_SEARCH_REF" "$STREAM_LOG" \
+    && grep -qF "$MARK_SEARCH_TEXT" "$STREAM_LOG"; then
     found=1
     break
   fi
@@ -181,7 +194,7 @@ grep -F "TLA_" "$STREAM_LOG" | sed 's/.*\(TLA_\)/\1/' | sort -u || true
 echo "---------------------------------------------"
 
 if [ "$found" != "1" ]; then
-  echo "ERRO: marcadores de parse (PT/EN), leitura (TLA_READ) e/ou leitura paralela (TLA_PARALLEL + Almeida) não apareceram em ${LAUNCH_WAIT}s." >&2
+  echo "ERRO: marcadores de parse (PT/EN), leitura (TLA_READ), leitura paralela (TLA_PARALLEL + Almeida) e/ou busca (TLA_SEARCH: query=\"God\", hits>=1, João 3:16, \"For God so loved\") não apareceram em ${LAUNCH_WAIT}s." >&2
   exit 1
 fi
 
@@ -190,4 +203,5 @@ echo "$MARK_PT"
 echo "$MARK_EN"
 grep -F "TLA_READ books=66" "$STREAM_LOG" | sed 's/.*\(TLA_READ\)/\1/' | head -1
 grep -F "TLA_PARALLEL" "$STREAM_LOG" | sed 's/.*\(TLA_PARALLEL\)/\1/' | head -1
-echo "==> OK — parse_reference (PT==EN), leitura (books=66, João 3:16 KJV verbatim, john_chapters=21) E leitura PARALELA (João 3:16 KJV|Almeida 1911, ambos do store via get_chapter) provados pelo Rust nativo via Turbo Module."
+grep -F 'TLA_SEARCH query="God"' "$STREAM_LOG" | sed 's/.*\(TLA_SEARCH\)/\1/' | head -1
+echo "==> OK — parse_reference (PT==EN), leitura (books=66, João 3:16 KJV verbatim, john_chapters=21), leitura PARALELA (João 3:16 KJV|Almeida 1911, ambos do store via get_chapter) E busca (TLA_SEARCH: \"God\" via a fronteira search, João 3:16 + \"For God so loved\" verbatim do store, hits>=1) provados pelo Rust nativo via Turbo Module."

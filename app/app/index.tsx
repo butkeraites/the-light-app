@@ -108,6 +108,14 @@ export default function HomeScreen() {
           Ler a Bíblia →
         </Link>
       )}
+
+      {/* F1.6: entrada para a BUSCA nativa (campo + resultados clicáveis). A busca
+          lê pela fronteira `search` (F1.5 → JSI → core); web = stub (F1.14). */}
+      {Platform.OS === 'web' ? null : (
+        <Link href="/search" style={styles.readLink} testID="open-search">
+          Buscar na Bíblia →
+        </Link>
+      )}
     </View>
   );
 }

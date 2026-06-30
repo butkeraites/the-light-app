@@ -41,6 +41,9 @@ function RootNavigator() {
       <Stack.Screen name="read/index" options={{ title: 'Ler a Bíblia', ...readOptions }} />
       <Stack.Screen name="read/[book]/index" options={{ title: 'Capítulos', ...readOptions }} />
       <Stack.Screen name="read/[book]/[chapter]" options={{ title: 'Leitura', ...readOptions }} />
+      {/* F1.6: busca nativa (campo + resultados com referência clicável). Lê pela
+          fronteira `search` (F1.5 → JSI → core); header temático + toggle de tema. */}
+      <Stack.Screen name="search/index" options={{ title: 'Buscar', ...readOptions }} />
     </Stack>
   );
 }

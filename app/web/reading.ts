@@ -14,10 +14,11 @@ import {
   listTranslations as listTranslationsNative,
   getChapter as getChapterNative,
   chapterCount as chapterCountNative,
+  search as searchNative,
 } from './native-generated/src/index';
-import type { Book, Passage, Translation } from './native-generated/bindings/the_light_app_core';
+import type { Book, Passage, Translation, SearchHit } from './native-generated/bindings/the_light_app_core';
 
-export type { Book, Passage, Translation };
+export type { Book, Passage, Translation, SearchHit };
 
 /** 66 livros canônicos (PURO — `reference::BOOKS`, independe do banco). */
 export function listBooks(): Book[] {
@@ -50,4 +51,24 @@ export async function chapterCount(
   book: number,
 ): Promise<number> {
   return chapterCountNative(dbPath, translation, book);
+}
+
+/**
+ * Busca full-text (FTS5/BM25, acento-insensível) no store local, delegando à
+ * fronteira `search` da F1.5 (binding gerado → JSI → the_light_core::search).
+ * NÃO reimplementa SQL/FTS/`MATCH`/`bm25`/`highlight` em TS: o índice, o ranking
+ * e o destaque vivem no core; a UI só embrulha o retorno (uma fonte da verdade).
+ * Cada `SearchHit` traz `text` VERBATIM do store (anti-alucinação) e `highlighted`
+ * com os marcadores de controle do core ao redor do termo casado — a UI da F1.6
+ * os converte em estilo. Síncrono no JSI; embrulhado em Promise p/ assinatura
+ * uniforme com o web (stub = F1.14). `book`/`limit` opcionais (padrões do core).
+ */
+export async function search(
+  dbPath: string,
+  query: string,
+  translation: string,
+  book?: number,
+  limit?: number,
+): Promise<SearchHit[]> {
+  return searchNative(dbPath, query, translation, book, limit);
 }

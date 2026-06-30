@@ -13,6 +13,10 @@ import { parseReference, type Reference } from './reference';
 // extensão — no web, `reading-selftest.web.ts` é um SKIP, mantendo o bundle web
 // sem `expo-file-system`/o banco bundled (leitura web = F1.13).
 import { runReadingSelfTest } from './reading-selftest';
+// F1.6: prova de BUSCA no device (marcador TLA_SEARCH). Par nativo/web por extensão
+// — no web, `search-selftest.web.ts` é um SKIP (busca web = F1.14), mantendo o
+// bundle web sem `expo-file-system`/o banco bundled.
+import { runSearchSelfTest } from './search-selftest';
 
 // Marcador (prefixo grep-ável). console.error garante o nível alto no log
 // unificado; console.log o complementa. O script assere o texto exato.
@@ -55,5 +59,7 @@ export async function runReferenceSelfTest(): Promise<void> {
   // F1.3: prova de LEITURA (livro→capítulo→texto) pela fronteira nativa, lendo do
   // banco bundled copiado p/ um caminho gravável. Emite o marcador TLA_READ.
   await runReadingSelfTest();
+  // F1.6: prova de BUSCA (campo→fronteira search→hits) no device. Emite TLA_SEARCH.
+  await runSearchSelfTest();
   console.log(`${MARK} DONE`);
 }
