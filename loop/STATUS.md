@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-30 20:40 UTC · Estado do loop: **▶️ ATIVO — F1.8 ACEITA (`36b2cb0`); queue vazia → próximo ciclo o planner semeia F1.9 (UI de xref nativa + atribuição CC-BY visível)**
-Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.8 passed** (`36b2cb0`; `cross_refs` delega a `xref::for_verse`, 26 testes, Rm 5:8 em [0], web puro) · Próxima elegível: **F1.9** (UI xref + atribuição CC-BY, depende de **F1.8** e **F1.3** aceitas) → F1.10 (notas/marcações fronteira) → F1.11 (UI notas) → **gate F1.12** (store web do corpus completo) → … → Marco 1 (F1.17)
+Última atualização: 2026-06-30 21:40 UTC · Estado do loop: **▶️ ATIVO — F1.9 ACEITA (`2ff73c5`); queue vazia → próximo ciclo o planner semeia F1.10 (notas/marcações na fronteira do core, file-based)**
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.9 passed** (`2ff73c5`; UI de xref nativa, `TLA_XREF` João 3:16 count=9, atribuição CC-BY visível, subset com 22413 xrefs) · Próxima elegível: **F1.10** (notas/marcações na fronteira, depende só de **F1.2** aceita) → F1.11 (UI notas) → **gate F1.12** (store web do corpus completo) → … → Marco 1 (F1.17)
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -44,7 +44,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.8 passed** (`36b2cb0`; `
 | F1.6 | UI de busca nativa (resultados com referência clicável) | ✅ aceito | F1.5, F1.3 | passed (ab75071) — busca real no device (iOS) |
 | F1.7 | Referências cruzadas: dados (xtask import-xref, OpenBible CC-BY ~344.799) | ✅ aceito | F1.1 | passed (4d2d3bf) — 344799 xrefs; ADR-0016 |
 | F1.8 | Xref na fronteira (core, nativo): cross_refs → xref::for_verse | ✅ aceito | F1.7, F1.2 | passed (36b2cb0) — Rm 5:8 em [0]; 26 testes; web puro |
-| F1.9 | UI de xref nativa + atribuição CC-BY visível | ⬜ backlog | F1.8, F1.3 | — |
+| F1.9 | UI de xref nativa + atribuição CC-BY visível | ✅ aceito | F1.8, F1.3 | passed (2ff73c5) — TLA_XREF João 3:16 count=9; CC-BY visível |
 | F1.10 | Notas/marcações na fronteira (core userdata, file-based) | ⬜ backlog | F1.2 | — |
 | F1.11 | UI de notas/highlights nativa + export + persistência | ⬜ backlog | F1.10, F1.3 | — |
 | F1.12 | **GATE estratégico** (⛔): store web do corpus completo (FTS5/OPFS/Opção A vs B) | ⛔ gate | F1.2, F1.5, F1.8, F1.10 | — |
