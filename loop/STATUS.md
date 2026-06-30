@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-30 16:10 UTC · Estado do loop: **▶️ ATIVO — F1.3 semeada na queue (ready); UI de leitura nativa + bundling do banco**
-Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.2 passed** (`e06b0c6`; list_translations/list_books/get_chapter/chapter_count delegam ao core; web puro) · **F1.3 ready** (`loop/queue/F1.3-ui-leitura-nativa.task.md`; depende de F1.2 ✓) · Próxima elegível: **F1.3** (UI livro→cap→texto + seletor de versão + bundling `bible.sqlite` no device; ADR-0014) → … → gate F1.12 → Marco 1 (F1.17)
+Última atualização: 2026-06-30 16:20 UTC · Estado do loop: **▶️ ATIVO — F1.3 aceita (UI leitura nativa, lê do device); próxima F1.4**
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.3 passed** (`9cf4a9e`; UI leitura nativa lê do store no device — books=66, João 3:16 verbatim, john_chapters=21; bundling ADR-0014) · Próxima elegível: **F1.4** (múltiplas versões lado a lado + tema) → … → gate F1.12 → Marco 1 (F1.17)
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -38,7 +38,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.2 passed** (`e06b0c6`; l
 |----|--------|--------|------------|-----------|
 | F1.1 | Pipeline de dados + banco embarcado completo (KJV+ALM1911 via xtask) | ✅ aceito | — | passed (b1a9be4) — kjv 31102 / alm1911 31101 |
 | F1.2 | Expor leitura no core (fronteira nativo): translations/books/chapter/passage | ✅ aceito | F1.1 | passed (e06b0c6) — 4 funções delegam ao core; web puro |
-| F1.3 | UI de leitura nativa: navegação livro→cap→texto + seletor de versão | 🟡 ready | F1.2 | — |
+| F1.3 | UI de leitura nativa: navegação livro→cap→texto + seletor de versão | ✅ aceito | F1.2 | passed (9cf4a9e) — leitura real no device (iOS); bundling ADR-0014 |
 | F1.4 | UI de leitura nativa: múltiplas versões lado a lado + tema | ⬜ backlog | F1.3 | — |
 | F1.5 | Busca FTS5 na fronteira (core, nativo) | ⬜ backlog | F1.2 | — |
 | F1.6 | UI de busca nativa (resultados com referência clicável) | ⬜ backlog | F1.5, F1.3 | — |
