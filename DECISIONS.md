@@ -1671,3 +1671,58 @@ gravar** (diretório), **como exportar** e **como compartilhar**.
 - **Marco:** F1.11 é a **última tarefa nativa antes do gate estratégico F1.12** —
   após aceita, o loop **PARA (HALT)** p/ sign-off humano (store web do corpus completo).
 
+
+## ADR-0018 — Gate F1.12: store WEB do corpus = **Opção A (wa-sqlite + OPFS, espelhando os SELECTs do core em TS)**, começando por **A1 (paridade com o subset ~4,4 MB)**
+
+- **Data:** 2026-06-30 · **Status:** aceito (sign-off humano no gate F1.12) · **Tarefa:** F1.12 (gate estratégico) · **Depende:** ADR-0011 (wa-sqlite+OPFS, Opção A da Fase 0), ADR-0012 (build SYNC sem SharedArrayBuffer), ADR-0013 (`bible.sqlite` gerar-ignorado), ADR-0014 (subset `reading-sample.sqlite` bundled), ADR-0010/0005 (matriz por alvo / anti-alucinação) · **Habilita:** F1.13–F1.16 (paridade web)
+
+### Contexto
+Toda a Fase 1 **nativa** (F1.1–F1.11) está aceita e verde no device: leitura
+(livro→cap→texto, versões lado a lado, tema), busca FTS5, referências cruzadas
+(CC-BY OpenBible) e notas/highlights com export/persistência. No **web**, só estão
+provados `parseReference` (F0.6b) e `getPassage` de **uma** passagem (F0.10) via
+`wa-sqlite@1.0.0` (build SYNC, sem SharedArrayBuffer) + OPFS, **carregando o arquivo
+inteiro num MemoryVFS no heap**. As demais funções web (`reading.web.ts`) são
+**stubs**. O gate F1.12 decide **como o web entrega leitura + busca (FTS5) + xref +
+notas sobre o corpus**, mantendo offline-first / BYOK / anti-alucinação e **sem tocar
+o `the-light`**.
+
+Fatos apurados (lidos do repo): `app/assets/data/bible.sqlite` = **~59 MB**
+(61.833.216 B; 62.203 versículos KJV+ALM1911, `verses_fts` FTS5, **344.799**
+`cross_references`); `reading-sample.sqlite` (subset que o nativo empacota hoje,
+ADR-0014) = **~4,4 MB** (Gn/Sl/Jo; 22.413 xrefs). O MemoryVFS provado escala p/
+~4,4 MB, **não** p/ ~59 MB sem um VFS-live em Worker/OPFS.
+
+### Decisão
+**Opção A — `wa-sqlite` + OPFS, espelhando em TS os mesmos SELECTs que a fronteira do
+core executa no nativo.** Reaproveita a F0.10 e a semântica FTS5/xref do próprio
+SQLite (sem reimplementar ranqueamento/lógica de domínio); **zero PR ao the-light**.
+
+**Escopo da 1ª entrega = A1:** o web faz **paridade com o subset `reading-sample.sqlite`
+(~4,4 MB)** — o MESMO que o nativo empacota hoje — usando o MemoryVFS já provado.
+O **corpus completo (~59 MB)** com **VFS-live em Worker + gestão de cota OPFS +
+indicador de download** fica como **decisão transversal separada** (vale também p/ o
+nativo, que igualmente adia o corpus completo via ADR-0014) — **não** bloqueia a
+paridade web.
+
+### Alternativas rejeitadas (neste momento)
+- **B — abstrair o store no `the-light-core` (PR + ADR):** fonte única e sem
+  duplicação em TS, mas exige **tocar o `the-light`** (refactor pesado + bridge
+  sync↔async) — fora do que o loop faz sozinho; reavaliável se o drift TS↔core doer.
+- **C — chunking sob demanda (por livro/seção):** menor 1ª carga, mas coerência e
+  busca parcial ficam complexas; desnecessário p/ o subset A1.
+- **D — compressão/delta do `.sqlite`:** só um **modificador** de A/C p/ reduzir
+  download — relevante quando o corpus completo entrar, não na paridade A1.
+
+### Consequências
+- **Risco aceito:** o web **espelha** os SELECTs de leitura/busca/xref em TS → risco de
+  **drift** vs o SQL do core; mitigação = testes de **paridade** (mesma query, mesmo
+  resultado que o nativo) nos self-tests web das F1.13–F1.16, e a regra de **não**
+  reimplementar lógica de domínio (ranqueamento/ordenção vêm do SQLite, não de TS).
+- **Perf de FTS5 no `wa-sqlite`** a confirmar na F1.14 (busca web) sobre o subset.
+- **Anti-alucinação preservada:** texto sempre do store local (subset domínio público;
+  xref CC-BY OpenBible com atribuição visível, ADR-0016).
+- **Próximo:** o Driver re-escopa/semeia **F1.13** (leitura web) → **F1.14** (busca web)
+  → **F1.15** (xref web + atribuição) → **F1.16** (notas web + export) sobre o subset
+  A1; o **corpus completo (~59 MB)** vira item de backlog transversal (pós-paridade).
+- **`loop/HALT` removido** (motivo do gate resolvido por este sign-off); loop retomado.
