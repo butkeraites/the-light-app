@@ -951,3 +951,56 @@ reimplementa SQL nem parsing.
   do `sample.sqlite` no app nativo (bundling iOS/Android) e o run nativo
   (`getPassage` via Turbo Module) são fase posterior / verificação adicional. O
   **store web** (`wa-sqlite`+OPFS) é a **F0.10** — `get_passage` no web é stub até lá.
+
+---
+
+## ADR-0011 — Store no alvo web: `wa-sqlite` + OPFS (query em TS)
+
+- **Data:** 2026-06-30 · **Status:** aceito (decisão humana) · **Tarefa:** F0.10
+
+### Contexto
+A fricção #1 da VISION (§4, "SQLite no WASM") chega na F0.10. Apuração na fonte do
+`the-light-core` (leitura-only, rev `8f66004`): o store é **concreto sobre
+`rusqlite::Connection`** — `store::Store { conn: rusqlite::Connection }`,
+`source::EmbeddedSource { conn: &rusqlite::Connection }`, e
+`EmbeddedSource::passage` roda `SELECT verse,text FROM verses …` direto na
+`Connection`. **Não há** trait/abstração de store que aceite uma conexão injetada.
+No alvo web, `rusqlite` está fora do grafo por design (feature `embedded` off,
+ADR-0005), e o `get_passage` web é hoje um **stub de erro** (F0.9). Provar a leitura
+de passagem no web exige escolher como ter SQLite no web.
+
+### Decisão (humano escolheu a Opção A)
+**`wa-sqlite` + OPFS no web, com a leitura de passagem em TS** no glue do app — **sem
+mudar o `the-light-core`**:
+- O glue web abre um banco **`wa-sqlite`** persistido em **OPFS** com o **mesmo
+  schema** do `assets/data/sample.sqlite` (gerado pelas migrações do core, F0.9), e
+  roda o `SELECT verse,text FROM verses WHERE translation_id=? AND book_number=? AND
+  chapter=? AND verse=?` (espelhando `EmbeddedSource::passage`).
+- **`parse_reference` continua vindo do Rust (wasm)** — a resolução de referência
+  (domínio) permanece uma fonte da verdade. O glue web compõe a `Passage` a partir
+  da `Reference` (Rust) + o texto (lido do `wa-sqlite` local).
+- **Anti-alucinação preservada:** o **texto do versículo vem do store local**
+  (`wa-sqlite`/OPFS), verbatim de domínio público — nunca do LLM/código.
+
+### Justificativa / trade-offs
+- **Destrava o web na Fase 0 com baixo atrito**, sem PR ao core nem o difícil
+  *bridge* Rust-síncrono ↔ JS-assíncrono (que a Opção B exigiria).
+- **"Uma fonte da verdade" do domínio preservada:** parsing/RAG/citação seguem no
+  Rust; o `SELECT` de passagem é **infraestrutura**, não lógica de domínio. Aceita-se
+  uma leve duplicação (a query de passagem reimplementada em TS para o web).
+- **Opções rejeitadas:** **B** (abstrair o store no core via PR) — ideal da VISION e
+  future-proof (todo o store no web em Rust: passage+search+xref), mas refator
+  substancial do core + sync↔async difícil; fica como evolução futura quando o web
+  precisar de **todo** o store em Rust. **C** (pré-indexado sem SQLite) — diverge do
+  data-model e não escala p/ Bíblia completa + busca FTS.
+
+### Consequências
+- F0.10 (re-escopada): glue `wa-sqlite`+OPFS no web (carregar o `sample.sqlite` em
+  OPFS), `getPassage` web em TS lendo o versículo, ligado à tela; prova **headless**
+  (node/headless) de que o web resolve João 3:16 com o texto KJV verbatim do store
+  local. Artefatos web gerados continuam ignorados.
+- Quando o web precisar de **search/xref** (Fase 1+), reavaliar a Opção B (store
+  abstraído no core) — registrar novo ADR então.
+- O `get_passage` nativo (F0.9, via `the-light-core`) e o web (wa-sqlite) convergem
+  na mesma interface de glue (`app/web/reference.*`), com o texto sempre do store
+  local em ambos.

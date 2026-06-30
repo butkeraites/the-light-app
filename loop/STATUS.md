@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-30 06:05 UTC · Estado do loop: **⛔ PARADO (HALT) — F0.10 (store web) = decisão de arquitetura**
-Heartbeat: ver `HEARTBEAT` · HALT: **PRESENTE** (`loop/HALT`) · Provados: web+iOS+Android + store nativo (F0.9) · F0.10 store web exige **decisão humana** (wa-sqlite TS / PR ao core p/ store abstraído / pré-indexado → ADR-0011) · Retomar: escolher estratégia + remover HALT
+Última atualização: 2026-06-30 06:40 UTC · Estado do loop: **▶️ RETOMADO — decisão store web tomada (ADR-0011: wa-sqlite+OPFS); F0.10 a semear**
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** (resolvido — humano escolheu Opção A: wa-sqlite TS+OPFS, ADR-0011) · Provados: web+iOS+Android + store nativo; próxima elegível: **F0.10 (store web wa-sqlite+OPFS)** → **F0.11 (gate Marco 0)**
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -24,7 +24,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **PRESENTE** (`loop/HALT`) · Provados: web+
 | F0.7 | Ligar core no **iOS**: chamar parse_reference | ✅ aceito | F0.4, F0.5 | passed (a6f6797) — Turbo Module nativo, run real no sim |
 | F0.8 | Ligar core no **Android**: chamar parse_reference | ✅ aceito | F0.4, F0.5 | passed (36af016) — Turbo Module nativo, run real no emulador |
 | F0.9 | Store nativo (`rusqlite`): ler 1 passagem do sample.sqlite | ✅ aceito | F0.6b, F0.7, F0.8 | passed (1d16897) — get_passage lê João 3:16 do store |
-| F0.10 | Store web (`wa-sqlite`+OPFS): ler 1 passagem | 🔴 blocked (decisão) | F0.9 | store do core é rusqlite concreto → escolher estratégia web (ADR-0011) |
+| F0.10 | Store web (`wa-sqlite`+OPFS): ler 1 passagem | 🟡 a semear | F0.9 | decisão tomada: Opção A wa-sqlite TS+OPFS (ADR-0011) |
 | F0.11 | **Marco 0** (⛔ gate): revisão dos 3 alvos + store; ADR + PROGRESS | ⬜⛔ | F0.9, F0.10 | — |
 
 ## Fases seguintes
