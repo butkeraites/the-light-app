@@ -4,7 +4,7 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-30 04:30 UTC · Estado do loop: **▶️ RETOMADO — toolchains nativos instalados; F0.7/F0.8 destravadas**
+Última atualização: 2026-06-30 06:00 UTC · Estado do loop: **▶️ RETOMADO — F0.7 (iOS) semeada na queue (ready)**
 Heartbeat: ver `HEARTBEAT` · HALT: **ausente** (resolvido — Xcode 26.6 + sim iOS 26.5; Android NDK 27.1 + emulador headless OK) · Próxima elegível: **F0.7 (iOS)** → depois F0.8 (Android) → F0.9/F0.10 → **F0.11 (gate Marco 0)**
 
 ## Fase 0 — Prova da ponte Rust → Expo
@@ -21,7 +21,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** (resolvido — Xcode 26.6 + sim 
 | F0.6a | Consumir core c/ features por alvo (re-pin `8f66004`) | ✅ aceito | F0.4, F0.5, core | matriz por alvo OK; SQLite-no-WASM resolvido |
 | F0.6c | Alinhar `uniffi` da fronteira a `=0.31.0` (compat. ubrn web) | ✅ aceito | F0.6a | passed (7b98644) |
 | F0.6b | Bindings web (ubrn) + glue + tela + prova headless | ✅ aceito | F0.6a, F0.6c | passed (1cdde6c) — web/WASM ponta a ponta |
-| F0.7 | Ligar core no **iOS**: chamar parse_reference | 🟡 desbloqueada | F0.4, F0.5 | Xcode 26.6 + sim iOS 26.5 instalados |
+| F0.7 | Ligar core no **iOS**: chamar parse_reference | 🟡 ready | F0.4, F0.5 | semeada na queue (Turbo Module nativo via ubrn; run real no sim) |
 | F0.8 | Ligar core no **Android**: chamar parse_reference | 🟡 desbloqueada | F0.4, F0.5 | NDK 27.1 + emulador headless OK |
 | F0.9 | Store nativo (`rusqlite`): ler 1 passagem do sample.sqlite | ⬜ | F0.6/7/8 | — |
 | F0.10 | Store web (`wa-sqlite`+OPFS): ler 1 passagem | ⬜ | F0.9 | — |
@@ -54,3 +54,4 @@ fechar.
 | 2026-06-29 | Ciclo 13: executor tentou F0.6, reviewer confirmou de forma independente → **`blocked`**. `cargo build --target wasm32-unknown-unknown` falha (exit 101) no `sqlite-wasm-rs` (SQLite-C). Core sem `[features]` → impossível excluir `rusqlite` sem PR ao `the-light`. **⛔ `loop/HALT` escrito — loop PARADO p/ decisão estratégica (store-web: wa-sqlite/OPFS, PR ao core, ou web leitura+IA pré-indexada → ADR-0005).** Core/fronteira intactos. |
 | 2026-06-30 | **Resolução de direção (humano aprovou):** ADR-0005 — feature-gating `store`/`net` no `the-light-core` (PR não-quebrante, spec em `loop/proposals/the-light-PR-feature-gating.md`) + matriz de features por alvo no app. Verificado que `reference`/`model` são puros/desacoplados. F0.6 arquivada (blocked) e **re-escopada em F0.6a/F0.6b** (backlog). HALT **ajustado**: retomar exige PR mesclado + re-pin do rev. Core ainda intocado (PR é ação humana). |
 | 2026-06-30 | F0.6a aceita (re-pin `8f66004`, matriz por alvo: web puro / nativo embedded). Planner semeou **F0.6b** na `queue/` (status ready, gate:false, depende de F0.6a): caminho **web** do `ubrn 0.31.0-3` (subcomando `ubrn web build`, wasm-pack/wasm-bindgen) → bindings wasm + glue em `app/web/` + ligar `app/app/index.tsx` (a guarda "sem core" da F0.5 não vale mais) + **prova headless** (node: `parseReference` via wasm = book 43/cap 3/v Single 16 p/ "Jo 3.16" e "John 3:16") + `expo export --platform web` sai 0. **Achado embutido (ADR-0005):** build cru falha em `uniffi_core 0.31.2` (`UniffiCompatibleFuture: …+Send`) → DEVE usar caminho web do ubrn, não build cru. Risco de `blocked` por imaturidade do caminho web do ubrn / uniffi-wasm: instrui `blocked` com saída EXATA (decisão estratégica; ADR-0006 se decidido). |
+| 2026-06-30 | F0.6b aceita (web ponta a ponta; ADR-0006/0007). Planner semeou **F0.7** na `queue/` (status ready, gate:false, depende de F0.4+F0.5, aceitas): ligar o core no **iOS** via **Turbo Module nativo** (`ubrn build ios --sim-only --and-generate`, schema `ios:` em `ubrn.config.yaml`) + integração Expo (`expo prebuild`/`pod install`/`run:ios`) + glue nativo (`app/web/reference.ts`) ligando a tela ao binding nativo + **run real no simulador iOS 26.5** com **prova headless** (self-test no launch que loga `TLA_SELFTEST PT/EN book=43 chapter=3 verse=16`, ou XCTest). Ambiente PRONTO (Xcode 26.6 + sim iPhone 17 + targets iOS). Gerados ignorados (app/ios, Pods, xcframework, codegen). **Risco de `blocked`** por imaturidade do caminho iOS do ubrn / integração Expo-prebuild-autolink: instrui `blocked` com erro EXATO (decisão estratégica = ADR-0008). |
