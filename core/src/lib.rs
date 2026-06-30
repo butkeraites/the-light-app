@@ -40,6 +40,20 @@
 //! índice acento-insensível (`remove_diacritics 2`) e o ranking BM25 vivem no core.
 //! Mesmo gating de corpo da F0.9/F1.2 (corpo DB `cfg(not(wasm32))` + stub web), e
 //! anti-alucinação: todo texto de hit vem **do store local**.
+//!
+//! F1.8 expõe as **referências cruzadas (xref)**: [`cross_refs`], que **delega** à
+//! função livre `the_light_core::xref::for_verse(store.conn(), …)` (via
+//! `Store::open`) e adapta cada `xref::CrossRef` para o Record [`CrossRef`]. Nenhum
+//! SQL/ranking de xref é reimplementado aqui (sem `SELECT … FROM cross_references`,
+//! sem `ORDER BY votes`): a query, a ordenação por votos (DESC) e o filtro
+//! `votes >= min_votes` vivem no core (`xref.rs`). **Divergência de gating vs. F1.5:**
+//! o tipo-fonte `xref::CrossRef` está no módulo `xref`, que é `embedded`-only — logo o
+//! `From<xref::CrossRef>` é gated `cfg(not(wasm32))` (o Record em si só referencia
+//! tipos puros, `Reference`/`i64`, e existe em todos os alvos). Mesmo gating de corpo
+//! da F0.9/F1.2/F1.5 (corpo DB `cfg(not(wasm32))` + stub web). A xref é só
+//! **referência** (sem texto bíblico); os dados são **CC-BY** (OpenBible.info,
+//! ADR-0016) e a **string de atribuição visível** é responsabilidade da UI da F1.9 —
+//! a fronteira apenas **entrega os dados**.
 
 uniffi::setup_scaffolding!();
 
@@ -245,6 +259,52 @@ impl From<the_light_core::model::SearchHit> for SearchHit {
             text: h.text,
             highlighted: h.highlighted,
             score: h.score,
+        }
+    }
+}
+
+/// Uma **referência cruzada** (xref) de destino, na fronteira UniFFI.
+///
+/// Espelha `the_light_core::xref::CrossRef`: a [`reference`](Self::reference) de
+/// destino (book/chapter/verse, podendo ser um intervalo via [`VerseRange::Range`])
+/// e o número de [`votes`](Self::votes) da comunidade. A xref é só **referência** —
+/// **nenhum texto bíblico** é gerado nem necessário aqui (anti-alucinação); os dados
+/// vêm do store local (importador canônico, F1.7).
+///
+/// **Gating (divergência vs. `SearchHit`/`Verse`):** o tipo-fonte
+/// `the_light_core::xref::CrossRef` vive no módulo `xref`, que é
+/// `#[cfg(feature = "embedded")]` (**só no nativo**). Por isso o Record é definido em
+/// **todos** os alvos (só referencia tipos **puros**, [`Reference`]/`i64`), mas o
+/// [`From`] a partir do tipo-fonte do core é `#[cfg(not(target_arch = "wasm32"))]`
+/// (senão o build web quebra — o tipo-fonte não existe no wasm) e o módulo `xref`
+/// **não** entra no grafo wasm.
+///
+/// **`votes`:** votos da comunidade OpenBible.info (maior = mais relevante);
+/// **negativos = referências disputadas**, ocultas por padrão (ver
+/// [`cross_refs`] e `DEFAULT_MIN_VOTES = 1`).
+///
+/// **Licenciamento (ADR-0016):** os dados de xref são **CC-BY** (OpenBible.info). A
+/// fronteira apenas **entrega os dados** (referência + votos) — a tabela
+/// `cross_references` não tem coluna de licença/atribuição. A **string de atribuição**
+/// `Cross references courtesy of OpenBible.info (CC-BY)` é exibida pela **UI da
+/// F1.9**; a obrigação CC-BY do produto **não** desaparece, só muda de camada.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct CrossRef {
+    /// Versículo (ou intervalo) de destino relacionado.
+    pub reference: Reference,
+    /// Votos da comunidade OpenBible (maior = mais relevante; negativos = disputados).
+    pub votes: i64,
+}
+
+// O tipo-fonte `xref::CrossRef` é `embedded`-only (módulo `xref` do core); este
+// `From` precisa ficar fora do grafo wasm. O Record acima é puro e vale p/ todos os
+// alvos; aqui mapeamos só no nativo (`reference` via o `From` de `model::Reference`).
+#[cfg(not(target_arch = "wasm32"))]
+impl From<the_light_core::xref::CrossRef> for CrossRef {
+    fn from(c: the_light_core::xref::CrossRef) -> Self {
+        CrossRef {
+            reference: c.reference.into(),
+            votes: c.votes,
         }
     }
 }
@@ -610,6 +670,76 @@ pub fn search(
     #[cfg(target_arch = "wasm32")]
     {
         let _ = (db_path, query, translation, book, limit);
+        Err(CoreError::Generic {
+            message: "store local indisponível no alvo web (F0.10: wa-sqlite+OPFS)".to_string(),
+        })
+    }
+}
+
+/// Lista as **referências cruzadas** (xref) de um versículo do **store SQLite
+/// local**, delegando ao `the-light-core`.
+///
+/// Pipeline no **nativo** (tudo no core — uma fonte da verdade):
+/// `Store::open(db_path)` → `the_light_core::xref::for_verse(store.conn(), book,
+/// chapter, verse, min_votes, limit)` → adapta cada `xref::CrossRef` para o Record
+/// [`CrossRef`] e mapeia o erro para [`CoreError`]. **Nenhum** SQL/ranking de xref é
+/// reimplementado aqui (sem `SELECT … FROM cross_references`, sem `ORDER BY votes`,
+/// sem o filtro `votes >= min_votes` à mão): a query, a ordenação por votos (DESC) e o
+/// filtro vivem no core (`xref.rs`). A delegação usa a **função livre**
+/// `xref::for_verse` recebendo a `&Connection` de `Store::conn()` (o
+/// `EmbeddedSource`/`BibleSource` **não** têm método de xref) — ainda é delegação ao
+/// core; a fronteira não escreve SQL.
+///
+/// **Sem parâmetro `translation`:** a xref é **independente de tradução** (chaveada
+/// por book/chapter/verse). Um versículo sem referências cruzadas → `Vec` **vazio**
+/// (não é erro, não panica); erros só de I/O (`Store::open` com path inválido) ou
+/// `rusqlite`.
+///
+/// **Defaults (herdados do core):** `min_votes = None` usa
+/// `xref::DEFAULT_MIN_VOTES` (= **1** → **oculta** referências disputadas/negativas);
+/// `limit = None` usa `xref::DEFAULT_LIMIT` (= **20**). A UI/F1.9 pode pedir um
+/// `min_votes` menor (ex.: negativo) para **ver** as disputadas.
+///
+/// **Licenciamento (ADR-0016):** os dados de xref são **CC-BY** (OpenBible.info). A
+/// fronteira apenas **entrega os dados** (referência + votos); a **string de
+/// atribuição** `Cross references courtesy of OpenBible.info (CC-BY)` é exibida pela
+/// **UI da F1.9** — a obrigação CC-BY do produto **não** desaparece, só muda de
+/// camada. Anti-alucinação: xref é só **referência**, nenhum texto bíblico aqui.
+///
+/// Offline-first: nenhuma rede — apenas I/O local no `db_path`.
+///
+/// **Gating por alvo (ver ADR-0010):** mesmo molde de [`get_passage`]/[`search`] —
+/// corpo DB `cfg(not(target_arch = "wasm32"))`; stub web retornando [`CoreError`]
+/// (store web = F0.10), sem arrastar `xref`/`store`/`rusqlite` para o grafo wasm.
+#[uniffi::export]
+pub fn cross_refs(
+    db_path: String,
+    book: u8,
+    chapter: u16,
+    verse: u16,
+    min_votes: Option<i64>,
+    limit: Option<u32>,
+) -> Result<Vec<CrossRef>, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let store =
+            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })?;
+        let min_votes = min_votes.unwrap_or(the_light_core::xref::DEFAULT_MIN_VOTES);
+        let limit = limit
+            .map(|l| l as usize)
+            .unwrap_or(the_light_core::xref::DEFAULT_LIMIT);
+        let hits =
+            the_light_core::xref::for_verse(store.conn(), book, chapter, verse, min_votes, limit)
+                .map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })?;
+        Ok(hits.into_iter().map(CrossRef::from).collect())
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (db_path, book, chapter, verse, min_votes, limit);
         Err(CoreError::Generic {
             message: "store local indisponível no alvo web (F0.10: wa-sqlite+OPFS)".to_string(),
         })
@@ -1180,5 +1310,212 @@ mod search_tests {
         )
         .expect("buscar 'God' no bible.sqlite");
         assert!(!hits.is_empty(), "corpus real deve ter hits para 'God'");
+    }
+}
+
+/// Testes de **referências cruzadas** da F1.8 (`cross_refs`), **apenas no nativo**
+/// (host com a feature `embedded`, ADR-0005). As asserções primárias são **offline**
+/// e **determinísticas**: constroem um fixture pequeno num diretório temporário
+/// (schema = migrações do core via `Store::open`) e — como a tabela
+/// `cross_references` nasce **vazia** (sem trigger/seed; mesmo princípio do
+/// `verses_fts` na F1.5) — **populam** as linhas de xref à mão (setup de teste, **não**
+/// produto; como o próprio core faz em `xref.rs::seeded`). As tríades de domínio
+/// partem de João 3:16 (`from_book=43, from_chapter=3, from_verse=16`); **nenhum texto
+/// bíblico** é inserido (xref é só referência — anti-alucinação). Não dependem de
+/// `bible.sqlite` nem de rede.
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod xref_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// `bible.sqlite` (gerado-ignorado, ADR-0013): opcional — só para asserção
+    /// **bônus** guardada por `exists()`. As primárias passam só com o fixture.
+    const BIBLE_DB: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/data/bible.sqlite");
+
+    /// Banco temporário do fixture: remove o arquivo (e sidecars WAL/SHM) no `Drop`.
+    struct TmpDb(PathBuf);
+
+    impl TmpDb {
+        fn path(&self) -> String {
+            self.0.to_string_lossy().into_owned()
+        }
+    }
+
+    impl Drop for TmpDb {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+            if let Some(name) = self.0.file_name().and_then(|n| n.to_str()) {
+                let dir = self.0.parent().map(PathBuf::from).unwrap_or_default();
+                let _ = std::fs::remove_file(dir.join(format!("{name}-wal")));
+                let _ = std::fs::remove_file(dir.join(format!("{name}-shm")));
+            }
+        }
+    }
+
+    /// Caminho temporário único (offline, sem deps externas).
+    fn unique_tmp_db() -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "the-light-app-f1_8-{}-{nanos}-{n}.sqlite",
+            std::process::id()
+        ))
+    }
+
+    /// Constrói o fixture de xref: schema via migrações do core (`Store::open`) + DML
+    /// populando `cross_references` à mão (a tabela nasce vazia; sem trigger/seed).
+    /// Tríades de domínio **de** João 3:16 (43/3/16): Rm 5:8 (votos 50), Jo 3:15 (30),
+    /// Rm 5:8-9 (`to_verse_start != to_verse_end` → Range, 20) e uma disputada
+    /// (1:1:1, votos -5). Só inteiros → seguros inline em DML (mesma técnica do
+    /// `search_tests`; nenhum schema é escrito à mão). Nenhum texto bíblico — xref é
+    /// só referência.
+    fn build_xref_fixture() -> TmpDb {
+        let path = unique_tmp_db();
+        let _ = std::fs::remove_file(&path);
+
+        {
+            let store =
+                the_light_core::store::Store::open(&path).expect("abrir/migrar fixture de xref");
+            let conn = store.conn();
+
+            // (from_book, from_chapter, from_verse, to_book, to_chapter,
+            //  to_verse_start, to_verse_end, votes).
+            for (fb, fc, fv, tb, tc, ts, te, votes) in [
+                (43i64, 3i64, 16i64, 45i64, 5i64, 8i64, 8i64, 50i64), // Romanos 5:8
+                (43, 3, 16, 43, 3, 15, 15, 30),                       // João 3:15
+                (43, 3, 16, 45, 5, 8, 9, 20),                         // Romanos 5:8-9 (Range)
+                (43, 3, 16, 1, 1, 1, 1, -5),                          // disputada (votos -5)
+            ] {
+                let sql = format!(
+                    "INSERT INTO cross_references \
+                     (from_book,from_chapter,from_verse,to_book,to_chapter,to_verse_start,to_verse_end,votes) \
+                     VALUES ({fb},{fc},{fv},{tb},{tc},{ts},{te},{votes})"
+                );
+                conn.execute(&sql, []).expect("popular cross_references");
+            }
+        } // `store`/`conn` fecham aqui (flush no arquivo).
+
+        TmpDb(path)
+    }
+
+    #[test]
+    fn cross_refs_lists_by_votes_with_romans_5_8_first() {
+        let db = build_xref_fixture();
+        let refs = cross_refs(db.path(), 43, 3, 16, None, None).expect("listar xrefs de João 3:16");
+        assert!(!refs.is_empty(), "esperado ≥1 xref para João 3:16");
+
+        // Inclui um alvo em Romanos (book 45) capítulo 5, versículo único 8 (Rm 5:8).
+        let rm = refs
+            .iter()
+            .find(|r| {
+                r.reference.book == 45
+                    && r.reference.chapter == 5
+                    && r.reference.verses == VerseRange::Single { verse: 8 }
+            })
+            .expect("Romanos 5:8 presente nas xrefs");
+        assert_eq!(rm.votes, 50, "Romanos 5:8 tem 50 votos no fixture");
+
+        // Ordenado por votos DESC (herdado do core): [0] é o mais votado (Rm 5:8, 50).
+        assert_eq!(refs[0].reference.book, 45, "[0] aponta para Romanos");
+        assert_eq!(refs[0].reference.chapter, 5, "[0] capítulo 5");
+        assert_eq!(
+            refs[0].reference.verses,
+            VerseRange::Single { verse: 8 },
+            "[0] versículo único 8"
+        );
+        assert_eq!(refs[0].votes, 50, "[0] é o de maior nº de votos");
+        assert!(
+            refs.windows(2).all(|w| w[0].votes >= w[1].votes),
+            "votos em ordem decrescente: {:?}",
+            refs.iter().map(|r| r.votes).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn cross_refs_maps_range_targets() {
+        let db = build_xref_fixture();
+        let refs = cross_refs(db.path(), 43, 3, 16, None, None).expect("listar xrefs de João 3:16");
+        // to_verse_start=8 != to_verse_end=9 → VerseRange::Range (Romanos 5:8-9).
+        let range = refs
+            .iter()
+            .find(|r| r.reference.verses == VerseRange::Range { start: 8, end: 9 })
+            .expect("Romanos 5:8-9 (Range) presente");
+        assert_eq!(range.reference.book, 45, "Romanos");
+        assert_eq!(range.reference.chapter, 5, "capítulo 5");
+    }
+
+    #[test]
+    fn cross_refs_default_hides_disputed_lower_threshold_includes() {
+        let db = build_xref_fixture();
+
+        // Default (min_votes = None = DEFAULT_MIN_VOTES 1): a disputada (votos -5,
+        // alvo 1:1:1) NÃO aparece.
+        let default =
+            cross_refs(db.path(), 43, 3, 16, None, None).expect("listar xrefs (default min_votes)");
+        assert!(
+            !default.iter().any(|r| r.votes < 0),
+            "referências disputadas (votos negativos) ficam ocultas por padrão: {:?}",
+            default.iter().map(|r| r.votes).collect::<Vec<_>>()
+        );
+
+        // Limiar menor (Some(-100)): a disputada aparece → a contagem aumenta.
+        let with_disputed = cross_refs(db.path(), 43, 3, 16, Some(-100), None)
+            .expect("listar xrefs com min_votes baixo");
+        assert!(
+            with_disputed.len() > default.len(),
+            "min_votes menor inclui a disputada: {} vs {}",
+            with_disputed.len(),
+            default.len()
+        );
+        assert!(
+            with_disputed
+                .iter()
+                .any(|r| r.reference.book == 1 && r.votes == -5),
+            "a disputada (alvo 1:1:1, votos -5) aparece com min_votes = -100"
+        );
+    }
+
+    #[test]
+    fn cross_refs_respects_limit() {
+        let db = build_xref_fixture();
+        // Com min_votes baixo há 4 xrefs; limit=1 → exatamente 1 (a mais votada).
+        let refs = cross_refs(db.path(), 43, 3, 16, Some(-100), Some(1))
+            .expect("listar xrefs com limit=1");
+        assert_eq!(refs.len(), 1, "limit=1 deve retornar exatamente 1 xref");
+        assert_eq!(
+            refs[0].votes, 50,
+            "o item retornado é o mais votado (Rm 5:8)"
+        );
+    }
+
+    #[test]
+    fn cross_refs_unknown_verse_is_empty_without_panic() {
+        let db = build_xref_fixture();
+        // Versículo sem xref → Vec vazio (não Err, não panic).
+        let refs = cross_refs(db.path(), 1, 1, 1, None, None)
+            .expect("versículo sem xref não deve panicar");
+        assert!(refs.is_empty(), "versículo sem xref = vazio");
+    }
+
+    #[test]
+    fn bonus_full_bible_db_xrefs_when_present() {
+        // BÔNUS, NÃO-REQUISITO: só roda se o `bible.sqlite` (gerado-ignorado) existir.
+        // As asserções primárias acima passam só com o fixture, offline. João 3:16 tem
+        // várias xrefs reais no OpenBible; não asserimos contagem exata (o default
+        // min_votes=1 filtra disputadas e a contagem pode driftar).
+        if !std::path::Path::new(BIBLE_DB).exists() {
+            return;
+        }
+        let refs = cross_refs(BIBLE_DB.to_string(), 43, 3, 16, None, None)
+            .expect("listar xrefs de João 3:16 no bible.sqlite");
+        assert!(
+            !refs.is_empty(),
+            "corpus real deve ter ≥1 xref para João 3:16"
+        );
     }
 }
