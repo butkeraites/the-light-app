@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-30 03:19 UTC · Estado do loop: **▶️ RODANDO — F0.6c aceita; F0.6b pronta p/ retry**
-Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · F0.6c **passed** (`7b98644`; `uniffi`=0.31.0; fronteira verde + JSI; conflito eliminado) · Elegível agora: **F0.6b (retry, attempt 2)** — caminho web do ubrn agora resolve o wasm-crate
+Última atualização: 2026-06-30 03:55 UTC · Estado do loop: **▶️ RODANDO — alvo WEB fechado (F0.6b passed); próxima F0.7 (iOS)**
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F0.6b passed** (`1cdde6c`; web/WASM ponta a ponta, prova headless PT==EN pelo Rust) · Próxima elegível: **F0.7 (iOS)** — ⚠️ deve bloquear (Xcode completo ausente, F0.0)
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -20,7 +20,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · F0.6c **passed** (`7b98644`; 
 | F0.6 | Ligar core no **web (WASM)** | 🔴 blocked → ♻️ re-escopada | F0.4, F0.5 | blocked (SQLite-no-WASM); ADR-0005 |
 | F0.6a | Consumir core c/ features por alvo (re-pin `8f66004`) | ✅ aceito | F0.4, F0.5, core | matriz por alvo OK; SQLite-no-WASM resolvido |
 | F0.6c | Alinhar `uniffi` da fronteira a `=0.31.0` (compat. ubrn web) | ✅ aceito | F0.6a | passed (7b98644) |
-| F0.6b | Bindings web (ubrn) + glue + tela + prova headless | 🟡 ready (retry, attempt 2) | F0.6a, F0.6c | attempt1: conflito uniffi (resolvido por F0.6c) |
+| F0.6b | Bindings web (ubrn) + glue + tela + prova headless | ✅ aceito | F0.6a, F0.6c | passed (1cdde6c) — web/WASM ponta a ponta |
 | F0.7 | Ligar core no **iOS**: chamar parse_reference | ⬜ | F0.4, F0.5 | — |
 | F0.8 | Ligar core no **Android**: chamar parse_reference | ⬜ | F0.4, F0.5 | — |
 | F0.9 | Store nativo (`rusqlite`): ler 1 passagem do sample.sqlite | ⬜ | F0.6/7/8 | — |
