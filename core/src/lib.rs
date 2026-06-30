@@ -54,6 +54,29 @@
 //! **referência** (sem texto bíblico); os dados são **CC-BY** (OpenBible.info,
 //! ADR-0016) e a **string de atribuição visível** é responsabilidade da UI da F1.9 —
 //! a fronteira apenas **entrega os dados**.
+//!
+//! F1.10 expõe o **CRUD de notas e marcações por referência** (dados do usuário,
+//! file-based): [`put_note`]/[`get_note`]/[`delete_note`]/[`list_notes`] e
+//! [`add_highlight`]/[`remove_highlight`]/[`list_highlights`], que **delegam** à
+//! camada `the_light_core::userdata` (`notes::NoteStore` + `highlights::HighlightStore`)
+//! — **nenhum** I/O de arquivo, slug de referência, ordenação ou serialização JSON é
+//! reimplementado aqui (vive no core). As funções recebem um **`data_dir` gravável do
+//! app** (quem o fornece é a F1.11) e derivam os subcaminhos do **MESMO layout default
+//! do core** (`notes/` + `highlights.json`), para o formato em disco ser **idêntico**
+//! ao de `open_default`/`load_default` (essencial p/ o EXPORT da F1.11 e a paridade web
+//! F1.16). A fronteira **nunca** chama `data_dir()`/`open_default`/`load_default`
+//! (dependentes de XDG/`directories`) → o erro `UserDataError::NoDataDir` **não ocorre**.
+//! A referência chega como `String` e é **canonicalizada pelo core**
+//! (`reference::parse_reference`, como [`get_passage`]) → PT e EN caem na MESMA
+//! nota/arquivo, evitando um `From<Reference>` reverso. **Separação de dados:** estas
+//! funções **não recebem `db_path`** e **nunca** tocam o `bible.sqlite` (conteúdo
+//! público só-leitura) — gravam apenas em `data_dir`. **Anti-alucinação não se aplica
+//! ao corpo da nota/highlight** (dado do usuário), só à referência (canônica).
+//! **Gating (como o `xref::CrossRef` da F1.8):** os tipos-fonte
+//! `userdata::notes::Note`/`userdata::highlights::Highlight` vivem em módulo
+//! `embedded`-only → os Records [`Note`]/[`Highlight`] são puros (todos os alvos), mas
+//! os `From` e o corpo das funções são `cfg(not(wasm32))` + stub web (paridade web =
+//! F1.16). A **UI/persistência no device/export é a F1.11** (fora de escopo aqui).
 
 uniffi::setup_scaffolding!();
 
@@ -740,6 +763,346 @@ pub fn cross_refs(
     #[cfg(target_arch = "wasm32")]
     {
         let _ = (db_path, book, chapter, verse, min_votes, limit);
+        Err(CoreError::Generic {
+            message: "store local indisponível no alvo web (F0.10: wa-sqlite+OPFS)".to_string(),
+        })
+    }
+}
+
+/// Uma **nota** do usuário associada a uma referência, na fronteira UniFFI.
+///
+/// Espelha `the_light_core::userdata::notes::Note`: a [`reference`](Self::reference)
+/// canônica e o [`body`](Self::body) em Markdown. O `body` é **dado do usuário** —
+/// **anti-alucinação não se aplica a ele** (texto livre, não bíblico); aplica-se à
+/// `reference`, que é o [`Reference`] **canônico** parseado pelo core (PT e EN caem na
+/// MESMA nota). Persistida como **um arquivo `.md` por referência** em `notes/` (nome
+/// canônico EN, ex.: `John_3.16.md`) — formato aberto e exportável (a serialização vive
+/// no core; a fronteira não escreve `.md` à mão).
+///
+/// **Gating (como [`CrossRef`]):** o tipo-fonte `userdata::notes::Note` vive no módulo
+/// `userdata`, que é `#[cfg(feature = "embedded")]` (**só no nativo**). Por isso o
+/// Record é definido em **todos** os alvos (só referencia tipos **puros**,
+/// [`Reference`]/`String`), mas o [`From`] a partir do tipo-fonte do core é
+/// `#[cfg(not(target_arch = "wasm32"))]` (o módulo `userdata` **não** entra no grafo
+/// wasm). Construída **somente** via [`From`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Note {
+    /// Referência canônica da nota (book/chapter/verses).
+    pub reference: Reference,
+    /// Corpo da nota em Markdown — **texto livre do usuário** (anti-alucinação não se
+    /// aplica ao corpo; aplica-se à `reference`).
+    pub body: String,
+}
+
+// O tipo-fonte `userdata::notes::Note` é `embedded`-only (módulo `userdata`); este
+// `From` fica fora do grafo wasm. O Record acima é puro e vale p/ todos os alvos; aqui
+// mapeamos só no nativo (`reference` via o `From` de `model::Reference`).
+#[cfg(not(target_arch = "wasm32"))]
+impl From<the_light_core::userdata::notes::Note> for Note {
+    fn from(n: the_light_core::userdata::notes::Note) -> Self {
+        Note {
+            reference: n.reference.into(),
+            body: n.body,
+        }
+    }
+}
+
+/// Uma **marcação** (highlight) do usuário sobre uma referência, na fronteira UniFFI.
+///
+/// Espelha `the_light_core::userdata::highlights::Highlight`: a
+/// [`reference`](Self::reference) canônica, a [`color`](Self::color) (nome livre, ex.:
+/// `"yellow"`) e uma [`tag`](Self::tag) opcional (etiqueta). `color`/`tag` são **dados
+/// do usuário** (anti-alucinação não se aplica); a `reference` é canônica. Persistida
+/// num único `highlights.json` (array legível `{ "ref", "color", "tag" }`) — formato
+/// aberto e exportável (a serialização vive no core).
+///
+/// **Gating (como [`Note`]/[`CrossRef`]):** o tipo-fonte
+/// `userdata::highlights::Highlight` é `embedded`-only → Record puro em **todos** os
+/// alvos ([`Reference`]/`String`/`Option<String>`), [`From`]
+/// `#[cfg(not(target_arch = "wasm32"))]`. Construída **somente** via [`From`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Highlight {
+    /// Referência canônica marcada (book/chapter/verses).
+    pub reference: Reference,
+    /// Cor da marcação — nome livre do usuário (ex.: `"yellow"`).
+    pub color: String,
+    /// Etiqueta opcional do usuário (ex.: `"salvação"`).
+    pub tag: Option<String>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl From<the_light_core::userdata::highlights::Highlight> for Highlight {
+    fn from(h: the_light_core::userdata::highlights::Highlight) -> Self {
+        Highlight {
+            reference: h.reference.into(),
+            color: h.color,
+            tag: h.tag,
+        }
+    }
+}
+
+/// Cria ou substitui a **nota** (Markdown) de uma referência, delegando ao core.
+///
+/// Pipeline no **nativo**: `reference::parse_reference(&reference)` (canonicaliza; PT e
+/// EN caem na mesma nota) → `userdata::notes::NoteStore::new(data_dir/"notes")` →
+/// `NoteStore::put(&ref, &body)` (**escrita atômica**; cria/substitui o `.md`). **Nenhum**
+/// I/O de arquivo ou slug de referência é reimplementado aqui (vive no core). O `body` é
+/// **texto livre do usuário** (anti-alucinação não se aplica). Offline-first: só I/O
+/// local em `data_dir` — **nunca** toca `bible.sqlite` (sem `db_path`).
+///
+/// A função **não verifica** se o versículo existe em algum banco bíblico: uma `String`
+/// que **não parseia** como referência → [`CoreError`] (antes de qualquer I/O); uma
+/// referência **sintaticamente válida** é sempre aceita (é responsabilidade da UI/F1.11
+/// só oferecer notas em referências reais).
+///
+/// **Gating por alvo (ver ADR-0010):** corpo que toca `userdata`
+/// `cfg(not(target_arch = "wasm32"))`; stub web retornando [`CoreError`] (paridade web =
+/// F1.16), sem arrastar `userdata` para o grafo wasm.
+#[uniffi::export]
+pub fn put_note(data_dir: String, reference: String, body: String) -> Result<(), CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let reference = the_light_core::reference::parse_reference(&reference).map_err(|e| {
+            CoreError::Generic {
+                message: e.to_string(),
+            }
+        })?;
+        let store = the_light_core::userdata::notes::NoteStore::new(
+            std::path::Path::new(&data_dir).join("notes"),
+        );
+        store
+            .put(&reference, &body)
+            .map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (data_dir, reference, body);
+        Err(CoreError::Generic {
+            message: "store local indisponível no alvo web (F0.10: wa-sqlite+OPFS)".to_string(),
+        })
+    }
+}
+
+/// Lê a **nota** de uma referência (se existir), delegando ao core.
+///
+/// Pipeline no **nativo**: parse da ref pelo core →
+/// `NoteStore::new(data_dir/"notes").get(&ref)` → `Option<Note>` (ausente → `Ok(None)`,
+/// **não** erro). **Nenhum** I/O é reimplementado. Referência **válida** sem nota →
+/// `Ok(None)`; `String` que não parseia → [`CoreError`]. Offline-first; sem `db_path`.
+///
+/// **Gating por alvo (ver ADR-0010):** corpo `cfg(not(target_arch = "wasm32"))`; stub web
+/// retornando [`CoreError`].
+#[uniffi::export]
+pub fn get_note(data_dir: String, reference: String) -> Result<Option<Note>, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let reference = the_light_core::reference::parse_reference(&reference).map_err(|e| {
+            CoreError::Generic {
+                message: e.to_string(),
+            }
+        })?;
+        let store = the_light_core::userdata::notes::NoteStore::new(
+            std::path::Path::new(&data_dir).join("notes"),
+        );
+        let note = store.get(&reference).map_err(|e| CoreError::Generic {
+            message: e.to_string(),
+        })?;
+        Ok(note.map(Note::from))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (data_dir, reference);
+        Err(CoreError::Generic {
+            message: "store local indisponível no alvo web (F0.10: wa-sqlite+OPFS)".to_string(),
+        })
+    }
+}
+
+/// Remove a **nota** de uma referência (idempotente), delegando ao core.
+///
+/// Pipeline no **nativo**: parse da ref pelo core →
+/// `NoteStore::new(data_dir/"notes").delete(&ref)` → `true` se havia nota, `false` se
+/// não havia (**idempotente**, não erro). **Nenhum** I/O é reimplementado. `String` que
+/// não parseia → [`CoreError`]. Offline-first; sem `db_path`.
+///
+/// **Gating por alvo (ver ADR-0010):** corpo `cfg(not(target_arch = "wasm32"))`; stub web
+/// retornando [`CoreError`].
+#[uniffi::export]
+pub fn delete_note(data_dir: String, reference: String) -> Result<bool, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let reference = the_light_core::reference::parse_reference(&reference).map_err(|e| {
+            CoreError::Generic {
+                message: e.to_string(),
+            }
+        })?;
+        let store = the_light_core::userdata::notes::NoteStore::new(
+            std::path::Path::new(&data_dir).join("notes"),
+        );
+        store.delete(&reference).map_err(|e| CoreError::Generic {
+            message: e.to_string(),
+        })
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (data_dir, reference);
+        Err(CoreError::Generic {
+            message: "store local indisponível no alvo web (F0.10: wa-sqlite+OPFS)".to_string(),
+        })
+    }
+}
+
+/// Lista todas as **notas** de um `data_dir`, ordenadas por referência canônica,
+/// delegando ao core.
+///
+/// Pipeline no **nativo**: `NoteStore::new(data_dir/"notes").list()` → `Vec<Note>`
+/// (**ordenada** por book/chapter/verse; diretório `notes/` ausente → `Vec` **vazio**,
+/// não erro; `.md` não-reconhecível é ignorado). **Nenhuma** ordenação/serialização é
+/// reimplementada aqui. Offline-first; sem `db_path`.
+///
+/// **Gating por alvo (ver ADR-0010):** corpo `cfg(not(target_arch = "wasm32"))`; stub web
+/// retornando [`CoreError`].
+#[uniffi::export]
+pub fn list_notes(data_dir: String) -> Result<Vec<Note>, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let store = the_light_core::userdata::notes::NoteStore::new(
+            std::path::Path::new(&data_dir).join("notes"),
+        );
+        let notes = store.list().map_err(|e| CoreError::Generic {
+            message: e.to_string(),
+        })?;
+        Ok(notes.into_iter().map(Note::from).collect())
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = data_dir;
+        Err(CoreError::Generic {
+            message: "store local indisponível no alvo web (F0.10: wa-sqlite+OPFS)".to_string(),
+        })
+    }
+}
+
+/// Adiciona (ou substitui) uma **marcação** (highlight) por referência, delegando ao
+/// core.
+///
+/// Pipeline no **nativo** (modelo **load → mutate → save**): parse da ref pelo core →
+/// `HighlightStore::load(data_dir/"highlights.json")` → `add(Highlight { ref, color,
+/// tag })` (**substitui** a marcação de mesma referência, não duplica) → `save()`
+/// (**escrita atômica** do arquivo inteiro). **Nenhum** JSON é montado à mão (vive no
+/// core). Cada chamada abre um store novo do disco → a persistência é provada relendo de
+/// **outro handle**. `color`/`tag` são **dados do usuário**. `String` que não parseia →
+/// [`CoreError`]. Offline-first; sem `db_path`.
+///
+/// **Gating por alvo (ver ADR-0010):** corpo `cfg(not(target_arch = "wasm32"))`; stub web
+/// retornando [`CoreError`].
+#[uniffi::export]
+pub fn add_highlight(
+    data_dir: String,
+    reference: String,
+    color: String,
+    tag: Option<String>,
+) -> Result<(), CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let reference = the_light_core::reference::parse_reference(&reference).map_err(|e| {
+            CoreError::Generic {
+                message: e.to_string(),
+            }
+        })?;
+        let path = std::path::Path::new(&data_dir).join("highlights.json");
+        let mut store =
+            the_light_core::userdata::highlights::HighlightStore::load(&path).map_err(|e| {
+                CoreError::Generic {
+                    message: e.to_string(),
+                }
+            })?;
+        store.add(the_light_core::userdata::highlights::Highlight {
+            reference,
+            color,
+            tag,
+        });
+        store.save().map_err(|e| CoreError::Generic {
+            message: e.to_string(),
+        })
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (data_dir, reference, color, tag);
+        Err(CoreError::Generic {
+            message: "store local indisponível no alvo web (F0.10: wa-sqlite+OPFS)".to_string(),
+        })
+    }
+}
+
+/// Remove as **marcações** de uma referência (idempotente), delegando ao core.
+///
+/// Pipeline no **nativo** (load → mutate → save): parse da ref pelo core →
+/// `HighlightStore::load(data_dir/"highlights.json")` → `remove(&ref)` (devolve quantas
+/// saíram, `usize` → `u32` porque UniFFI não tem `usize`) → `save()`. **Idempotente**:
+/// remover uma referência ausente → `0` (não erro). **Nenhum** JSON é reimplementado.
+/// `String` que não parseia → [`CoreError`]. Offline-first; sem `db_path`.
+///
+/// **Gating por alvo (ver ADR-0010):** corpo `cfg(not(target_arch = "wasm32"))`; stub web
+/// retornando [`CoreError`].
+#[uniffi::export]
+pub fn remove_highlight(data_dir: String, reference: String) -> Result<u32, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let reference = the_light_core::reference::parse_reference(&reference).map_err(|e| {
+            CoreError::Generic {
+                message: e.to_string(),
+            }
+        })?;
+        let path = std::path::Path::new(&data_dir).join("highlights.json");
+        let mut store =
+            the_light_core::userdata::highlights::HighlightStore::load(&path).map_err(|e| {
+                CoreError::Generic {
+                    message: e.to_string(),
+                }
+            })?;
+        let removed = store.remove(&reference);
+        store.save().map_err(|e| CoreError::Generic {
+            message: e.to_string(),
+        })?;
+        Ok(removed as u32)
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (data_dir, reference);
+        Err(CoreError::Generic {
+            message: "store local indisponível no alvo web (F0.10: wa-sqlite+OPFS)".to_string(),
+        })
+    }
+}
+
+/// Lista todas as **marcações** (highlights) de um `data_dir`, delegando ao core.
+///
+/// Pipeline no **nativo**: `HighlightStore::load(data_dir/"highlights.json").list()` →
+/// `Vec<Highlight>` (arquivo ausente → `Vec` **vazio**, não erro; entradas com referência
+/// inválida são ignoradas pelo core). **Nenhuma** desserialização é reimplementada aqui.
+/// Offline-first; sem `db_path`.
+///
+/// **Gating por alvo (ver ADR-0010):** corpo `cfg(not(target_arch = "wasm32"))`; stub web
+/// retornando [`CoreError`].
+#[uniffi::export]
+pub fn list_highlights(data_dir: String) -> Result<Vec<Highlight>, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let path = std::path::Path::new(&data_dir).join("highlights.json");
+        let store =
+            the_light_core::userdata::highlights::HighlightStore::load(&path).map_err(|e| {
+                CoreError::Generic {
+                    message: e.to_string(),
+                }
+            })?;
+        Ok(store.list().iter().cloned().map(Highlight::from).collect())
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = data_dir;
         Err(CoreError::Generic {
             message: "store local indisponível no alvo web (F0.10: wa-sqlite+OPFS)".to_string(),
         })
@@ -1516,6 +1879,266 @@ mod xref_tests {
         assert!(
             !refs.is_empty(),
             "corpus real deve ter ≥1 xref para João 3:16"
+        );
+    }
+}
+
+/// Testes de **notas/marcações** da F1.10 (`put_note`/`get_note`/`delete_note`/
+/// `list_notes` + `add_highlight`/`remove_highlight`/`list_highlights`), **apenas no
+/// nativo** (host com a feature `embedded`, ADR-0005). As asserções são **offline** e
+/// **determinísticas**: criam um **diretório** temporário único (não um arquivo de DB) e
+/// exercitam as 7 funções, **relendo de outra chamada/handle** (cada chamada abre um
+/// store novo do disco → prova persistência em **disco**, não em memória). **Não**
+/// dependem de `bible.sqlite` nem de rede — notas/highlights são chaveadas por
+/// **referência**, separadas do conteúdo bíblico só-leitura. Os textos são **do
+/// usuário** (não bíblicos): anti-alucinação não se aplica ao corpo/cor/tag.
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod userdata_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// Diretório de dados temporário do fixture: criado no `new`, **removido
+    /// recursivamente** no `Drop` (mesmo em panic). Reproduz o `TmpDb`/`Drop` das
+    /// F1.2/F1.5/F1.8, porém para um **diretório** (o `data_dir` gravável do app), não um
+    /// arquivo de DB. Criar/limpar o diretório é **fixture de teste**, não produto — o
+    /// I/O de userdata (slug, `.md`, JSON, ordenação) vive no core.
+    struct TmpDir(PathBuf);
+
+    impl TmpDir {
+        /// Cria um `data_dir` temporário único e vazio (offline, sem deps externas).
+        fn new() -> Self {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static COUNTER: AtomicU64 = AtomicU64::new(0);
+            let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let dir = std::env::temp_dir().join(format!(
+                "the-light-app-f1_10-{}-{nanos}-{n}",
+                std::process::id()
+            ));
+            std::fs::create_dir_all(&dir).expect("criar data_dir temporário");
+            TmpDir(dir)
+        }
+
+        /// Caminho do `data_dir` como `String` (o que a fronteira recebe).
+        fn path(&self) -> String {
+            self.0.to_string_lossy().into_owned()
+        }
+    }
+
+    impl Drop for TmpDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn note_roundtrip_persists_to_disk_across_handles() {
+        let dir = TmpDir::new();
+        // Texto **do usuário** (não bíblico): anti-alucinação não se aplica ao corpo.
+        put_note(
+            dir.path(),
+            "John 3:16".to_string(),
+            "# Amor de Deus\n\nVersículo central.".to_string(),
+        )
+        .expect("put_note deve gravar a nota");
+
+        // Chamada SEPARADA → abre um NoteStore novo do disco (prova persistência em
+        // disco, não em memória).
+        let note = get_note(dir.path(), "John 3:16".to_string())
+            .expect("get_note não deve falhar")
+            .expect("a nota recém-gravada deve existir");
+        assert!(
+            note.body.contains("Amor de Deus"),
+            "corpo da nota verbatim do usuário: {}",
+            note.body
+        );
+        // Referência canônica: João = livro 43, capítulo 3, versículo único 16.
+        assert_eq!(note.reference.book, 43, "João é o livro 43");
+        assert_eq!(note.reference.chapter, 3, "capítulo 3");
+        assert_eq!(
+            note.reference.verses,
+            VerseRange::Single { verse: 16 },
+            "versículo único 16"
+        );
+        // Um arquivo .md por nota, com nome canônico EN (slug do core: `John_3.16.md`).
+        assert!(
+            dir.0.join("notes").join("John_3.16.md").exists(),
+            "a nota é um .md por referência (nome canônico EN, slug do core)"
+        );
+    }
+
+    #[test]
+    fn note_reference_is_canonical_pt_equals_en() {
+        let dir = TmpDir::new();
+        // Grava em PT ("Jo 3.16"); lê em EN ("John 3:16") → MESMA nota/arquivo.
+        put_note(
+            dir.path(),
+            "Jo 3.16".to_string(),
+            "PT e EN são a mesma nota".to_string(),
+        )
+        .expect("put_note em PT");
+        let note = get_note(dir.path(), "John 3:16".to_string())
+            .expect("get_note em EN não deve falhar")
+            .expect("PT e EN caem na MESMA nota (canonicalização do core)");
+        assert!(note.body.contains("mesma nota"));
+        // Só um arquivo (canônico EN), não dois.
+        assert!(dir.0.join("notes").join("John_3.16.md").exists());
+        assert_eq!(
+            list_notes(dir.path()).expect("listar notas").len(),
+            1,
+            "PT+EN convergem em UMA nota"
+        );
+    }
+
+    #[test]
+    fn list_notes_is_sorted_by_canonical_reference() {
+        let dir = TmpDir::new();
+        put_note(dir.path(), "John 3:16".to_string(), "joão".to_string()).expect("nota João");
+        put_note(dir.path(), "Gn 1.1".to_string(), "gênesis".to_string()).expect("nota Gênesis");
+
+        let notes = list_notes(dir.path()).expect("listar notas");
+        assert_eq!(notes.len(), 2, "duas notas distintas: {notes:?}");
+        // Ordenada por referência canônica: Gênesis (1) antes de João (43).
+        assert_eq!(notes[0].reference.book, 1, "Gênesis (1) primeiro");
+        assert_eq!(notes[1].reference.book, 43, "João (43) depois");
+    }
+
+    #[test]
+    fn delete_note_is_idempotent() {
+        let dir = TmpDir::new();
+        put_note(dir.path(), "John 3:16".to_string(), "corpo".to_string()).expect("gravar nota");
+
+        // Primeira remoção: havia nota → true.
+        assert!(
+            delete_note(dir.path(), "John 3:16".to_string()).expect("delete_note 1"),
+            "primeira remoção devolve true (havia nota)"
+        );
+        // Segunda remoção: não havia → false (idempotente, não erro).
+        assert!(
+            !delete_note(dir.path(), "John 3:16".to_string()).expect("delete_note 2"),
+            "segunda remoção devolve false (idempotente)"
+        );
+        // get_note subsequente → Ok(None).
+        assert!(
+            get_note(dir.path(), "John 3:16".to_string())
+                .expect("get_note pós-delete")
+                .is_none(),
+            "nota removida → Ok(None)"
+        );
+    }
+
+    #[test]
+    fn empty_data_dir_lists_empty_without_panic() {
+        // data_dir recém-criado: sem `notes/` nem `highlights.json`.
+        let dir = TmpDir::new();
+        assert!(
+            list_notes(dir.path())
+                .expect("list_notes em data_dir vazio não deve panicar/erro")
+                .is_empty(),
+            "sem notes/ → Vec vazio"
+        );
+        assert!(
+            list_highlights(dir.path())
+                .expect("list_highlights em data_dir vazio não deve panicar/erro")
+                .is_empty(),
+            "sem highlights.json → Vec vazio"
+        );
+        // Referência válida sem nota → Ok(None) (não erro).
+        assert!(
+            get_note(dir.path(), "John 3:16".to_string())
+                .expect("get_note de ref válida sem nota não é erro")
+                .is_none(),
+            "referência válida sem nota → Ok(None)"
+        );
+    }
+
+    #[test]
+    fn highlight_roundtrip_and_replace_same_reference() {
+        let dir = TmpDir::new();
+        add_highlight(
+            dir.path(),
+            "John 3:16".to_string(),
+            "yellow".to_string(),
+            Some("salvação".to_string()),
+        )
+        .expect("add_highlight amarelo");
+
+        // Chamada nova → relê do disco (outro handle).
+        let hls = list_highlights(dir.path()).expect("listar highlights");
+        assert_eq!(hls.len(), 1, "um highlight");
+        assert_eq!(hls[0].color, "yellow", "cor do usuário");
+        assert_eq!(hls[0].tag.as_deref(), Some("salvação"), "tag do usuário");
+        assert_eq!(hls[0].reference.book, 43);
+        assert_eq!(hls[0].reference.chapter, 3);
+        assert_eq!(hls[0].reference.verses, VerseRange::Single { verse: 16 });
+
+        // Mesma referência → substitui (não duplica): cor/tag atualizadas.
+        add_highlight(
+            dir.path(),
+            "John 3:16".to_string(),
+            "green".to_string(),
+            None,
+        )
+        .expect("add_highlight verde substitui");
+        let hls = list_highlights(dir.path()).expect("listar highlights após substituição");
+        assert_eq!(hls.len(), 1, "substituição não duplica: continua 1");
+        assert_eq!(hls[0].color, "green", "cor substituída");
+        assert_eq!(hls[0].tag, None, "tag substituída por None");
+    }
+
+    #[test]
+    fn remove_highlight_is_idempotent() {
+        let dir = TmpDir::new();
+        add_highlight(
+            dir.path(),
+            "John 3:16".to_string(),
+            "yellow".to_string(),
+            None,
+        )
+        .expect("add_highlight");
+
+        // Primeira remoção: 1 saiu.
+        assert_eq!(
+            remove_highlight(dir.path(), "John 3:16".to_string()).expect("remove 1"),
+            1,
+            "primeira remoção tira 1"
+        );
+        // Segunda remoção: nada (idempotente, não erro).
+        assert_eq!(
+            remove_highlight(dir.path(), "John 3:16".to_string()).expect("remove 2"),
+            0,
+            "segunda remoção tira 0 (idempotente)"
+        );
+        assert!(
+            list_highlights(dir.path()).expect("listar").is_empty(),
+            "lista vazia após remoção"
+        );
+    }
+
+    #[test]
+    fn invalid_reference_maps_to_core_error_before_io() {
+        let dir = TmpDir::new();
+        // put_note com referência que não parseia → CoreError (antes de qualquer I/O).
+        let err = put_note(
+            dir.path(),
+            "isto nao e referencia".to_string(),
+            "x".to_string(),
+        )
+        .expect_err("referência inválida deve falhar no put_note");
+        assert!(matches!(err, CoreError::Generic { .. }));
+
+        // get_note com a mesma string inválida → CoreError.
+        let err = get_note(dir.path(), "isto nao e referencia".to_string())
+            .expect_err("referência inválida deve falhar no get_note");
+        assert!(matches!(err, CoreError::Generic { .. }));
+
+        // Nenhum arquivo/dir foi criado pelo caminho de erro (parse falha antes do I/O).
+        assert!(
+            !dir.0.join("notes").exists(),
+            "ref inválida não cria notes/ (parse falha antes do I/O)"
         );
     }
 }
