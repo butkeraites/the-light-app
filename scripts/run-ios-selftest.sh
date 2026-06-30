@@ -15,13 +15,15 @@
 #      mount da HomeScreen;
 #   4) instala + lança o app, capturando o log unificado do simulador
 #      (`simctl spawn booted log stream`);
-#   5) ASSERTA os marcadores de PARSE (PT e EN) E de LEITURA (F1.3/ADR-0014). Sai
-#      0 só se TODOS aparecerem:
+#   5) ASSERTA os marcadores de PARSE (PT e EN), de LEITURA (F1.3/ADR-0014) E de
+#      LEITURA PARALELA (F1.4/ADR-0015). Sai 0 só se TODOS aparecerem:
 #        TLA_SELFTEST PT book=43 chapter=3 verse=16
 #        TLA_SELFTEST EN book=43 chapter=3 verse=16
 #        TLA_READ books=66 john3_v16="For God so loved the world..." john_chapters=21
-#      (o texto de João 3:16 vem do RETORNO de get_chapter — store local, KJV
-#       verbatim — não hardcoded; o app copia o banco bundled p/ um caminho
+#        TLA_PARALLEL kjv_john3_16="For God so loved the world..." alm_john3_16="Porque Deus amou o mundo de tal maneira..."
+#      (os textos de João 3:16 vêm do RETORNO de get_chapter — store local, KJV e
+#       Almeida 1911 verbatim — não hardcoded; o lado a lado lê AS DUAS traduções
+#       por DUAS chamadas de get_chapter. O app copia o banco bundled p/ um caminho
 #       gravável no 1º boot e lê pela fronteira nativa → JSI → the-light-core.)
 #   6) limpa: encerra o app, o Metro, o stream e desliga o simulador.
 #
@@ -59,6 +61,12 @@ MARK_EN="TLA_SELFTEST EN book=43 chapter=3 verse=16"
 MARK_READ_BOOKS="TLA_READ books=66"          # list_books (puro, 66 livros)
 MARK_READ_TEXT="For God so loved the world"  # João 3:16 KJV verbatim do store
 MARK_READ_CHAP="john_chapters=21"            # chapter_count(kjv,43) DB-backed
+# F1.4 (ADR-0015): PROVA DE LEITURA PARALELA. O mesmo João 3:16 é lido em DUAS
+# traduções (kjv E alm1911) por DUAS chamadas de get_chapter — base do lado a
+# lado. Ambos os textos vêm do RETORNO de get_chapter (store local, verbatim) —
+# não hardcoded no glue/selftest; aqui o script só confere substrings esperados.
+MARK_PARALLEL="TLA_PARALLEL"                              # marcador composto da leitura paralela
+MARK_PARALLEL_ALM="Porque Deus amou o mundo de tal maneira"  # João 3:16 Almeida 1911 verbatim do store
 
 export PATH="/opt/homebrew/bin:$PATH"  # cocoapods/node instalados via brew
 LOG_DIR="$(mktemp -d -t f07-ios-selftest)"
@@ -159,7 +167,9 @@ for _ in $(seq 1 "$LAUNCH_WAIT"); do
     && grep -qF "$MARK_EN" "$STREAM_LOG" \
     && grep -qF "$MARK_READ_BOOKS" "$STREAM_LOG" \
     && grep -qF "$MARK_READ_TEXT" "$STREAM_LOG" \
-    && grep -qF "$MARK_READ_CHAP" "$STREAM_LOG"; then
+    && grep -qF "$MARK_READ_CHAP" "$STREAM_LOG" \
+    && grep -qF "$MARK_PARALLEL" "$STREAM_LOG" \
+    && grep -qF "$MARK_PARALLEL_ALM" "$STREAM_LOG"; then
     found=1
     break
   fi
@@ -171,7 +181,7 @@ grep -F "TLA_" "$STREAM_LOG" | sed 's/.*\(TLA_\)/\1/' | sort -u || true
 echo "---------------------------------------------"
 
 if [ "$found" != "1" ]; then
-  echo "ERRO: marcadores de parse (PT/EN) e/ou de leitura (TLA_READ) não apareceram em ${LAUNCH_WAIT}s." >&2
+  echo "ERRO: marcadores de parse (PT/EN), leitura (TLA_READ) e/ou leitura paralela (TLA_PARALLEL + Almeida) não apareceram em ${LAUNCH_WAIT}s." >&2
   exit 1
 fi
 
@@ -179,4 +189,5 @@ fi
 echo "$MARK_PT"
 echo "$MARK_EN"
 grep -F "TLA_READ books=66" "$STREAM_LOG" | sed 's/.*\(TLA_READ\)/\1/' | head -1
-echo "==> OK — parse_reference (PT==EN) E leitura (books=66, João 3:16 KJV verbatim, john_chapters=21) provados pelo Rust nativo via Turbo Module."
+grep -F "TLA_PARALLEL" "$STREAM_LOG" | sed 's/.*\(TLA_PARALLEL\)/\1/' | head -1
+echo "==> OK — parse_reference (PT==EN), leitura (books=66, João 3:16 KJV verbatim, john_chapters=21) E leitura PARALELA (João 3:16 KJV|Almeida 1911, ambos do store via get_chapter) provados pelo Rust nativo via Turbo Module."

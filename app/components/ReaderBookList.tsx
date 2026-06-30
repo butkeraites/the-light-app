@@ -1,9 +1,12 @@
-// app/components/ReaderBookList.tsx — F1.3
+// app/components/ReaderBookList.tsx — F1.3 · tokens de tema F1.4 (ADR-0015)
 //
 // Apresentacional: lista os 66 livros canônicos (vindos de `listBooks()` — PURO,
-// pela fronteira nativa). Não faz leitura de store nem lógica de domínio.
+// pela fronteira nativa). Cores via TOKENS de tema (`useTheme`), não mais hex
+// hardcoded. Não faz leitura de store nem lógica de domínio.
+import { useMemo } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useTheme, type ThemeColors } from '../lib/theme';
 import type { Book } from '../web/reading';
 
 export function ReaderBookList({
@@ -13,10 +16,14 @@ export function ReaderBookList({
   books: Book[];
   onSelect: (book: Book) => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   return (
     <FlatList
       data={books}
       keyExtractor={(b) => String(b.number)}
+      style={styles.container}
       contentContainerStyle={styles.list}
       renderItem={({ item }) => (
         <Pressable
@@ -36,26 +43,29 @@ export function ReaderBookList({
   );
 }
 
-const styles = StyleSheet.create({
-  list: { paddingVertical: 8 },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    gap: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e2e2e2',
-  },
-  number: {
-    width: 28,
-    textAlign: 'right',
-    fontSize: 13,
-    color: '#999999',
-    fontVariant: ['tabular-nums'],
-  },
-  names: { flex: 1 },
-  namePt: { fontSize: 16, color: '#111111' },
-  nameEn: { fontSize: 12, color: '#888888' },
-  chevron: { fontSize: 20, color: '#cccccc' },
-});
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { backgroundColor: colors.background },
+    list: { paddingVertical: 8 },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      gap: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.divider,
+    },
+    number: {
+      width: 28,
+      textAlign: 'right',
+      fontSize: 13,
+      color: colors.muted,
+      fontVariant: ['tabular-nums'],
+    },
+    names: { flex: 1 },
+    namePt: { fontSize: 16, color: colors.text },
+    nameEn: { fontSize: 12, color: colors.muted },
+    chevron: { fontSize: 20, color: colors.faint },
+  });
+}

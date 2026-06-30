@@ -3,12 +3,13 @@
 // Tela 2 do fluxo de leitura: LISTA DE CAPÍTULOS do livro. A quantidade vem de
 // `chapterCount(db, translation, book)` (DB-backed — quantos capítulos do livro
 // estão PRESENTES no store). Selecionar um capítulo abre o texto.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { ReaderChapterGrid } from '../../../components/ReaderChapterGrid';
 import { ensureReadingDb } from '../../../lib/db';
+import { useTheme, type ThemeColors } from '../../../lib/theme';
 import { chapterCount, listBooks } from '../../../web/reading';
 
 // Tradução default p/ a contagem de capítulos (o cânon é igual entre versões;
@@ -17,6 +18,8 @@ const DEFAULT_TRANSLATION = 'kjv';
 
 export default function ChaptersScreen() {
   const navigation = useNavigation();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { book } = useLocalSearchParams<{ book: string }>();
   const bookNumber = Number(book);
   const [count, setCount] = useState<number | null>(null);
@@ -50,7 +53,7 @@ export default function ChaptersScreen() {
   if (count == null) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator />
+        <ActivityIndicator color={colors.text} />
       </View>
     );
   }
@@ -62,7 +65,15 @@ export default function ChaptersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  error: { fontSize: 14, color: '#b00020', textAlign: 'center' },
-});
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    centered: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+      backgroundColor: colors.background,
+    },
+    error: { fontSize: 14, color: colors.error, textAlign: 'center' },
+  });
+}

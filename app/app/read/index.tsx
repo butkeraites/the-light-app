@@ -2,15 +2,18 @@
 //
 // Tela 1 do fluxo de leitura: LISTA DE LIVROS (66, de `listBooks()` — PURO, pela
 // fronteira nativa). Selecionar um livro navega para a lista de capítulos.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { router, useNavigation } from 'expo-router';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { ReaderBookList } from '../../components/ReaderBookList';
+import { useTheme, type ThemeColors } from '../../lib/theme';
 import { listBooks, type Book } from '../../web/reading';
 
 export default function BooksScreen() {
   const navigation = useNavigation();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [books, setBooks] = useState<Book[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +36,7 @@ export default function BooksScreen() {
   if (!books) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator />
+        <ActivityIndicator color={colors.text} />
       </View>
     );
   }
@@ -42,7 +45,15 @@ export default function BooksScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  error: { fontSize: 14, color: '#b00020', textAlign: 'center' },
-});
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    centered: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+      backgroundColor: colors.background,
+    },
+    error: { fontSize: 14, color: colors.error, textAlign: 'center' },
+  });
+}

@@ -1328,3 +1328,114 @@ checksums UniFFI dos novos símbolos (`get_chapter`=24118, `list_books`=43013,
   **web** (ler do store no browser) é a **F1.13**; bundling do **corpus completo**
   (otimização de tamanho) é posterior. Não antecipados aqui.
 
+## ADR-0015 — UI de leitura F1.4: **lado a lado** (2× `get_chapter` + alinhamento de apresentação) e **tema claro/escuro** (tokens + `useColorScheme` + override por SESSÃO)
+
+- **Data:** 2026-06-30 · **Status:** aceito · **Tarefa:** F1.4 · **Depende:** ADR-0014
+
+### Contexto
+A F1.4 estende a UI de leitura NATIVA da F1.3 com duas capacidades, **sem** tocar
+o core/fronteira (`the-light` pinado `8f66004`, `core/src/lib.rs` intacto) e **sem**
+reimplementar SQL/leitura/texto em TS:
+
+1. **Múltiplas versões LADO A LADO:** o **mesmo capítulo** em **duas traduções**
+   (ex.: KJV en | Almeida 1911 pt), com os versículos **alinhados pelo número**.
+2. **Tema claro/escuro:** respeitar `useColorScheme()` do RN **+ um toggle** que
+   alterna claro/escuro, migrando os `Reader*` (e a tela do capítulo) de **hex
+   hardcoded** para **tokens de tema**.
+
+A decisão registrada aqui é **de UI** (lado a lado = apresentação; tokens de
+tema): nenhuma nova função de fronteira, nenhuma dependência nova, nenhuma
+persistência em disco.
+
+### Decisão
+
+1. **Lado a lado = DUAS chamadas de `get_chapter` + alinhamento de APRESENTAÇÃO.**
+   Nada de função nova no core: a tela `read/[book]/[chapter].tsx`, no modo
+   paralelo, chama `getChapter(db, primária, …)` **e** `getChapter(db, secundária,
+   …)` (uma por tradução, via `reading.ts` → JSI → Rust) e passa as **duas
+   `Passage`** para `app/components/ReaderParallelView.tsx`. Esse componente
+   monta a **UNIÃO ORDENADA dos números de versículo** (`Single`) das duas
+   passagens e renderiza linhas com duas colunas; se um número existir só em uma
+   tradução (o cânon Almeida tem 1 versículo a menos em alguns capítulos), a outra
+   coluna mostra um **placeholder atenuado** (`—`). O alinhamento é
+   **PRESENTAÇÃO** sobre o retorno da fronteira (números + textos vêm do store),
+   **não** um SELECT/parser em TS. `testID` estáveis (`parallel-verse-<n>`).
+   Anti-alucinação: o texto continua **verbatim do store** (`get_chapter`), nunca
+   gerado na UI.
+
+2. **Toggle "lado a lado" + seletor da 2ª versão.** A tela mantém o
+   `ReaderVersionPicker` da F1.3 p/ a versão **primária** e ganha um **toggle**
+   (`parallel-toggle`). Quando ativo, exibe um **segundo seletor** (`testIDPrefix`
+   `version2`) com as traduções de `listTranslations(db)` **diferentes da
+   primária**; um efeito mantém a 2ª seleção **sempre ≠ da 1ª** (auto-ajuste se a
+   primária mudar p/ a mesma). O **modo simples** da F1.3 (`ReaderChapterView`)
+   permanece o default — **sem regressão**.
+
+3. **Tema = tokens light/dark + `useColorScheme` + override por SESSÃO.**
+   `app/lib/theme.ts` define dois conjuntos de **tokens de cor** (`light`/`dark`:
+   background, header, texto, versículo, número/`accent`, borda, divisória, chip
+   ativo/inativo, idioma, erro) e um `ThemeProvider`/`useTheme()`:
+   - **base** = `useColorScheme()` do RN (segue o sistema);
+   - **override** opcional por **toggle**, mantido em **estado/contexto na
+     SESSÃO** (memória) — **sem persistência em disco** e **sem nova dependência**.
+   Os `Reader*` e a tela do capítulo passam a construir estilos via
+   `makeStyles(colors)` (memoizado), **removendo os hex literais**. O
+   `app/app/_layout.tsx` envolve o `Stack` no `ThemeProvider` e aplica nas telas
+   de leitura `headerStyle`/`headerTintColor`/`contentStyle` temáticos + um
+   `ThemeToggleButton` (`theme-toggle`) no `headerRight` (toggle **visível**).
+
+4. **Prova determinística — leitura PARALELA no device (iOS).**
+   `app/web/reading-selftest.ts` ganha, além do `TLA_READ` da F1.3, um bloco que
+   lê `get_chapter(db,'kjv',43,3)` **e** `get_chapter(db,'alm1911',43,3)`, extrai o
+   v16 de **cada** e emite o marcador **composto do RETORNO REAL**:
+   `TLA_PARALLEL kjv_john3_16="…" alm_john3_16="…"` (ambos via `JSON.stringify`,
+   **nunca** hardcoded). `scripts/run-ios-selftest.sh` **asserta também**
+   `TLA_PARALLEL` + o substring KJV (`For God so loved the world`) + o substring
+   Almeida (`Porque Deus amou o mundo de tal maneira`) — capturados pelo predicado
+   `TLA_` existente — além de tudo que a F1.3 já assertava. Sai **0**.
+
+### Alternativas rejeitadas
+- **Nova função de fronteira `get_chapters_parallel`/`get_parallel`:** ❌
+  desnecessária e violaria "não mexer no core" — o lado a lado é **2 chamadas** de
+  `get_chapter` + alinhamento na view. Mudar o core seria **PR + ADR** (ação
+  humana), não esta tarefa.
+- **Alinhar versículos via SQL/JOIN ou parser em TS:** ❌ viola "uma fonte da
+  verdade"/anti-alucinação; o alinhamento é só **apresentação** sobre os números
+  (`Single`) que já vêm do `get_chapter`.
+- **Persistir o tema em disco (`AsyncStorage`/`expo-secure-store`):** preterido —
+  override **por sessão** (contexto) basta p/ a F1.4 e evita **nova dependência**.
+  Persistência entre reinícios fica como melhoria futura (sem decisão pendente).
+- **`Appearance`/lib de tema externa (ex.: `react-navigation` theming pesado):**
+  preterido — `useColorScheme()` + tokens próprios é mínimo, offline e sem dep.
+- **Migrar a HomeScreen (`index.tsx`) p/ tokens:** fora do escopo (F1.4 = UI de
+  **leitura**); a home permanece como na F0.x. O toggle de tema fica nas telas de
+  leitura.
+
+### Consequências
+- **Lado a lado provado no device (iOS):**
+  `TLA_PARALLEL kjv_john3_16="For God so loved the world…" alm_john3_16="Porque
+  Deus amou o mundo de tal maneira…"` capturado por `simctl log`; o script sai
+  **0**. **Ambos** os textos vêm do **retorno de `get_chapter`** (verificável no
+  código — não hardcoded), em DUAS traduções do MESMO capítulo.
+- **Tema:** `Reader*` + tela do capítulo consomem **tokens** (sem hex literais);
+  o app respeita o `useColorScheme` e o **toggle** alterna claro/escuro
+  **persistindo na sessão**. Prova de tema é por `tsc` + a UI (tokens centralizados).
+- **Sem regressão F1.3/F0.x:** `TLA_READ books=66 … john_chapters=21` e
+  `TLA_SELFTEST PT/EN` seguem passando; navegação livro→capítulo→texto + seletor de
+  versão intactos; `tsc --noEmit` 0; `expo export --platform web` 0 (stubs `.web`
+  mantidos — leitura/lado-a-lado web = F1.13).
+- **`the-light` e `core/src/lib.rs` INTACTOS** (`8f66004`); **nenhuma** função de
+  fronteira nova; **nenhuma** dependência nova; **offline-first** (zero rede em
+  runtime).
+- **Versionado nesta tarefa:** `app/lib/theme.ts`,
+  `app/components/ThemeToggleButton.tsx`, `app/components/ReaderParallelView.tsx`,
+  `app/components/Reader{ChapterView,VersionPicker,BookList,ChapterGrid}.tsx`
+  (tokens), `app/app/_layout.tsx`, `app/app/read/index.tsx`,
+  `app/app/read/[book]/index.tsx`, `app/app/read/[book]/[chapter].tsx`,
+  `app/web/reading-selftest.ts`, `scripts/run-ios-selftest.sh`, `DECISIONS.md`.
+  **Gerado/IGNORADO** (inalterado): `assets/data/reading-sample.sqlite`,
+  `app/web/native-generated/`, `app/ios`/`app/android`, jniLibs.
+- **Escopo:** F1.4 entrega **lado a lado + tema no NATIVO**. Paridade **web**
+  (leitura/lado-a-lado no browser) é a **F1.13**; persistência do tema entre
+  reinícios é melhoria futura. Não antecipados aqui.
+

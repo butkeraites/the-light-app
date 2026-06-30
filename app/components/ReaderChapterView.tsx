@@ -1,10 +1,13 @@
-// app/components/ReaderChapterView.tsx — F1.3
+// app/components/ReaderChapterView.tsx — F1.3 · tokens de tema F1.4 (ADR-0015)
 //
 // Apresentacional: renderiza o capítulo (Passage) com versículos NUMERADOS e
 // TEXTO VERBATIM do store (anti-alucinação — o texto vem do `get_chapter` do
-// Rust, nunca gerado/hardcodado na UI). Não faz I/O nem lógica de domínio.
+// Rust, nunca gerado/hardcodado na UI). Cores via TOKENS de tema (`useTheme`),
+// não mais hex hardcoded. Não faz I/O nem lógica de domínio.
+import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text } from 'react-native';
 
+import { useTheme, type ThemeColors } from '../lib/theme';
 import type { Passage } from '../web/reading';
 
 /** Número do versículo a partir do `VerseRange` (sempre `Single` num capítulo). */
@@ -13,6 +16,9 @@ function verseNumber(passageVerseRange: Passage['verses'][number]['reference']['
 }
 
 export function ReaderChapterView({ passage }: { passage: Passage }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   if (passage.verses.length === 0) {
     return (
       <ScrollView contentContainerStyle={styles.content}>
@@ -35,10 +41,12 @@ export function ReaderChapterView({ passage }: { passage: Passage }) {
   );
 }
 
-const styles = StyleSheet.create({
-  content: { padding: 20, gap: 10 },
-  verse: { fontSize: 17, lineHeight: 26 },
-  verseNumber: { fontSize: 12, color: '#b08400', fontWeight: '700' },
-  verseText: { color: '#1a1a1a' },
-  empty: { fontSize: 14, color: '#888888' },
-});
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    content: { padding: 20, gap: 10 },
+    verse: { fontSize: 17, lineHeight: 26 },
+    verseNumber: { fontSize: 12, color: colors.accent, fontWeight: '700' },
+    verseText: { color: colors.verseText },
+    empty: { fontSize: 14, color: colors.muted },
+  });
+}
