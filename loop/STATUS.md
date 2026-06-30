@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-30 14:00 UTC · Estado do loop: **▶️ RETOMADO — 🎯 MARCO 0 APROVADO; Fase 1 liberada**
-Heartbeat: ver `HEARTBEAT` · HALT: **ausente** (Marco 0 aprovado pelo humano, `aed825d`) · **Fase 0 COMPLETA** (F0.0–F0.11) · Próximo: **planner decompõe a Fase 1** (leitura offline: navegação, versões PT/EN, busca FTS5, xrefs, notas)
+Última atualização: 2026-06-30 15:30 UTC · Estado do loop: **▶️ ATIVO — Fase 1 decomposta; F1.1 semeada (🟡 ready)**
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **Fase 0 COMPLETA** (F0.0–F0.11; Marco 0 aprovado `aed825d`) · **Fase 1 decomposta** em `backlog/PHASE-1.md` (F1.1–F1.17, 2 gates) · Próximo: **executor roda F1.1** (pipeline de dados + banco embarcado completo via xtask do the-light)
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -27,11 +27,37 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** (Marco 0 aprovado pelo humano, `
 | F0.10 | Store web (`wa-sqlite`+OPFS): ler 1 passagem | ✅ aceito | F0.9 | passed (d6e968d) — getPassage web lê João 3:16 do store |
 | F0.11 | **Marco 0** (⛔ gate): revisão dos 3 alvos + store; ADR + PROGRESS | ✅ **APROVADO** | F0.6b/7/8/9/10 | sign-off humano (aed825d) — **Fase 1 liberada** |
 
+## Fase 1 — Leitura offline multiplataforma (zero IA, zero rede)
+
+> Decomposta em `loop/backlog/PHASE-1.md`. Padrão: capacidade nasce no núcleo
+> (fronteira nativa, teste Rust de host) → UI nativa → paridade web após o gate
+> estratégico F1.12. Só **F1.1** está semeada na `queue/`; as demais entram
+> conforme as dependências forem aceitas.
+
+| ID | Tarefa | Estado | Depende de | Resultado |
+|----|--------|--------|------------|-----------|
+| F1.1 | Pipeline de dados + banco embarcado completo (KJV+ALM1911 via xtask) | 🟡 ready | — | — (na `queue/`) |
+| F1.2 | Expor leitura no core (fronteira nativo): translations/books/chapter/passage | ⬜ backlog | F1.1 | — |
+| F1.3 | UI de leitura nativa: navegação livro→cap→texto + seletor de versão | ⬜ backlog | F1.2 | — |
+| F1.4 | UI de leitura nativa: múltiplas versões lado a lado + tema | ⬜ backlog | F1.3 | — |
+| F1.5 | Busca FTS5 na fronteira (core, nativo) | ⬜ backlog | F1.2 | — |
+| F1.6 | UI de busca nativa (resultados com referência clicável) | ⬜ backlog | F1.5, F1.3 | — |
+| F1.7 | Referências cruzadas: dados (xtask import-xref, OpenBible CC-BY ~344.799) | ⬜ backlog | F1.1 | — |
+| F1.8 | Xref na fronteira (core, nativo): for_verse/passage_labels | ⬜ backlog | F1.7, F1.2 | — |
+| F1.9 | UI de xref nativa + atribuição CC-BY visível | ⬜ backlog | F1.8, F1.3 | — |
+| F1.10 | Notas/marcações na fronteira (core userdata, file-based) | ⬜ backlog | F1.2 | — |
+| F1.11 | UI de notas/highlights nativa + export + persistência | ⬜ backlog | F1.10, F1.3 | — |
+| F1.12 | **GATE estratégico** (⛔): store web do corpus completo (FTS5/OPFS/Opção A vs B) | ⛔ gate | F1.2, F1.5, F1.8, F1.10 | — |
+| F1.13 | Paridade web: leitura (navegação + versões) | ⬜ backlog | F1.12, F1.4 | — |
+| F1.14 | Paridade web: busca FTS5 | ⬜ backlog | F1.12, F1.6 | — |
+| F1.15 | Paridade web: referências cruzadas + atribuição | ⬜ backlog | F1.12, F1.9 | — |
+| F1.16 | Paridade web: notas/marcações + export | ⬜ backlog | F1.12, F1.11 | — |
+| F1.17 | **Marco 1** (⛔ gate): leitura offline completa, multiplataforma | ⛔ gate | F1.4, F1.6, F1.9, F1.11, F1.13–F1.16 | — |
+
 ## Fases seguintes
 
-F1 (leitura offline), F2 (IA BYOK + Gemini), F3 (estudo profundo), F4 (refino)
-— ver `IMPLEMENTATION_PLAN.md`. Serão decompostas em `backlog/` conforme a Fase 0
-fechar.
+F2 (IA BYOK + Gemini), F3 (estudo profundo), F4 (refino) — ver
+`IMPLEMENTATION_PLAN.md`. Serão decompostas em `backlog/` conforme a Fase 1 fechar.
 
 ## Log de ciclos
 
@@ -58,3 +84,4 @@ fechar.
 | 2026-06-30 | F0.7 aceita (`a6f6797`; Turbo Module nativo iOS, run real no sim, prova headless PT==EN; ADR-0008). Planner semeou **F0.8** na `queue/` (status ready, gate:false, depende de F0.4+F0.5, aceitas): **ESPELHO da F0.7 no Android**. O Turbo Module (spec `NativeTheLightAppCore`, `cpp/`/`src/`/`bindings/`, autolink `react-native.config.js`, glue `app/web/reference.ts`/`selftest.ts`) **já existe e é compartilhado** — F0.8 só adiciona o **caminho de BUILD Android**: bloco `android:` em `ubrn.config.yaml`, `scripts/gen-bindings-android.sh` (`ubrn build android --and-generate --targets aarch64-linux-android` via `cargo-ndk` → `.so` em jniLibs + glue Gradle/CMake/Kotlin), `npx expo prebuild -p android` + Gradle, e `scripts/run-android-selftest.sh` (emulador **headless** `thelight_avd`, prova via `adb logcat` dos marcadores `TLA_SELFTEST PT/EN book=43 chapter=3 verse=16`). Ambiente PRONTO (NDK 27.1 + cargo-ndk 4.1.2 + JDK 17 + emulador headless; smoke test do core verde). Gerados ignorados (app/android, /android, jniLibs/.so, build, .gradle). **Risco MENOR que F0.7** (integração Turbo Module já feita); residual: caminho Android do ubrn + autolink Gradle/emulador → `blocked` com erro EXATO se hack proibido (decisão estratégica = ADR-0009). |
 | 2026-06-30 | F0.8 aceita (`36af016`); **3 alvos provados** (web+iOS+Android). Planner semeou **F0.9** na `queue/` (status ready, gate:false, depende de F0.6b/F0.7/F0.8 — todas aceitas): **store nativo** — expor `get_passage`/`getPassage` na fronteira UniFFI que **lê 1 passagem** (`John 3:16`) de um `assets/data/sample.sqlite` (subset **KJV domínio público**) **delegando ao store do `the-light-core`** (`store::Store` + `source::EmbeddedSource::passage`, `rusqlite`, feature `embedded` ativa só no nativo). API/schema **descobertos na fonte** (`store.rs`/`source/embedded.rs`/`model.rs`/`migrations/v1_initial.sql`): `Store::open(path)` migra o schema; `passage()` lê `translations`+`verses`. Prova **determinística** = **teste Rust de host** (`embedded` on) abrindo o sample → `get_passage("John 3:16")` == texto KJV verbatim + `book=43/chapter=3/verse=16`; run nativo = adicional opcional. **`cfg(not(wasm32))` obrigatório** (web/F0.6b permanece puro; sem `rusqlite` no grafo wasm). Anti-alucinação: texto vem do store local; só domínio público. Decisão versionado-vs-gerado do `sample.sqlite` + origem do texto + API/schema → **ADR-0010**. `blocked` com erro EXATO se o store exigir mudar core/fronteira de forma proibida ou dados protegidos. |
 | 2026-06-30 | F0.9 aceita (`1d16897`; store nativo — `get_passage` lê João 3:16 verbatim do `sample.sqlite` via `the-light-core`; ADR-0010). Humano decidiu a **estratégia de store web (ADR-0011: Opção A — wa-sqlite + OPFS, query de passagem em TS, sem mudar o core)**. Planner semeou **F0.10** na `queue/` (status ready, gate:false, depende de F0.9, aceita): **store web** — `getPassage` web em **TS** que resolve a referência **pelo Rust (wasm, F0.6b)** e lê o versículo de um **`wa-sqlite`+OPFS** com o **mesmo schema/sample** do nativo (`assets/data/sample.sqlite`), **espelhando o SELECT** de `EmbeddedSource::passage` (`SELECT verse,text FROM verses WHERE translation_id=? AND book_number=? AND chapter=? AND verse=?`). Prova **determinística** = **teste headless node** (OPFS é browser-only): parseReference via wasm (bytes do `index_bg.wasm`) + `wa-sqlite` em **VFS de memória** sobre os **bytes do sample** + a **mesma função de query** do produto → texto **KJV verbatim** + `book=43/chapter=3/verse=16`, **não hardcoded**. OPFS = VFS de runtime no browser (sob `typeof navigator`). `expo export web` 0 com wa-sqlite no bundle; sem regressão web parseReference (F0.6b) nem nativo (F0.9/F0.7/F0.8). **NÃO** reimplementar parsing (vem do Rust); só a query é TS. **NÃO** tocar `the-light` (ADR-0011 = Opção A não muda o core). `blocked` com erro EXATO se wa-sqlite/OPFS no Expo/Metro web for inviável sem hack proibido (COOP/COEP+SharedArrayBuffer, empacotar `.wasm`) → decisão/ADR-0012. |
+| 2026-06-30 | **Marco 0 aprovado** (`aed825d`) — ponte + store provados nos 3 alvos. Planner **decompôs a Fase 1** em `backlog/PHASE-1.md` (F1.1–F1.17: pipeline+banco → leitura no core → UI nativa → busca FTS5 → xref CC-BY → notas/marcações → **gate estratégico de store web F1.12** → paridade web → **Marco 1 F1.17**). Padrão: núcleo (fronteira nativa + teste Rust de host) → UI nativa → paridade web pós-gate. Reaproveita Fase 0 (matriz por alvo `embedded`; Turbo Module compartilhado; wa-sqlite/OPFS). **F1.1 semeada** na `queue/` (ready, gate:false, depends:[]): gerar `assets/data/bible.sqlite` (KJV 31.102 + ALM1911 31.101) via o **xtask pinado** (`rev 8f66004`) **sem tocar `the-light`**, contagens validadas + idempotência; ADR-0013 decide origem/tamanho/**versionar-vs-gerar(LFS)**. **Risco/blocked legítimo:** seed dos datasets não está em cache → xtask baixa por rede em build; se o loop estiver offline → `blocked` (decisão: origem/seed dos dados). |
