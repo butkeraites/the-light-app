@@ -840,3 +840,114 @@ O `build android --and-generate` do `ubrn 0.31.0-3` pressupõe o layout
   `-PreactNativeArchitectures`. Os dois patches de template são reaplicados a cada
   `gen-bindings-android.sh` (idempotentes); se o `ubrn` mudar o template, o script
   falha explícito ("linha … não encontrada") em vez de gerar build quebrado.
+
+---
+
+## ADR-0010 — Camada de store NO NATIVO: `get_passage` delega ao `the-light-core`, `sample.sqlite` versionado (KJV domínio público) e gating de **corpo** por alvo
+
+- **Data:** 2026-06-30 · **Status:** aceito · **Tarefa:** F0.9 · **Depende:** ADR-0001 (§4 store), ADR-0002 (git dep pinada), ADR-0005 (feature `embedded` + matriz por alvo), ADR-0007 (caminho web do `ubrn`)
+
+### Contexto
+A F0.9 prova a **leitura via store no nativo**: expor na fronteira UniFFI um
+`get_passage` que lê uma passagem (`"John 3:16"`) de um SQLite pequeno (subset
+KJV) **delegando** ao `the-light-core` (`store` + `source`, feature `embedded`,
+nativo-only). Regra inegociável: o texto vem **sempre do store local**
+(anti-alucinação), verbatim de **domínio público (KJV)**; a fronteira **não**
+reimplementa SQL nem parsing.
+
+### API/schema do store consumida (confirmada na fonte do core, leitura)
+- `the_light_core::store::Store::open(path) -> Result<Store, StoreError>` — cria/
+  abre/**migra** o schema (idempotente; aplica `migrations/v1_initial.sql` +
+  `v2_scholarly.sql`, garante FTS5). `store.conn()` dá `&rusqlite::Connection`.
+- `the_light_core::source::EmbeddedSource::new(&store)` + trait
+  `BibleSource::passage(&Reference, &TranslationId) -> Result<Passage, SourceError>`
+  (a trait precisa estar **em escopo** para chamar `.passage`). `passage` consulta
+  só `translations` (has_translation) + `verses`.
+- `the_light_core::model`: `Passage { reference, verses: Vec<Verse> }`,
+  `Verse { reference, text, translation }`, `TranslationId::new("kjv")` (normaliza
+  lowercase+trim). `model` é **puro** (sempre disponível, inclusive wasm).
+- **Schema** (de `migrations/v1_initial.sql`, **não** escrito à mão):
+  `translations(id,abbrev,name,language,license,embeddable)`,
+  `books(id,translation_id,number,name,abbrev,testament)`,
+  `verses(id,translation_id,book_number,chapter,verse,text)`.
+
+### Decisão
+1. **Fronteira (`core/src/lib.rs`):** Records UniFFI `Passage`/`Verse` espelhando
+   o `model` do core (com `From<the_light_core::model::…>`), e
+   `get_passage(db_path, reference, translation) -> Result<Passage, CoreError>`
+   que faz `parse_reference` (delega) → `Store::open` → `EmbeddedSource::passage`
+   → adapta tipos/erros. **Sem** SQL/parsing reimplementado.
+   - **Ergonomia:** adotado o formulário **explícito de 3 args** (`translation`
+     sem default, ex.: `"kjv"`) — sem sobrecarga/segunda função. Mais previsível
+     para a UI e trivial de evoluir; um default `kjv` pode ser adicionado depois
+     sem quebrar a forma.
+2. **`sample.sqlite` → VERSIONADO** em `assets/data/sample.sqlite` (NÃO ignorado),
+   subset mínimo KJV: 1 `translations` (`kjv`/KJV/en/`public-domain`/embeddable=1),
+   1 `books` (43/John/Jhn/NT), 1 `verses` (43/3/16 + texto KJV verbatim).
+   - **Reprodutível:** gerado por `scripts/gen-sample-db.sh` →
+     `core/examples/gen_sample_db.rs`, que usa **`Store::open` do core** (schema =
+     **uma fonte da verdade**, das migrações; nada de SQL de schema à mão) e insere
+     só DML de dado público. O exemplo valida o texto inserido contra a constante
+     KJV (guarda anti-typo). Regenerar produz um banco **equivalente em conteúdo**
+     (a prova é o teste de leitura, não o byte-diff do arquivo SQLite).
+   - **Versionado vs gerado-ignorado:** escolhido **versionar** porque (a) o teste
+     de host fica **determinístico** sem passo de geração prévio; (b) o bloco de
+     verificação (`test -f assets/data/sample.sqlite`) passa direto; (c) é um asset
+     **pequeno** (≈128 KB — o tamanho vem do schema completo do core: FTS5 + tabelas
+     v2 scholarly + índices, mesmo com 1 só versículo) e **100% domínio público**,
+     então versioná-lo é seguro. O script garante que ninguém precisa confiar num
+     "blob misterioso": é regerável a qualquer momento.
+3. **Origem/licença do texto:** João 3:16 da **King James Version (KJV)**, **domínio
+   público** (sem atribuição obrigatória). Único texto bíblico no repo; nenhum texto
+   protegido/não-livre é embarcado.
+4. **Gating por alvo = gating de CORPO, não da exportação (achado da F0.9):** a
+   exportação `#[uniffi::export] get_passage` (e os Records) é definida em **todos**
+   os alvos; **só o corpo que toca `store`/`source`/`rusqlite`** é
+   `#[cfg(not(target_arch = "wasm32"))]`. No wasm, `get_passage` é um **stub** que
+   retorna `CoreError` ("store web é F0.10: wa-sqlite+OPFS") sem referenciar o
+   store — `rusqlite` **não** entra no grafo wasm.
+   - **Por quê (regressão evitada):** gatear a *exportação inteira* por
+     `cfg(not(wasm32))` **quebra o build web**. O `ubrn build web` extrai a
+     metadata UniFFI no **host** (onde a função existe → `embedded` ligado) e gera o
+     wrapper wasm referenciando o símbolo `uniffi_…_fn_func_get_passage`; ao compilar
+     a fronteira p/ wasm32 com a função ausente, o link falha
+     (`undefined symbol: uniffi_the_light_app_core_fn_func_get_passage`). Reproduzido
+     na F0.9 e corrigido pelo gating de corpo. A forma da fronteira fica **uniforme**
+     entre web e nativo (melhor para os bindings), e o web ganha `getPassage` (stub)
+     até a F0.10.
+
+### Prova / verificação (toda verde)
+- **Teste Rust de host** (`core/`, `embedded` ligado): `store_tests::
+  get_passage_reads_john_3_16_verbatim_from_sample` abre `assets/data/sample.sqlite`
+  e assere `verses[0].text == <KJV verbatim>` + `book=43, chapter=3, verse=16`
+  (+ testes de erro p/ tradução inexistente e referência inválida). `cargo test`:
+  **8 passed**.
+- **Qualidade host:** `cargo fmt --check`, `cargo clippy -- -D warnings`,
+  `cargo build` — verdes.
+- **Sem regressão web (store fora do wasm):** `cargo tree --target
+  wasm32-unknown-unknown` **sem** `rusqlite`/`reqwest`; o **build web real**
+  (`scripts/gen-bindings-web.sh` → `ubrn build web` + wasm-bindgen) compila a
+  fronteira p/ wasm32 (com `get_passage` stub) e o wasm-crate
+  (`rust_modules/wasm`) **sem** `rusqlite`/`sqlite`/`reqwest`; `getPassage` aparece
+  nos bindings web gerados (consistência de surface).
+  - **Nota sobre o passo 4 do bloco de verificação da task:** `cargo build
+    --target wasm32-unknown-unknown` **cru** da fronteira **já falhava no HEAD**
+    (antes da F0.9), no `uniffi_core` (`UniffiCompatibleFuture: …+Send`; wasm é
+    single-thread) — limitação **pré-existente** documentada na ADR-0005/0007. O
+    caminho web suportado é o **`ubrn build web`** (não `cargo build` cru), que usa o
+    `uniffi-runtime-javascript` (feature wasm32). A regressão real a vigiar é a
+    **pureza do grafo** (`cargo tree`, verde) e o **build web do ubrn** (verde).
+
+### Consequências
+- **Versionado:** `assets/data/sample.sqlite`, `scripts/gen-sample-db.sh`,
+  `core/examples/gen_sample_db.rs`, `core/src/lib.rs` (Records + `get_passage`).
+- **Gerado/IGNORADO (inalterado):** `rust_modules/`, `app/web/generated/`,
+  `target/`, `bindings/`. O `the-light` permanece **intacto** (consumo pinado
+  `rev 8f66004`); a forma da fronteira (modo library; `parse_reference` segue
+  delegando) é preservada.
+- **Offline-first:** `get_passage` não faz rede — só I/O local em `db_path`. Rede só
+  em dev/build (cargo/ubrn). Nenhum segredo em git/log.
+- **Escopo:** F0.9 prova a **leitura via store** (teste Rust de host). O **embarque**
+  do `sample.sqlite` no app nativo (bundling iOS/Android) e o run nativo
+  (`getPassage` via Turbo Module) são fase posterior / verificação adicional. O
+  **store web** (`wa-sqlite`+OPFS) é a **F0.10** — `get_passage` no web é stub até lá.

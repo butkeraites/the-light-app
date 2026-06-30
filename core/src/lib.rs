@@ -12,6 +12,15 @@
 //! F0.3 expõe [`parse_reference`], que **delega** a
 //! `the_light_core::reference::parse_reference` e mapeia o erro do core para
 //! [`CoreError`].
+//!
+//! F0.9 expõe [`get_passage`], que **lê** uma passagem do store SQLite local
+//! **delegando** ao `the_light_core::store::Store` + `source::EmbeddedSource::passage`
+//! (anti-alucinação: o texto vem **sempre do store**; a fronteira só adapta os
+//! tipos/erros do core para Records UniFFI). A função é exportada em **todos** os
+//! alvos (a forma da fronteira é uniforme), mas só o **corpo que toca
+//! store/`rusqlite`** é `cfg(not(target_arch = "wasm32"))`: no web ela retorna um
+//! stub de erro (store web = `wa-sqlite`+OPFS é F0.10), mantendo `rusqlite` fora
+//! do grafo wasm (matriz de features, ADR-0005; gating de corpo, ADR-0010).
 
 uniffi::setup_scaffolding!();
 
@@ -134,6 +143,119 @@ pub fn parse_reference(input: String) -> Result<Reference, CoreError> {
         })
 }
 
+/// Um versículo resolvido com seu texto, na fronteira UniFFI.
+///
+/// Espelha `the_light_core::model::Verse` (tipo **puro** do core, disponível em
+/// todos os alvos). O `text` vem **verbatim do store local** — a fronteira nunca
+/// gera texto bíblico (anti-alucinação). O Record é definido em **todos** os
+/// alvos para manter a forma da fronteira UniFFI idêntica entre nativo e web (a
+/// extração de metadata do `ubrn` ocorre no host; ver nota em [`get_passage`]).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Verse {
+    /// Livro/capítulo/versículo deste texto (`verses` é sempre `Single`).
+    pub reference: Reference,
+    /// Texto do versículo, **verbatim** da tradução no store local.
+    pub text: String,
+    /// Slug da tradução de origem (ex.: `"kjv"`).
+    pub translation: String,
+}
+
+impl From<the_light_core::model::Verse> for Verse {
+    fn from(v: the_light_core::model::Verse) -> Self {
+        Verse {
+            reference: v.reference.into(),
+            text: v.text,
+            translation: v.translation.to_string(),
+        }
+    }
+}
+
+/// Uma passagem resolvida (a referência pedida + os versículos), na fronteira
+/// UniFFI.
+///
+/// Espelha `the_light_core::model::Passage`. Pode vir **vazia** (`verses` sem
+/// itens) se a referência for válida mas não houver texto no store (ex.: capítulo
+/// fora do alcance do livro) — comportamento herdado do core, não um erro.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Passage {
+    /// Referência originalmente solicitada.
+    pub reference: Reference,
+    /// Versículos resolvidos, em ordem canônica.
+    pub verses: Vec<Verse>,
+}
+
+impl From<the_light_core::model::Passage> for Passage {
+    fn from(p: the_light_core::model::Passage) -> Self {
+        Passage {
+            reference: p.reference.into(),
+            verses: p.verses.into_iter().map(Verse::from).collect(),
+        }
+    }
+}
+
+/// Lê uma passagem do **store SQLite local**, delegando ao `the-light-core`.
+///
+/// Pipeline no **nativo** (tudo no core — uma fonte da verdade):
+/// `parse_reference(&reference)` → `Store::open(db_path)` (abre/migra o schema
+/// via migrações do core) → `EmbeddedSource::new(&store).passage(&ref,
+/// &TranslationId)` → adapta a `Passage` do core para o Record [`Passage`] e
+/// mapeia os erros para [`CoreError`]. **Nenhum** SQL ou parsing é reimplementado
+/// aqui.
+///
+/// Anti-alucinação: o `text` de cada versículo vem **sempre do store** (texto
+/// verbatim da tradução). Offline-first: nenhuma rede — apenas I/O local no
+/// arquivo `db_path`.
+///
+/// **Gating por alvo (crítico, ver ADR-0010):** a função é exportada via UniFFI
+/// em **todos** os alvos para manter a forma da fronteira consistente — o `ubrn`
+/// extrai a metadata UniFFI no **host** (onde a função existe) e gera o wrapper
+/// wasm referenciando o símbolo; gatear a *exportação* inteira por
+/// `cfg(not(wasm32))` quebraria o link do build web (símbolo ausente). Por isso
+/// apenas o **corpo que toca store/rusqlite** é `cfg(not(target_arch = "wasm32"))`:
+/// no nativo, implementação real; no **web**, um stub que retorna [`CoreError`]
+/// (store web = `wa-sqlite`+OPFS é F0.10), sem arrastar `rusqlite` para o grafo
+/// wasm.
+#[uniffi::export]
+pub fn get_passage(
+    db_path: String,
+    reference: String,
+    translation: String,
+) -> Result<Passage, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        // Trait em escopo para poder chamar `.passage(...)` em `EmbeddedSource`.
+        use the_light_core::source::BibleSource;
+
+        let reference = the_light_core::reference::parse_reference(&reference).map_err(|e| {
+            CoreError::Generic {
+                message: e.to_string(),
+            }
+        })?;
+        let store =
+            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })?;
+        let source = the_light_core::source::EmbeddedSource::new(&store);
+        let translation = the_light_core::model::TranslationId::new(translation);
+        let passage = source
+            .passage(&reference, &translation)
+            .map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })?;
+        Ok(Passage::from(passage))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        // Stub web: o store local (`rusqlite`) é nativo-only (ADR-0005). O store
+        // web (`wa-sqlite`+OPFS) chega na F0.10; até lá, falha explícita — sem
+        // tocar `store`/`source`/`rusqlite` (mantém o grafo wasm puro).
+        let _ = (db_path, reference, translation);
+        Err(CoreError::Generic {
+            message: "store local indisponível no alvo web (F0.10: wa-sqlite+OPFS)".to_string(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,5 +303,78 @@ mod tests {
         // O erro do core (`ReferenceError`) é mapeado para `CoreError`.
         assert!(matches!(err, CoreError::Generic { .. }));
         assert!(err.to_string().contains("core error"));
+    }
+}
+
+/// Testes da camada de store (`get_passage`), **apenas no nativo**: o host de
+/// teste (`aarch64-apple-darwin`) tem a feature `embedded` ligada (matriz por
+/// alvo, ADR-0005), então `Store`/`EmbeddedSource` existem. No wasm este módulo
+/// nem é compilado.
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod store_tests {
+    use super::*;
+
+    /// Sample versionado em `assets/data/sample.sqlite` (subset KJV de domínio
+    /// público), gerado de forma reprodutível por `scripts/gen-sample-db.sh`
+    /// (schema vindo das migrações do `the-light-core`). Resolvido a partir de
+    /// `CARGO_MANIFEST_DIR` (= `core/`) para independer do diretório de execução.
+    const SAMPLE_DB: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/data/sample.sqlite");
+
+    /// João 3:16 na KJV (domínio público) — texto **verbatim** esperado no store.
+    const JOHN_3_16_KJV: &str = "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.";
+
+    #[test]
+    fn get_passage_reads_john_3_16_verbatim_from_sample() {
+        let passage = get_passage(
+            SAMPLE_DB.to_string(),
+            "John 3:16".to_string(),
+            "kjv".to_string(),
+        )
+        .expect("get_passage deve ler João 3:16 do sample.sqlite");
+
+        // Exatamente um versículo na passagem.
+        assert_eq!(passage.verses.len(), 1, "esperado exatamente 1 versículo");
+        let verse = &passage.verses[0];
+
+        // Anti-alucinação: o texto vem **verbatim do store local** (KJV).
+        assert_eq!(verse.text, JOHN_3_16_KJV, "texto deve ser KJV verbatim");
+
+        // Referência canônica: João = livro 43, capítulo 3, versículo 16.
+        assert_eq!(verse.reference.book, 43, "João é o livro 43");
+        assert_eq!(verse.reference.chapter, 3, "capítulo 3");
+        assert_eq!(
+            verse.reference.verses,
+            VerseRange::Single { verse: 16 },
+            "versículo único 16"
+        );
+        assert_eq!(verse.translation, "kjv", "tradução kjv");
+
+        // A referência da passagem espelha a pedida.
+        assert_eq!(passage.reference.book, 43);
+        assert_eq!(passage.reference.chapter, 3);
+    }
+
+    #[test]
+    fn get_passage_unknown_translation_maps_to_core_error() {
+        // Tradução inexistente no store → erro do core mapeado para CoreError.
+        let err = get_passage(
+            SAMPLE_DB.to_string(),
+            "John 3:16".to_string(),
+            "nao-existe".to_string(),
+        )
+        .expect_err("tradução inexistente deve falhar");
+        assert!(matches!(err, CoreError::Generic { .. }));
+    }
+
+    #[test]
+    fn get_passage_invalid_reference_maps_to_core_error() {
+        // Referência inválida falha no parse (delegado ao core) antes do store.
+        let err = get_passage(
+            SAMPLE_DB.to_string(),
+            "isto nao e referencia".to_string(),
+            "kjv".to_string(),
+        )
+        .expect_err("referência inválida deve falhar");
+        assert!(matches!(err, CoreError::Generic { .. }));
     }
 }
