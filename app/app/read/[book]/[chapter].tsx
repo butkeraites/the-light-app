@@ -10,23 +10,31 @@
 //   2) TEMA claro/escuro: cores via tokens (`useTheme`), não mais hex hardcoded.
 // Anti-alucinação: o texto vem sempre do Rust/store, nunca gerado na UI.
 import { useEffect, useMemo, useState } from 'react';
-import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ReaderChapterView } from '../../../components/ReaderChapterView';
 import { ReaderParallelView } from '../../../components/ReaderParallelView';
 import { ReaderVersionPicker } from '../../../components/ReaderVersionPicker';
+import { ReaderXrefPanel } from '../../../components/ReaderXrefPanel';
 import { ensureReadingDb } from '../../../lib/db';
 import { useTheme, type ThemeColors } from '../../../lib/theme';
 import {
+  crossRefs,
   getChapter,
   listBooks,
   listTranslations,
+  type CrossRef,
   type Passage,
   type Translation,
 } from '../../../web/reading';
 
 const DEFAULT_TRANSLATION = 'kjv';
+
+/** Nome (PT) de um livro pelo número canônico (cânon puro, independe do banco). */
+function bookNamePt(book: number): string {
+  return listBooks().find((b) => b.number === book)?.namePt ?? `Livro ${book}`;
+}
 
 export default function ChapterScreen() {
   const navigation = useNavigation();
@@ -45,6 +53,13 @@ export default function ChapterScreen() {
   const [parallel, setParallel] = useState(false);
   const [secondTranslation, setSecondTranslation] = useState<string | null>(null);
   const [secondaryPassage, setSecondaryPassage] = useState<Passage | null>(null);
+
+  // F1.9: versículo selecionado + painel de referências cruzadas (xref). Os dados
+  // vêm SEMPRE da fronteira `cross_refs` (F1.8) — sem SQL/ordenação/filtro em TS.
+  const [selectedVerse, setSelectedVerse] = useState<number | null>(null);
+  const [xrefs, setXrefs] = useState<CrossRef[]>([]);
+  const [xrefLoading, setXrefLoading] = useState(false);
+  const [xrefError, setXrefError] = useState<string | null>(null);
 
   useEffect(() => {
     const name = listBooks().find((b) => b.number === bookNumber)?.namePt ?? `Livro ${bookNumber}`;
@@ -123,6 +138,55 @@ export default function ChapterScreen() {
     };
   }, [parallel, secondTranslation, bookNumber, chapterNumber]);
 
+  // F1.9: ao selecionar um versículo, carrega suas xrefs pela fronteira `cross_refs`
+  // (defaults do core p/ min_votes/limit). A UI só APRESENTA o `Vec<CrossRef>`
+  // retornado (já ordenado por votos DESC pelo core) — anti-alucinação: xref é só
+  // referência, sem texto bíblico.
+  useEffect(() => {
+    if (selectedVerse == null) {
+      return;
+    }
+    let alive = true;
+    setXrefLoading(true);
+    setXrefError(null);
+    setXrefs([]);
+    (async () => {
+      try {
+        const dbPath = await ensureReadingDb();
+        const refs = await crossRefs(dbPath, bookNumber, chapterNumber, selectedVerse);
+        if (alive) {
+          setXrefs(refs);
+          setXrefLoading(false);
+        }
+      } catch (err) {
+        if (alive) {
+          setXrefError(err instanceof Error ? err.message : String(err));
+          setXrefLoading(false);
+        }
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [selectedVerse, bookNumber, chapterNumber]);
+
+  // Navega ao capítulo de destino de uma xref (rota F1.3). `verse` vai como param
+  // OPCIONAL (best-effort: a ancoragem/realce é follow-up; chegar ao capítulo já
+  // satisfaz o aceite). Fecha o painel antes de navegar.
+  function openXref(ref: CrossRef['reference']) {
+    const v = ref.verses;
+    const verse = v.tag === 'Single' ? v.inner.verse : v.tag === 'Range' ? v.inner.start : null;
+    setSelectedVerse(null);
+    router.push({
+      pathname: '/read/[book]/[chapter]',
+      params: {
+        book: String(ref.book),
+        chapter: String(ref.chapter),
+        ...(verse != null ? { verse: String(verse) } : {}),
+      },
+    });
+  }
+
   // 2ª tradução só oferece versões DIFERENTES da primária.
   const secondaryOptions = translations.filter((t) => t.id !== translation);
   const canParallel = secondaryOptions.length > 0;
@@ -179,8 +243,30 @@ export default function ChapterScreen() {
           <ReaderParallelView primary={passage} secondary={secondaryPassage} />
         )
       ) : (
-        <ReaderChapterView passage={passage} />
+        <ReaderChapterView
+          passage={passage}
+          onVersePress={setSelectedVerse}
+          selectedVerse={selectedVerse}
+        />
       )}
+
+      {/* F1.9: painel de referências cruzadas (xref) do versículo selecionado.
+          Os dados vêm da fronteira `cross_refs`; a atribuição CC-BY (ADR-0016) é
+          exibida pelo próprio painel. */}
+      <ReaderXrefPanel
+        visible={selectedVerse != null}
+        sourceLabel={
+          selectedVerse != null
+            ? `${bookNamePt(bookNumber)} ${chapterNumber}:${selectedVerse}`
+            : ''
+        }
+        refs={xrefs}
+        loading={xrefLoading}
+        error={xrefError}
+        bookNameOf={bookNamePt}
+        onSelect={openXref}
+        onClose={() => setSelectedVerse(null)}
+      />
     </View>
   );
 }

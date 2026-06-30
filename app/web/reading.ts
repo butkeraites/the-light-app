@@ -15,10 +15,17 @@ import {
   getChapter as getChapterNative,
   chapterCount as chapterCountNative,
   search as searchNative,
+  crossRefs as crossRefsNative,
 } from './native-generated/src/index';
-import type { Book, Passage, Translation, SearchHit } from './native-generated/bindings/the_light_app_core';
+import type {
+  Book,
+  Passage,
+  Translation,
+  SearchHit,
+  CrossRef,
+} from './native-generated/bindings/the_light_app_core';
 
-export type { Book, Passage, Translation, SearchHit };
+export type { Book, Passage, Translation, SearchHit, CrossRef };
 
 /** 66 livros canônicos (PURO — `reference::BOOKS`, independe do banco). */
 export function listBooks(): Book[] {
@@ -71,4 +78,28 @@ export async function search(
   limit?: number,
 ): Promise<SearchHit[]> {
   return searchNative(dbPath, query, translation, book, limit);
+}
+
+/**
+ * Referências cruzadas (xref) de um versículo, delegando à fronteira `cross_refs`
+ * da F1.8 (binding gerado `crossRefs` → JSI → `the_light_core::xref::for_verse`).
+ * NÃO reimplementa SQL/consulta/ordenação/filtro de votos em TS: a busca da tabela,
+ * a ordenação por votos (DESC) e o corte por `min_votes`/`limit` vivem no core; a UI
+ * (F1.9) só apresenta o `Vec<CrossRef>` retornado (uma fonte da verdade). Cada
+ * `CrossRef` é só **referência** de destino + `votes` (anti-alucinação: nenhum texto
+ * bíblico). `minVotes`/`limit` opcionais (padrões do core: `min_votes`=1 oculta
+ * disputadas/negativas; `limit`=20). `votes` é `i64` no core → `bigint` no binding
+ * (a UI/self-test formatam via `String(...)`, robusto a `number`/`bigint`). Versículo
+ * sem xref → `Vec` vazio (não erro). Síncrono no JSI; embrulhado em Promise p/
+ * assinatura uniforme com o web (stub = F1.15).
+ */
+export async function crossRefs(
+  dbPath: string,
+  book: number,
+  chapter: number,
+  verse: number,
+  minVotes?: bigint,
+  limit?: number,
+): Promise<CrossRef[]> {
+  return crossRefsNative(dbPath, book, chapter, verse, minVotes, limit);
 }

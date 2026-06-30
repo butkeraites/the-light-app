@@ -17,6 +17,10 @@ import { runReadingSelfTest } from './reading-selftest';
 // — no web, `search-selftest.web.ts` é um SKIP (busca web = F1.14), mantendo o
 // bundle web sem `expo-file-system`/o banco bundled.
 import { runSearchSelfTest } from './search-selftest';
+// F1.9: prova de REFERÊNCIAS CRUZADAS no device (marcador TLA_XREF). Par nativo/web
+// por extensão — no web, `xref-selftest.web.ts` é um SKIP (xref web = F1.15),
+// mantendo o bundle web sem `expo-file-system`/o banco bundled.
+import { runXrefSelfTest } from './xref-selftest';
 
 // Marcador (prefixo grep-ável). console.error garante o nível alto no log
 // unificado; console.log o complementa. O script assere o texto exato.
@@ -61,5 +65,8 @@ export async function runReferenceSelfTest(): Promise<void> {
   await runReadingSelfTest();
   // F1.6: prova de BUSCA (campo→fronteira search→hits) no device. Emite TLA_SEARCH.
   await runSearchSelfTest();
+  // F1.9: prova de XREF (versículo→fronteira cross_refs→referências) no device.
+  // Emite TLA_XREF (composto do retorno real de `cross_refs`).
+  await runXrefSelfTest();
   console.log(`${MARK} DONE`);
 }

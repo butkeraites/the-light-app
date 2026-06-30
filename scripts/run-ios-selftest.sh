@@ -16,13 +16,14 @@
 #   4) instala + lança o app, capturando o log unificado do simulador
 #      (`simctl spawn booted log stream`);
 #   5) ASSERTA os marcadores de PARSE (PT e EN), de LEITURA (F1.3/ADR-0014), de
-#      LEITURA PARALELA (F1.4/ADR-0015) E de BUSCA (F1.6). Sai 0 só se TODOS
-#      aparecerem:
+#      LEITURA PARALELA (F1.4/ADR-0015), de BUSCA (F1.6) E de XREF (F1.9/ADR-0016).
+#      Sai 0 só se TODOS aparecerem:
 #        TLA_SELFTEST PT book=43 chapter=3 verse=16
 #        TLA_SELFTEST EN book=43 chapter=3 verse=16
 #        TLA_READ books=66 john3_v16="For God so loved the world..." john_chapters=21
 #        TLA_PARALLEL kjv_john3_16="For God so loved the world..." alm_john3_16="Porque Deus amou o mundo de tal maneira..."
 #        TLA_SEARCH query="God" hits=<N>=1 first_ref="John 3:16" first_text="For God so loved..."
+#        TLA_XREF verse="John 3:16" count=<N>=1 first_ref="John 3:15" first_votes=439
 #      (os textos de João 3:16 vêm do RETORNO de get_chapter — store local, KJV e
 #       Almeida 1911 verbatim — não hardcoded; o lado a lado lê AS DUAS traduções
 #       por DUAS chamadas de get_chapter. O app copia o banco bundled p/ um caminho
@@ -76,6 +77,13 @@ MARK_PARALLEL_ALM="Porque Deus amou o mundo de tal maneira"  # João 3:16 Almeid
 MARK_SEARCH_QUERY='TLA_SEARCH query="God"'   # busca executada via a fronteira (query "God")
 MARK_SEARCH_REF="John 3:16"                  # referência do hit (composta do retorno)
 MARK_SEARCH_TEXT="For God so loved"          # texto KJV verbatim do store (sem HL markers)
+# F1.9 (ADR-0016): PROVA DE XREF no device. O app chama a fronteira `cross_refs`
+# (the_light_core::xref via JSI) p/ João 3:16 e compõe o marcador do RETORNO REAL: a
+# ref do top por votos (listBooks().nameEn + cap:verso) e os votos (via String()).
+# Filtradas as xrefs cujo destino sai do subset {Gn,Sl,Jo}, o top dentro do subset é
+# um versículo de João (João 3:15, ~439 votos). Aqui o script só confere substrings/
+# padrões: query de João 3:16, count>=1 e first_ref de um livro do subset.
+MARK_XREF_VERSE='TLA_XREF verse="John 3:16"'  # xref de João 3:16 via a fronteira cross_refs
 
 export PATH="/opt/homebrew/bin:$PATH"  # cocoapods/node instalados via brew
 LOG_DIR="$(mktemp -d -t f07-ios-selftest)"
@@ -168,8 +176,8 @@ sleep 2
 
 xcrun simctl launch "$UDID" "$BUNDLE_ID" >/dev/null
 
-# ── [5/5] Asserção determinística: parse (PT+EN) + leitura + paralela + busca ─
-echo "==> [5/5] Aguardando marcadores PT+EN + leitura + paralela + busca (até ${LAUNCH_WAIT}s)"
+# ── [5/5] Asserção: parse (PT+EN) + leitura + paralela + busca + xref ─────────
+echo "==> [5/5] Aguardando marcadores PT+EN + leitura + paralela + busca + xref (até ${LAUNCH_WAIT}s)"
 found=0
 for _ in $(seq 1 "$LAUNCH_WAIT"); do
   if grep -qF "$MARK_PT" "$STREAM_LOG" \
@@ -182,7 +190,10 @@ for _ in $(seq 1 "$LAUNCH_WAIT"); do
     && grep -qF "$MARK_SEARCH_QUERY" "$STREAM_LOG" \
     && grep -qE 'TLA_SEARCH .*hits=[1-9][0-9]*' "$STREAM_LOG" \
     && grep -qF "$MARK_SEARCH_REF" "$STREAM_LOG" \
-    && grep -qF "$MARK_SEARCH_TEXT" "$STREAM_LOG"; then
+    && grep -qF "$MARK_SEARCH_TEXT" "$STREAM_LOG" \
+    && grep -qF "$MARK_XREF_VERSE" "$STREAM_LOG" \
+    && grep -qE 'TLA_XREF .*count=[1-9][0-9]*' "$STREAM_LOG" \
+    && grep -qE 'first_ref="(Genesis|Psalm|Psalms|John) ' "$STREAM_LOG"; then
     found=1
     break
   fi
@@ -194,7 +205,7 @@ grep -F "TLA_" "$STREAM_LOG" | sed 's/.*\(TLA_\)/\1/' | sort -u || true
 echo "---------------------------------------------"
 
 if [ "$found" != "1" ]; then
-  echo "ERRO: marcadores de parse (PT/EN), leitura (TLA_READ), leitura paralela (TLA_PARALLEL + Almeida) e/ou busca (TLA_SEARCH: query=\"God\", hits>=1, João 3:16, \"For God so loved\") não apareceram em ${LAUNCH_WAIT}s." >&2
+  echo "ERRO: marcadores de parse (PT/EN), leitura (TLA_READ), leitura paralela (TLA_PARALLEL + Almeida), busca (TLA_SEARCH: query=\"God\", hits>=1, João 3:16, \"For God so loved\") e/ou xref (TLA_XREF: verse=\"John 3:16\", count>=1, first_ref de um livro do subset Genesis/Psalm(s)/John) não apareceram em ${LAUNCH_WAIT}s." >&2
   exit 1
 fi
 
@@ -204,4 +215,5 @@ echo "$MARK_EN"
 grep -F "TLA_READ books=66" "$STREAM_LOG" | sed 's/.*\(TLA_READ\)/\1/' | head -1
 grep -F "TLA_PARALLEL" "$STREAM_LOG" | sed 's/.*\(TLA_PARALLEL\)/\1/' | head -1
 grep -F 'TLA_SEARCH query="God"' "$STREAM_LOG" | sed 's/.*\(TLA_SEARCH\)/\1/' | head -1
-echo "==> OK — parse_reference (PT==EN), leitura (books=66, João 3:16 KJV verbatim, john_chapters=21), leitura PARALELA (João 3:16 KJV|Almeida 1911, ambos do store via get_chapter) E busca (TLA_SEARCH: \"God\" via a fronteira search, João 3:16 + \"For God so loved\" verbatim do store, hits>=1) provados pelo Rust nativo via Turbo Module."
+grep -F 'TLA_XREF verse="John 3:16"' "$STREAM_LOG" | sed 's/.*\(TLA_XREF\)/\1/' | head -1
+echo "==> OK — parse_reference (PT==EN), leitura (books=66, João 3:16 KJV verbatim, john_chapters=21), leitura PARALELA (João 3:16 KJV|Almeida 1911, ambos do store via get_chapter), busca (TLA_SEARCH: \"God\" via a fronteira search, João 3:16 + \"For God so loved\" verbatim do store, hits>=1) E xref (TLA_XREF: João 3:16 via a fronteira cross_refs, count>=1, first_ref do subset + votos do retorno) provados pelo Rust nativo via Turbo Module."

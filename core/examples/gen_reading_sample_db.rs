@@ -112,6 +112,31 @@ fn main() {
         )
         .expect("copiar versículos");
 
+    // ── Referências cruzadas (xref) — pipeline de DADOS (ADR-0016, CC-BY) ─────
+    // O schema do core cria `cross_references` (via `Store::open`) mas **não** tem
+    // trigger que a popule a partir do corpus (mesmo princípio do `verses_fts`):
+    // sem isto, `cross_refs(...)` no device (F1.8/F1.9) retornaria **vazio**.
+    // Copiamos do corpus completo (`src`) APENAS as xrefs cujos **DOIS lados**
+    // (origem e destino) caiam no subset {1,19,43} — assim, ao tocar uma xref na
+    // UI (F1.9), o capítulo de destino **existe** no `reading-sample.sqlite`
+    // (senão `get_chapter` cairia em "Capítulo não encontrado"). É DADO/fixture (o
+    // texto vem verbatim do store, ADR-0016/CC-BY): a query/ordenação por votos/
+    // filtro de xref continuam no core (`xref::for_verse`), chamados pela fronteira
+    // `cross_refs` (F1.8) — nada de xref é reimplementado aqui.
+    let xrefs = conn
+        .execute(
+            &format!(
+                "INSERT INTO cross_references(from_book,from_chapter,from_verse,\
+                 to_book,to_chapter,to_verse_start,to_verse_end,votes) \
+                 SELECT from_book,from_chapter,from_verse,\
+                 to_book,to_chapter,to_verse_start,to_verse_end,votes \
+                 FROM src.cross_references \
+                 WHERE from_book IN ({in_list}) AND to_book IN ({in_list})"
+            ),
+            [],
+        )
+        .expect("copiar referências cruzadas (ambos os lados no subset)");
+
     conn.execute("DETACH DATABASE src", [])
         .expect("desanexar src");
 
@@ -169,9 +194,35 @@ fn main() {
         "verses_fts deve ter 1 linha por versículo copiado"
     );
 
+    // Sanidade xref (anti-fake; dado LIDO do banco): a tabela ficou populada e
+    // João 3:16 tem ≥1 xref no subset. A prova de que `cross_refs` ORDENA/FILTRA
+    // por votos vive no core (testes da F1.8) e no device (self-test TLA_XREF da
+    // F1.9, que chama a fronteira `cross_refs` → core); aqui só garantimos que os
+    // DADOS existem (sem reimplementar a xref no pipeline).
+    let xref_total: i64 = conn
+        .query_row("SELECT count(*) FROM cross_references", [], |r| r.get(0))
+        .expect("contar cross_references do subset");
+    assert!(
+        xref_total > 0,
+        "cross_references deve ser populada no subset (ambos os lados em {BOOKS:?})"
+    );
+    let john_3_16_xrefs: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM cross_references \
+             WHERE from_book=43 AND from_chapter=3 AND from_verse=16",
+            [],
+            |r| r.get(0),
+        )
+        .expect("contar xrefs de João 3:16 no subset");
+    assert!(
+        john_3_16_xrefs >= 1,
+        "João 3:16 deve ter ≥1 xref no subset (alvo dentro de {BOOKS:?})"
+    );
+
     println!(
         "reading-sample.sqlite gerado: {out}\n  \
          traduções={translations} livros={:?} versículos={inserted} verses_fts={indexed} \
+         cross_references={xrefs} joão_3_16_xrefs={john_3_16_xrefs} \
          joão_capítulos_kjv={john_chapters}",
         BOOKS
     );
