@@ -1,0 +1,52 @@
+# ⛔ HALT — aguardando sign-off humano do GATE F1.12
+
+Escrito pelo Driver em 2026-06-30 (ciclo do gate). Motivo: **gate estratégico**
+(tarefa `gate: true`) — precisa de DECISÃO HUMANA, não de execução autônoma.
+
+## O que travou
+Todas as tarefas NATIVAS da Fase 1 (F1.1–F1.11) estão **aceitas e verdes** no
+device (iOS): leitura (livro→cap→texto + versões lado a lado + tema), busca FTS5,
+referências cruzadas (CC-BY OpenBible) e notas/highlights com export e
+persistência. A próxima tarefa elegível é o **GATE F1.12 — store web do corpus
+completo**, que o PROTOCOL manda **PARAR** para sign-off humano.
+
+## A decisão que é sua (brief completo em `loop/queue/F1.12-gate-store-web-corpus.task.md`)
+Como o **WEB** entrega leitura + busca (FTS5) + xref + notas sobre o corpus,
+mantendo **offline-first / BYOK / anti-alucinação** e sem tocar o `the-light`.
+
+Fatos apurados:
+- `app/assets/data/bible.sqlite` = **~59 MB** (61.833.216 B): 62.203 versículos
+  (KJV 31.102 + ALM1911 31.101), `verses_fts` FTS5, **344.799** `cross_references`.
+- `reading-sample.sqlite` (subset que o NATIVO empacota hoje, ADR-0014) = **~4,4 MB**
+  (Gn/Sl/Jo; 22.413 xrefs). O corpus completo está adiado também no nativo.
+- A F0.10/ADR-0011/0012 provou `getPassage` web com `wa-sqlite@1.0.0` (build SYNC,
+  sem SharedArrayBuffer) + OPFS, **lendo o arquivo inteiro num MemoryVFS no heap**
+  → escala p/ ~4,4 MB, **não** p/ ~59 MB sem um VFS-live em Worker.
+- Hoje todas as funções web de leitura/busca/xref/notas em `reading.web.ts` são **stubs**.
+
+Opções (prós/contras detalhados na task):
+- **A — `wa-sqlite` + OPFS, espelhando os SELECTs do core em TS.** Recomendada pelo
+  Planner, começando por **A1** (paridade com o subset ~4,4 MB do nativo, MemoryVFS
+  já provado) e tratando o corpus completo (~59 MB, VFS-live em Worker + cota OPFS)
+  como decisão transversal separada. Reaproveita a F0.10 e a semântica FTS5/xref do
+  SQLite; risco = duplicar busca/xref em TS (drift) e perf de FTS5 no wasm.
+- **B — store no core via PR + ADR.** Fonte única, sem duplicação, mas **toca o
+  `the-light`** (refactor pesado + bridge sync↔async) → o loop não pode sozinho.
+- **C — chunking sob demanda.** Menor 1ª carga; coerência e busca parcial complexas.
+- **D — compressão de entrega.** Só modificador de A/C.
+
+## O que decidir
+1. Qual opção (A/A1, B, C, D)?
+2. Se A: o web faz **paridade com o subset (~4,4 MB)** primeiro (A1), ou já mira o
+   **corpus completo (~59 MB)** com Worker/OPFS-live?
+3. Limite de tamanho de download aceitável + se exige indicador de progresso e
+   fallback quando OPFS não estiver disponível.
+
+## Como retomar
+Decida → registra-se **ADR-0018** com a escolha → o Driver re-escopa/semeia
+**F1.13–F1.16** (paridade web: leitura, busca, xref, notas) conforme a opção →
+remova/edite este `loop/HALT`. As F1.13–F1.16 **dependem desta decisão** (hoje stub).
+
+Regras não negociáveis intactas: offline-first, BYOK, `the-light` não modificado
+(B exigiria PR + ADR sancionados), texto sempre do store local (domínio público /
+CC-BY). Nada foi improvisado.
