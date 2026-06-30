@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-07-01 00:55 UTC · Estado do loop: **▶️ ATIVO — F1.13 ACEITA (`0479b5b`; leitura web real sobre o subset, paridade com o nativo). Queue vazia → próximo ciclo o planner semeia F1.14 (paridade web: busca FTS5) — espelho da busca do core no wa-sqlite (perf de FTS5 no wasm a confirmar).**
-Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.13 passed** (`0479b5b`; ADR-0019; wa-sqlite/OPFS+MemoryVFS, João 3:16 verbatim do store) · Próxima elegível: **F1.14** (paridade web: busca FTS5; depende de **F1.12** decidida e **F1.6** aceita) → F1.15 (xref web) → F1.16 (notas web) → **⛔ Marco 1 (F1.17)** (sign-off — leitura offline completa multiplataforma). Corpus completo (~59 MB) = backlog transversal pós-paridade.
+Última atualização: 2026-07-01 01:55 UTC · Estado do loop: **▶️ ATIVO — F1.14 ACEITA (`b2f1d8f`; busca web FTS5 real, FTS5 habilitado no wa-sqlite via build vendorizado, ADR-0020). Queue vazia → próximo ciclo o planner semeia F1.15 (paridade web: xref + atribuição CC-BY) — espelho do `xref::for_verse` no store web já estabelecido.**
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.14 passed** (`b2f1d8f`; ADR-0020; busca FTS5 web, João 3:16 localizado, offline-first) · Próxima elegível: **F1.15** (paridade web: xref + atribuição CC-BY; depende de **F1.12** decidida e **F1.9** aceita) → F1.16 (notas web) → **⛔ Marco 1 (F1.17)** (sign-off — leitura offline completa multiplataforma). Corpus completo (~59 MB) = backlog transversal pós-paridade.
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -49,7 +49,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.13 passed** (`0479b5b`; 
 | F1.11 | UI de notas/highlights nativa + export + persistência | ✅ aceito | F1.10, F1.3 | passed (deb3b0c) — TLA_NOTES João 3:16 persisted=true export_ok=true |
 | F1.12 | **GATE estratégico** (⛔): store web do corpus completo (FTS5/OPFS/Opção A vs B) | ✅ **DECIDIDO** | F1.2, F1.5, F1.8, F1.10 | sign-off humano — **Opção A / A1** (subset ~4,4 MB); ADR-0018; HALT removido |
 | F1.13 | Paridade web: leitura (navegação + versões) | ✅ aceito | F1.12, F1.4 | passed (0479b5b) — leitura web real; João 3:16 verbatim; paridade c/ nativo; ADR-0019 |
-| F1.14 | Paridade web: busca FTS5 | ⬜ backlog | F1.12, F1.6 | — |
+| F1.14 | Paridade web: busca FTS5 | ✅ aceito | F1.12, F1.6 | passed (b2f1d8f) — busca web FTS5 real; João 3:16 localizado; FTS5 vendorizado; ADR-0020 |
 | F1.15 | Paridade web: referências cruzadas + atribuição | ⬜ backlog | F1.12, F1.9 | — |
 | F1.16 | Paridade web: notas/marcações + export | ⬜ backlog | F1.12, F1.11 | — |
 | F1.17 | **Marco 1** (⛔ gate): leitura offline completa, multiplataforma | ⛔ gate | F1.4, F1.6, F1.9, F1.11, F1.13–F1.16 | — |
