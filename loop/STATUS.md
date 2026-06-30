@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-07-01 00:15 UTC · Estado do loop: **▶️ ATIVO (RETOMADO) — gate F1.12 DECIDIDO por sign-off humano: Opção A (wa-sqlite+OPFS, espelho TS) começando por A1 (paridade com o subset ~4,4 MB); ADR-0018 registrado; `loop/HALT` removido. Queue vazia → próximo ciclo o planner semeia F1.13 (paridade web: leitura) re-escopada p/ A1.**
-Heartbeat: ver `HEARTBEAT` · HALT: **ausente (resolvido)** · **F1.12 decidido** (Opção A / A1, ADR-0018) · Próxima elegível: **F1.13** (paridade web: leitura — navegação + versões; depende de **F1.12** decidida e **F1.4** aceita) → F1.14 (busca web) → F1.15 (xref web) → F1.16 (notas web) → **⛔ Marco 1 (F1.17)** (sign-off — leitura offline completa multiplataforma). Corpus completo (~59 MB) = backlog transversal pós-paridade.
+Última atualização: 2026-07-01 00:55 UTC · Estado do loop: **▶️ ATIVO — F1.13 ACEITA (`0479b5b`; leitura web real sobre o subset, paridade com o nativo). Queue vazia → próximo ciclo o planner semeia F1.14 (paridade web: busca FTS5) — espelho da busca do core no wa-sqlite (perf de FTS5 no wasm a confirmar).**
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.13 passed** (`0479b5b`; ADR-0019; wa-sqlite/OPFS+MemoryVFS, João 3:16 verbatim do store) · Próxima elegível: **F1.14** (paridade web: busca FTS5; depende de **F1.12** decidida e **F1.6** aceita) → F1.15 (xref web) → F1.16 (notas web) → **⛔ Marco 1 (F1.17)** (sign-off — leitura offline completa multiplataforma). Corpus completo (~59 MB) = backlog transversal pós-paridade.
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -48,7 +48,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente (resolvido)** · **F1.12 decidido*
 | F1.10 | Notas/marcações na fronteira (core userdata, file-based) | ✅ aceito | F1.2 | passed (b6381d0) — 7 funções → userdata; 34 testes; web puro |
 | F1.11 | UI de notas/highlights nativa + export + persistência | ✅ aceito | F1.10, F1.3 | passed (deb3b0c) — TLA_NOTES João 3:16 persisted=true export_ok=true |
 | F1.12 | **GATE estratégico** (⛔): store web do corpus completo (FTS5/OPFS/Opção A vs B) | ✅ **DECIDIDO** | F1.2, F1.5, F1.8, F1.10 | sign-off humano — **Opção A / A1** (subset ~4,4 MB); ADR-0018; HALT removido |
-| F1.13 | Paridade web: leitura (navegação + versões) | ⬜ backlog | F1.12, F1.4 | — |
+| F1.13 | Paridade web: leitura (navegação + versões) | ✅ aceito | F1.12, F1.4 | passed (0479b5b) — leitura web real; João 3:16 verbatim; paridade c/ nativo; ADR-0019 |
 | F1.14 | Paridade web: busca FTS5 | ⬜ backlog | F1.12, F1.6 | — |
 | F1.15 | Paridade web: referências cruzadas + atribuição | ⬜ backlog | F1.12, F1.9 | — |
 | F1.16 | Paridade web: notas/marcações + export | ⬜ backlog | F1.12, F1.11 | — |
