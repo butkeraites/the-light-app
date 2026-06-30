@@ -12,3 +12,5 @@
 | F0.3  | 2026-06-29 | `parse_reference` na fronteira UniFFI delegando ao `the-light-core` (git dep pinada rev `0888ac0`, core v1.2.0); "Jo 3.16"=="John 3:16". | `9881c72` |
 | F0.4  | 2026-06-29 | Script reproduzível `gen-bindings.sh` gera bindings TS via `ubrn` 0.31.0-3 (ADR-0004); `bindings/*.ts` com `parseReference`/`ping`/tipos. | `e19064a` |
 | F0.5  | 2026-06-29 | App Expo mínimo (SDK 56, expo-router) em `app/` com tela `TextInput`+resultado (sem core); export web compila, `tsc` limpo. Node 25 compat. SDK 56. | `3262f56` |
+| (core) | 2026-06-30 | **the-light**: feature `embedded` (default-on) destrava build wasm da lógica pura (branch `feat/core-wasm-feature-gating`, mesclado na `main`). ADR-0005. | `8f66004`† |
+| F0.6a | 2026-06-30 | Re-pin do core p/ `8f66004` + matriz de features por alvo (web=puro / nativo=embedded). Build nativo + 5 testes OK; `cargo tree` confirma 0 deps pesadas no wasm. **Bloqueio SQLite-no-WASM resolvido.** | (a seguir) |

@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-30 01:30 UTC · Estado do loop: **⛔ PARADO (HALT) — núcleo destravado/verificado; aguardando push+merge+re-pin**
-Heartbeat: ver `HEARTBEAT` · HALT: **PRESENTE** (`loop/HALT`) · **Núcleo IMPLEMENTADO** no `the-light` (branch `feat/core-wasm-feature-gating`, `8f66004`; feature `embedded`; wasm OK; 177 testes) · Retomar: **push+merge no GitHub + re-pin do rev** → F0.6a (depois F0.6b: caminho web do ubrn; achado uniffi-wasm)
+Última atualização: 2026-06-30 01:45 UTC · Estado do loop: **▶️ RETOMADO — F0.6a concluída; próxima: F0.6b**
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** (resolvido — core mesclado na `main` do `the-light` + re-pin `8f66004`) · **F0.6a OK** (matriz por alvo: web puro / nativo embedded; 5 testes) · Próxima elegível: **F0.6b** (caminho web do ubrn; achado uniffi-wasm)
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -18,8 +18,8 @@ Heartbeat: ver `HEARTBEAT` · HALT: **PRESENTE** (`loop/HALT`) · **Núcleo IMPL
 | F0.4 | Script de geração de bindings TS | ✅ aceito | F0.3 | passed (e19064a) |
 | F0.5 | App Expo mínimo (expo-router) + tela | ✅ aceito | F0.1 | passed (3262f56) |
 | F0.6 | Ligar core no **web (WASM)** | 🔴 blocked → ♻️ re-escopada | F0.4, F0.5 | blocked (SQLite-no-WASM); ADR-0005 |
-| F0.6a | Consumir core c/ features por alvo + compilar fronteira p/ wasm | ⬜ (backlog) | F0.4, F0.5, **PR core** | — |
-| F0.6b | Bindings web (ubrn) + glue + tela + prova headless | ⬜ (backlog) | F0.6a | — |
+| F0.6a | Consumir core c/ features por alvo (re-pin `8f66004`) | ✅ aceito | F0.4, F0.5, core | matriz por alvo OK; SQLite-no-WASM resolvido |
+| F0.6b | Bindings web (ubrn) + glue + tela + prova headless | 🟡 próxima | F0.6a | achado: uniffi_core não compila cru p/ wasm (Send) |
 | F0.7 | Ligar core no **iOS**: chamar parse_reference | ⬜ | F0.4, F0.5 | — |
 | F0.8 | Ligar core no **Android**: chamar parse_reference | ⬜ | F0.4, F0.5 | — |
 | F0.9 | Store nativo (`rusqlite`): ler 1 passagem do sample.sqlite | ⬜ | F0.6/7/8 | — |
