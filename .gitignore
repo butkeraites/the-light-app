@@ -40,11 +40,28 @@ Cargo.lock.orig
 /cpp/
 /src/
 /TheLightAppCoreFramework.xcframework/
-/TheLightAppCore.podspec
+# Glob (não só o nome exato): o file-provider (iCloud) sob ~/Documents pode criar
+# duplicatas " 2" (ex.: `TheLightAppCore 2.podspec`) de artefatos gerados na raiz.
+/TheLightAppCore*.podspec
 # Cópia da glue JS p/ dentro de app/ (resolução local do Metro/tsc; ver gen script).
 /app/web/native-generated/
 # Projeto iOS do prebuild do Expo + CocoaPods (gerados por `expo prebuild`/`pod install`).
 /app/ios/
+
+# ── Caminho ANDROID NATIVO (F0.8) — artefatos GERADOS ────────────────────────
+# A RN turbo-module library Android é GERADA na raiz pelo `ubrn build android`
+# (scripts/gen-bindings-android.sh): módulo Gradle (build.gradle), CMakeLists.txt,
+# cpp-adapter.cpp, AndroidManifest(.New).xml, Kotlin (Module/Package), jniLibs/<abi>/
+# (.so/.a) e android/generated. A raiz é a "library package" que o app autolinka —
+# tudo aqui é gerado/ignorado. (Se um build.gradle hand-written for necessário,
+# versioná-lo com exceção dirigida, p.ex. `!/android/build.gradle`.)
+/android/
+# Projeto Android do prebuild do Expo (gerado por `expo prebuild -p android`).
+/app/android/
+# Caches/saídas de build Gradle e config local do SDK (qualquer subdir).
+**/build/
+**/.gradle/
+local.properties
 
 # ── Segredos (BYOK) — chaves de IA jamais no git nem em logs ──────────────────
 secrets.toml

@@ -117,3 +117,48 @@ web:
   ts: app/web/generated
   # Barrel gerado (uniffiInitAsync + reexports). Sob o dir gerado => ignorado.
   entrypoint: app/web/generated/index.web.ts
+
+# ── Caminho ANDROID NATIVO (F0.8, ADR-0009) ──────────────────────────────────
+# Bloco consumido por `ubrn build android` (subcomando JSI/nativo; ≠ `build ios`
+# da F0.7, ≠ `build web` da F0.6b, ≠ `generate jsi bindings` host-only da F0.4).
+# Schema `AndroidConfig` (camelCase) em
+# node_modules/uniffi-bindgen-react-native/crates/ubrn_cli/src/jsi/android/config.rs.
+#
+# Fluxo de `ubrn build android --and-generate --targets aarch64-linux-android`:
+#   1) p/ cada target: `cargo ndk --manifest-path core/Cargo.toml --target <abi>
+#      --platform <apiLevel> -- build` (a fronteira core/ arrasta a feature
+#      `embedded` no nativo — rusqlite SQLite-C + reqwest → staticlib), com
+#      CARGO_TARGET_<abi>_RUSTFLAGS=-C link-arg=-Wl,-z,max-page-size=16384
+#      (alinhamento de página 16KB exigido pelo Android 15+);
+#   2) copia o staticlib p/ android/src/main/jniLibs/<abi>/ (sob android.directory);
+#   3) com --and-generate, gera os bindings TS/C++ (em bindings/, reusa o bloco
+#      `bindings:` — ADR-0004) + a glue do Turbo Module ANDROID: android/build.gradle
+#      (módulo Gradle da library, variante Kotlin), CMakeLists.txt, cpp-adapter.cpp,
+#      src/main/AndroidManifest.xml e os .kt (Module/Package) em
+#      src/main/java/<packageName>/. Reusa o cpp/ compartilhado com iOS.
+#
+# project_root é a RAIZ do repo (a mesma do bloco ios:), pois rust.directory: core
+# é relativo a ela — a raiz é a "RN turbo-module library" que o app Expo autolinka
+# via app/react-native.config.js (root: ..). O módulo Gradle gerado (android/) é o
+# que o autolinking Android inclui. Tudo é GERADO e IGNORADO pelo git (.gitignore).
+android:
+  # Diretório do módulo Gradle da library (gerado na raiz). Ignorado.
+  directory: android
+  # Sub-caminho dos .so/.a por ABI, relativo a `directory` (=> android/src/main/jniLibs).
+  jniLibs: src/main/jniLibs
+  # Só o ABI do emulador da prova (arm64-v8a = AVD thelight_avd, system-image
+  # arm64-v8a; triple Rust aarch64-linux-android). O schema YAML aceita só os nomes
+  # estilo-Android; o script ainda passa --targets aarch64-linux-android (o CLI
+  # aceita ambos via FromStr) p/ deixar o ABI da prova explícito.
+  targets:
+    - arm64-v8a
+  # minSdkVersion/--platform do cargo-ndk. RN 0.85 pede >=24 (o default 23 do ubrn
+  # é para RN 0.75); 24 casa com o app Expo (SDK 56).
+  platform: 24
+  # packageName EXPLÍCITO (o default deriva do package.json da raiz e produziria
+  # `-` inválido em pacote Java). Namespace do módulo Gradle + dos .kt gerados.
+  packageName: com.thelight.core
+  # Destino do codegen New Arch (RN) referenciado pelo build.gradle. Gerado/ignorado.
+  codegenOutputDir: android/generated
+  # staticlib (default) — paridade com o iOS/Turbo Module; o CMake linka o .a.
+  useSharedLibrary: false

@@ -696,3 +696,147 @@ limpos. Não toca a fronteira, o core, nem o autolinking.
   re-rodar `gen-bindings-ios.sh` após mudar a fronteira mantém `app/web/native-generated/`
   em sincronia. A `--sim-only` cobre o simulador; device físico exigirá o alvo
   `aarch64-apple-ios` (já no default de `targets`) + assinatura (fora do escopo F0.7).
+
+---
+
+## ADR-0009 — Caminho ANDROID NATIVO do `ubrn`: `build android`, config `android:`, integração Expo (prebuild + autolink + New Arch codegen) e prova headless no emulador
+
+- **Data:** 2026-06-30 · **Status:** aceito · **Tarefa:** F0.8 · **Depende:** ADR-0004, ADR-0005, ADR-0006, ADR-0008
+
+### Contexto
+A F0.8 é o **ESPELHO da F0.7 (iOS, ADR-0008)** no alvo **Android NATIVO**: digitar
+`"Jo 3.16"` (PT) / `"John 3:16"` (EN) num app Expo no **emulador Android** resolve a
+referência **pelo Rust** (`the-light-core::reference` via UniFFI → **Turbo Module
+JSI/JNI** gerado pelo `ubrn 0.31.0-3`), não por wasm nem parsing em TS. O **Turbo
+Module compartilhado** (spec `NativeTheLightAppCore`, C++/JSI em `cpp/`, TS em
+`src/`, bindings em `bindings/`, glue `app/web/reference.ts`/`selftest.ts`,
+autolink via `app/react-native.config.js`, `codegenConfig` da raiz) **já existe e
+foi provado no iOS**; a F0.8 **só adiciona o caminho de BUILD Android** + a prova no
+emulador. O subcomando é `ubrn build android` (≠ `build ios` da F0.7; ≠ `build web`
+da F0.6b; ≠ `generate jsi bindings` host-only da F0.4). Tudo **no `the-light-app`**
+(core e fronteira intactos — `parse_reference` segue delegando ao core).
+
+### Decisão
+
+1. **Subcomando + config.** `ubrn build android --and-generate --targets
+   aarch64-linux-android --config ubrn.config.yaml` (encapsulado em
+   `scripts/gen-bindings-android.sh`): p/ cada ABI, `cargo ndk --manifest-path
+   core/Cargo.toml --target <abi> --platform 24 -- build` (a fronteira arrasta a
+   feature `embedded` — rusqlite SQLite-C + reqwest → **staticlib**, com
+   `CARGO_TARGET_<abi>_RUSTFLAGS=-C link-arg=-Wl,-z,max-page-size=16384` p/
+   alinhamento de página 16KB do Android 15+) → copia p/
+   `android/src/main/jniLibs/<abi>/libthe_light_app_core.a` → `--and-generate` gera
+   os bindings TS/C++ (em `bindings/`, reusando ADR-0004) **+** a glue do Turbo
+   Module Android. Novo bloco no `ubrn.config.yaml` (`rust:`/`bindings:`/`web:`/
+   `ios:`/`turboModule:` **intactos**):
+   - **`android:`** (schema `AndroidConfig`): `directory: android`, `jniLibs:
+     src/main/jniLibs`, `targets: [arm64-v8a]` (o schema YAML aceita só os nomes
+     estilo-Android; o script ainda passa `--targets aarch64-linux-android`, que o
+     CLI aceita via `FromStr`), `platform: 24` (RN 0.85 pede ≥24; o default 23 do
+     ubrn é p/ RN 0.75), `packageName: com.thelight.core` **explícito** (o default
+     deriva do `package.json` e produziria `-` inválido em pacote Java),
+     `codegenOutputDir: android/generated`, `useSharedLibrary: false` (staticlib,
+     paridade com o iOS — o CMake linka o `.a`).
+
+2. **A RAIZ do repo é a "RN turbo-module library"** (mesma da F0.7). O `ubrn build
+   android --and-generate` gera, na raiz, o **módulo Gradle da library** em
+   `android/`: `build.gradle` (variante Kotlin, `com.android.library` + plugin
+   `com.facebook.react` sob New Arch), `CMakeLists.txt` (linka o staticlib Rust +
+   o C++/JSI compartilhado), `cpp-adapter.cpp` (JNI), `src/main/AndroidManifest.xml`,
+   e os Kotlin `TheLightAppCoreModule.kt`/`TheLightAppCorePackage.kt` em
+   `src/main/java/com/thelight/core/`. Tudo é **GERADO e IGNORADO** (`.gitignore`:
+   `/android/`). **Não foi preciso** `android/build.gradle` hand-written: o gerado é
+   buildável no nosso Expo após dois patches de template (ver abaixo).
+
+3. **Autolinking no Expo via `app/react-native.config.js`** (o **mesmo** da F0.7,
+   `root: '..'`). O `expo-modules-autolinking react-native-config --platform android`
+   descobre a library na raiz: `sourceDir: <root>/android`, `packageImportPath:
+   import com.thelight.core.TheLightAppCorePackage;`, `packageInstance: new
+   TheLightAppCorePackage()`, `libraryName: RNTheLightAppCoreSpec` (do
+   `codegenConfig` da raiz), `cmakeListsPath: <root>/android/CMakeLists.txt`. O
+   **New Arch codegen** (RN Gradle plugin, agregado no app) gera o spec
+   `NativeTheLightAppCoreSpec` que o `TheLightAppCoreModule.kt` estende. O app ganhou
+   `app/app.json` `android.package: com.thelight.app` (applicationId) e o build é
+   restrito ao ABI da prova com `-PreactNativeArchitectures=arm64-v8a` (só geramos o
+   staticlib p/ arm64-v8a).
+
+4. **Glue JS copiada p/ `app/web/native-generated/`** — idêntico ao iOS (ADR-0008):
+   o `gen-bindings-android.sh` copia `src/` + `bindings/*.ts` p/ dentro de `app/`,
+   onde Metro/tsc resolvem (`@ubjs/core` em `app/node_modules`). É a **mesma** glue JS
+   do iOS (Turbo Module compartilhado) — idempotente. `app/web/reference.ts`
+   (glue nativo) e `reference.web.ts` (wasm) **não** mudaram; o Metro escolhe por
+   extensão (`.ts` no nativo iOS/Android, `.web.ts` no web).
+
+5. **Prova HEADLESS: emulador + Metro + `adb logcat`.** O
+   `scripts/run-android-selftest.sh` (determinístico, `trap EXIT`): boota o AVD
+   `thelight_avd` **headless** (`-no-window -gpu swiftshader_indirect -no-snapshot
+   -no-audio`), aguarda `sys.boot_completed=1`, `gradlew :app:installDebug
+   -PreactNativeArchitectures=arm64-v8a`, sobe o **Metro** com
+   `EXPO_PUBLIC_TLA_SELFTEST=1` + `adb reverse tcp:8081`, limpa o logcat
+   (`adb logcat -c`), lança o app (`am start`) e captura (`adb logcat -s
+   ReactNativeJS:V`) — `console.log`/`error` do JS caem na tag `ReactNativeJS`.
+   **Asserta os DOIS marcadores** (sai 0 só se ambos baterem):
+   `TLA_SELFTEST PT book=43 chapter=3 verse=16` **e**
+   `TLA_SELFTEST EN book=43 chapter=3 verse=16`. No fim: força-para o app, mata Metro
+   + stream e **desliga o emulador** (`adb emu kill`). O self-test
+   (`app/web/selftest.ts`, sob o env) chama o **mesmo** `parseReference` da tela →
+   Turbo Module → Rust (sem eco, sem parser TS).
+
+### Defeitos de template corrigidos (configuráveis, não são muro)
+O `build android --and-generate` do `ubrn 0.31.0-3` pressupõe o layout
+`create-react-native-library`; dois ajustes foram necessários, ambos em arquivos
+**GERADOS** (sob `android/`, ignorados) e aplicados **dentro do
+`gen-bindings-android.sh`** (reprodutíveis, sem tocar o core/fronteira nem o
+`node_modules`):
+- **`AndroidManifestNew.xml` ausente.** Sob AGP 8, o `build.gradle` gerado
+  (`supportsNamespace()`) define `namespace` E aponta `manifest.srcFile` p/
+  `src/main/AndroidManifestNew.xml`, mas o `ubrn` só emite `AndroidManifest.xml` (com
+  `package`, que conflita com `namespace`). O script emite o manifest "new" **sem**
+  `package` (convenção que o template pressupõe).
+- **Resolução do runtime C++ sob Node ≥ 20.** O `CMakeLists.txt` localiza os headers
+  do runtime (`uniffi-bindgen-react-native/cpp/includes`) via
+  `node -p "require.resolve('uniffi-bindgen-react-native/package.json')"`, mas o
+  pacote tem um campo `exports` que **não** expõe `./package.json`; o Node moderno
+  (aqui v25) bloqueia o subpath (`ERR_PACKAGE_PATH_NOT_EXPORTED`), deixando
+  `UNIFFI_BINDGEN_PATH` **vazio** → include `-I/cpp/includes` inválido → erro de
+  compilação `'UniffiCallInvoker.h' file not found`. O script reescreve o comando p/
+  resolver o **entrypoint exportado** (`require.resolve('uniffi-bindgen-react-native')`,
+  permitido) e subir até a raiz do pacote — saída idêntica
+  (`.../package.json`), de onde o `get_filename_component(DIRECTORY)` extrai a raiz.
+
+### Resultado (verde)
+- `gen-bindings-android.sh` sai **0** (reproduzível) → staticlib
+  `android/src/main/jniLibs/arm64-v8a/libthe_light_app_core.a` + glue do Turbo Module
+  (build.gradle/CMake/cpp-adapter/Kotlin) + bindings.
+- `expo prebuild -p android` gera `app/android/`; o autolink descobre a library na
+  raiz; `gradlew :app:installDebug -PreactNativeArchitectures=arm64-v8a` **compila e
+  linka** o C++/JSI (CMake → `libthe-light-app-core.so`, ~34 MB com o staticlib Rust
+  embarcado) + a Kotlin TurboModule contra os headers New Arch, e empacota o APK
+  (`lib/arm64-v8a/libthe-light-app-core.so` presente).
+- App **roda no emulador `thelight_avd`** (headless) e o `run-android-selftest.sh`
+  capturou, do `adb logcat`, **ambos** os marcadores PT e EN com
+  `book=43 chapter=3 verse=16` — `parse_reference` pelo **Rust nativo** via Turbo
+  Module (PT==EN), sem wasm/TS.
+- **Sem regressão** web (F0.6b) nem iOS (F0.7): `reference.web.ts`, blocos
+  `web:`/`ios:`/`turboModule:` do `ubrn.config.yaml`, scripts iOS e
+  `app/web/reference.ts`/`selftest.ts` intactos. `tsc --noEmit` do `app/` verde.
+  **Core e fronteira intactos**.
+
+### Consequências / riscos a observar
+- **Versionado:** bloco `android:` no `ubrn.config.yaml`;
+  `scripts/gen-bindings-android.sh`, `scripts/run-android-selftest.sh`;
+  `app/app.json` (`android.package`); `.gitignore` (`/android/`, `/app/android/`,
+  `**/build/`, `**/.gradle/`, `local.properties`, glob da podspec). **Nenhum**
+  `android/build.gradle` hand-written foi necessário (o gerado basta com os patches
+  do script).
+- **Gerado/IGNORADO:** `android/` (Gradle/CMake/Kotlin/jniLibs/`.so`/`.a`/generated),
+  `app/android/` (prebuild), `**/build/`, `**/.gradle/`, `cpp/`/`src/`/`bindings/`,
+  `app/web/native-generated/`.
+- **Offline-first preservado:** rede só em dev/build (cargo-ndk/Gradle/npm/Metro); o
+  runtime do self-test é **offline** (referência resolvida localmente no Rust).
+  Nenhum segredo em git/log (keystore/`local.properties` jamais commitados).
+- **Risco:** só o ABI **arm64-v8a** é construído (casa o AVD arm64); device/emulador
+  x86_64 ou armeabi exigiriam adicionar o ABI em `android.targets` + `--targets` e
+  `-PreactNativeArchitectures`. Os dois patches de template são reaplicados a cada
+  `gen-bindings-android.sh` (idempotentes); se o `ubrn` mudar o template, o script
+  falha explícito ("linha … não encontrada") em vez de gerar build quebrado.

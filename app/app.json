@@ -10,6 +10,9 @@
     "ios": {
       "bundleIdentifier": "com.thelight.app"
     },
+    "android": {
+      "package": "com.thelight.app"
+    },
     "web": {
       "bundler": "metro",
       "output": "static"
