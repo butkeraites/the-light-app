@@ -19,13 +19,21 @@
 // SELECTs de leitura/busca/xref (infra) + composição dos Records (o índice
 // FTS5/BM25/highlight e a ordem por votos vivem no SQLite, ADR-0020/0021).
 // Anti-alucinação: o TEXTO vem SEMPRE do store local, verbatim; a xref é só
-// referência+votos do store. Userdata segue stub (F1.16).
+// referência+votos do store.
+//
+// F1.16 (ADR-0022): USERDATA (notas/marcações) destubado — o I/O é reimplementado em
+// TS sobre OPFS (`userdata-opfs.web.ts`) ESPELHANDO o formato em disco do core
+// (`notes/<slug>.md` + `highlights.json`), pois o módulo `userdata` é nativo-only
+// (`#[cfg(feature="embedded")]`) e NÃO entra no wasm (precedente ADR-0011). A
+// referência é canonicalizada pelo WASM (`parseReference`), NÃO inventada em TS; o
+// FORMATO vive em `userdata-fs.web.ts` (VFS-agnóstico). O corpo da nota é dado livre
+// do usuário (anti-alucinação não se aplica ao corpo, igual ao nativo, ADR-0017).
 //
 // As MESMAS telas React `app/app/read/**` (compartilhadas com o nativo `reading.ts`)
-// passam a funcionar no browser só por este glue + `db.web.ts` (sentinela).
-// Resolução por extensão do Metro: este `.web.ts` vale no web; no nativo vale
-// `reading.ts` (Turbo Module → the-light-core).
-import { listBooks as listBooksWasm } from './generated/index.web';
+// passam a funcionar no browser só por este glue + `db.web.ts`/`userdata.web.ts`
+// (sentinelas). Resolução por extensão do Metro: este `.web.ts` vale no web; no
+// nativo vale `reading.ts` (Turbo Module → the-light-core).
+import { listBooks as listBooksWasm, parseReference } from './generated/index.web';
 import type {
   Book,
   Passage,
@@ -45,14 +53,18 @@ import {
 import { searchOnHandle } from './sqlite-search.web';
 import { crossRefsOnHandle } from './sqlite-xref.web';
 import { openReadingDbWeb } from './sqlite-reading-opfs.web';
+import {
+  addHighlightFs,
+  deleteNoteFs,
+  getNoteFs,
+  listHighlightsFs,
+  listNotesFs,
+  putNoteFs,
+  removeHighlightFs,
+} from './userdata-fs.web';
+import { openUserDataWeb } from './userdata-opfs.web';
 
 export type { Book, Passage, Translation, SearchHit, CrossRef, Note, Highlight };
-
-// Notas/highlights no web (userdata sobre wa-sqlite/OPFS) = F1.16 (pós-gate F1.12).
-// Até lá, o glue web de userdata é um stub que lança em runtime, mantendo `tsc`/build
-// web verdes. O par nativo (`reading.ts`) grava/lê real via a fronteira `userdata`.
-const WEB_NOTES_MSG =
-  'notas/highlights web (userdata sobre wa-sqlite/OPFS) = F1.16; o userdata nativo usa o the_light_core::userdata via Turbo Module.';
 
 /**
  * 66 livros canônicos (PURO — `reference::BOOKS`), do RUST (wasm). SÍNCRONO, como
@@ -180,36 +192,56 @@ export async function crossRefs(
   }
 }
 
-// ── USERDATA (notas/highlights) — STUB web (F1.16) ───────────────────────────
-export async function putNote(_dataDir: string, _reference: string, _body: string): Promise<void> {
-  throw new Error(WEB_NOTES_MSG);
+// ── USERDATA (notas/highlights) — F1.16 (ADR-0022) ───────────────────────────
+// O I/O é reimplementado em TS sobre OPFS (`openUserDataWeb`) ESPELHANDO o formato
+// em disco do core (slug `notes/<slug>.md` + `highlights.json`), pois o módulo
+// `userdata` é nativo-only (NÃO entra no wasm — precedente ADR-0011). A referência
+// de ENTRADA é resolvida por `parseReference` (WASM) ANTES do I/O — paridade com o
+// `put_note`/`add_highlight` do core (parseia antes de gravar; ref inválida → erro,
+// sem I/O). `_dataDir` é aceito por paridade de assinatura com o nativo; o store
+// web abre o OPFS internamente (mesmo padrão de `getChapter`/`search`/`crossRefs`).
+
+export async function putNote(_dataDir: string, reference: string, body: string): Promise<void> {
+  const ref = parseReference(reference);
+  const dir = await openUserDataWeb();
+  await putNoteFs(dir, ref, body);
 }
 
-export async function getNote(_dataDir: string, _reference: string): Promise<Note | undefined> {
-  throw new Error(WEB_NOTES_MSG);
+export async function getNote(_dataDir: string, reference: string): Promise<Note | undefined> {
+  const ref = parseReference(reference);
+  const dir = await openUserDataWeb();
+  return getNoteFs(dir, ref);
 }
 
-export async function deleteNote(_dataDir: string, _reference: string): Promise<boolean> {
-  throw new Error(WEB_NOTES_MSG);
+export async function deleteNote(_dataDir: string, reference: string): Promise<boolean> {
+  const ref = parseReference(reference);
+  const dir = await openUserDataWeb();
+  return deleteNoteFs(dir, ref);
 }
 
 export async function listNotes(_dataDir: string): Promise<Note[]> {
-  throw new Error(WEB_NOTES_MSG);
+  const dir = await openUserDataWeb();
+  return listNotesFs(dir);
 }
 
 export async function addHighlight(
   _dataDir: string,
-  _reference: string,
-  _color: string,
-  _tag?: string,
+  reference: string,
+  color: string,
+  tag?: string,
 ): Promise<void> {
-  throw new Error(WEB_NOTES_MSG);
+  const ref = parseReference(reference);
+  const dir = await openUserDataWeb();
+  await addHighlightFs(dir, ref, color, tag);
 }
 
-export async function removeHighlight(_dataDir: string, _reference: string): Promise<number> {
-  throw new Error(WEB_NOTES_MSG);
+export async function removeHighlight(_dataDir: string, reference: string): Promise<number> {
+  const ref = parseReference(reference);
+  const dir = await openUserDataWeb();
+  return removeHighlightFs(dir, ref);
 }
 
 export async function listHighlights(_dataDir: string): Promise<Highlight[]> {
-  throw new Error(WEB_NOTES_MSG);
+  const dir = await openUserDataWeb();
+  return listHighlightsFs(dir);
 }

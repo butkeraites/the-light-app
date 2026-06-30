@@ -10,7 +10,8 @@
     "web": "expo start --web",
     "test:web:reading": "node web/__tests__/reading.web.test.mjs",
     "test:web:search": "node web/__tests__/search.web.test.mjs",
-    "test:web:xref": "node web/__tests__/xref.web.test.mjs"
+    "test:web:xref": "node web/__tests__/xref.web.test.mjs",
+    "test:web:notes": "node web/__tests__/notes.web.test.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~56.0.15",
