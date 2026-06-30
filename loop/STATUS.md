@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-30 15:30 UTC · Estado do loop: **▶️ ATIVO — F1.2 semeada na queue (ready); pronta p/ executor**
-Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.1 passed** (`b1a9be4`; banco KJV 31102 + Almeida1911 31101 via xtask, gerar-ignorado) · Próxima elegível: **F1.2** (`loop/queue/F1.2-leitura-core.task.md` — translations/books/chapter/chapter_count delegando ao core, corpo gated cfg(not wasm32)) → … → gate F1.12 → Marco 1 (F1.17)
+Última atualização: 2026-06-30 15:40 UTC · Estado do loop: **▶️ ATIVO — F1.2 aceita (leitura no core); próxima F1.3 (UI leitura nativa)**
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.2 passed** (`e06b0c6`; list_translations/list_books/get_chapter/chapter_count delegam ao core; web puro) · Próxima elegível: **F1.3** (UI de leitura nativa: livro→cap→texto + seletor de versão) → … → gate F1.12 → Marco 1 (F1.17)
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -37,7 +37,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.1 passed** (`b1a9be4`; b
 | ID | Tarefa | Estado | Depende de | Resultado |
 |----|--------|--------|------------|-----------|
 | F1.1 | Pipeline de dados + banco embarcado completo (KJV+ALM1911 via xtask) | ✅ aceito | — | passed (b1a9be4) — kjv 31102 / alm1911 31101 |
-| F1.2 | Expor leitura no core (fronteira nativo): translations/books/chapter/passage | 🟡 ready | F1.1 | — |
+| F1.2 | Expor leitura no core (fronteira nativo): translations/books/chapter/passage | ✅ aceito | F1.1 | passed (e06b0c6) — 4 funções delegam ao core; web puro |
 | F1.3 | UI de leitura nativa: navegação livro→cap→texto + seletor de versão | ⬜ backlog | F1.2 | — |
 | F1.4 | UI de leitura nativa: múltiplas versões lado a lado + tema | ⬜ backlog | F1.3 | — |
 | F1.5 | Busca FTS5 na fronteira (core, nativo) | ⬜ backlog | F1.2 | — |
