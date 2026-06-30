@@ -16,3 +16,4 @@
 | F0.6a | 2026-06-30 | Re-pin do core p/ `8f66004` + matriz de features por alvo (web=puro / nativo=embedded). Build nativo + 5 testes OK; `cargo tree` confirma 0 deps pesadas no wasm. **Bloqueio SQLite-no-WASM resolvido.** | `9f37bc4` |
 | F0.6c | 2026-06-30 | Alinhar `uniffi` da fronteira a `=0.31.0` (compat. runtime web do ubrn); fronteira verde (5 testes) + JSI regenera; ADR-0006. Destrava retry da F0.6b. | `7b98644` |
 | F0.6b | 2026-06-30 | **Caminho web/WASM fechado**: `ubrn build web` + `gen-bindings-web.sh` → wasm-bindgen; glue `app/web/`; tela ligada; prova headless `parseReference` PT==EN (43/3/16) pelo Rust; `expo export web` ok. ADR-0007. | `1cdde6c` |
+| F0.7 | 2026-06-30 | **Alvo iOS fechado**: `ubrn build ios` → Turbo Module JSI; integração Expo (prebuild+New Arch codegen+CocoaPods); run real no simulador iPhone 17/iOS 26.5; prova headless PT==EN (43/3/16) pelo Rust nativo. ADR-0008. | `a6f6797` |
