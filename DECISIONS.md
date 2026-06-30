@@ -1004,3 +1004,88 @@ mudar o `the-light-core`**:
 - O `get_passage` nativo (F0.9, via `the-light-core`) e o web (wa-sqlite) convergem
   na mesma interface de glue (`app/web/reference.*`), com o texto sempre do store
   local em ambos.
+
+---
+
+## ADR-0012 — Implementação do store web (`wa-sqlite` 1.0.0, build sync): empacotamento do `.wasm`, symlink do `sample.sqlite`, OPFS-persistência + leitura em VFS de memória
+
+- **Data:** 2026-06-30 · **Status:** aceito · **Tarefa:** F0.10 · **Detalha:** ADR-0011
+
+### Contexto
+A ADR-0011 decidiu **Opção A** (`wa-sqlite` + OPFS, query de passagem em TS). A
+implementação da F0.10 exigiu sub-decisões concretas de empacotamento (Metro/Expo
+web), de carga do sample e do modo de execução do `wa-sqlite` no browser. Todas
+vivem **só no `the-light-app`** (core/fronteira intactos).
+
+### Decisão
+
+1. **Lib/versão/build:** `wa-sqlite@1.0.0` (pin EXATO em `app/package.json` +
+   `package-lock.json`). Usa-se o build **SYNC** (`wa-sqlite/dist/wa-sqlite.mjs` +
+   `wa-sqlite.wasm`) — **sem Asyncify, sem `SharedArrayBuffer`, sem COOP/COEP**.
+   Isso evita o gatilho de bloqueio da F0.10 (export web estático não serve
+   COOP/COEP) e mantém a paridade entre o browser e a prova node.
+
+2. **Query ISOLADA do VFS (`app/web/sqlite.web.ts`):** `queryPassage(handle,
+   translationId, book, chapter, verse)` roda o **SELECT espelhado** de
+   `EmbeddedSource::passage` (variante `Single`:
+   `SELECT verse, text FROM verses WHERE translation_id=? AND book_number=? AND
+   chapter=? AND verse=? ORDER BY verse`). `composePassage`/`readPassage` montam a
+   `Passage` (Reference do **Rust** + texto do store). Sem parsing em TS; sem texto
+   bíblico no produto.
+
+3. **Empacotamento do `.wasm` e do sample (Metro):** `app/metro.config.js` registra
+   `.sqlite` em `assetExts` (já havia `.wasm`, F0.6b). O `wa-sqlite.wasm` (de
+   `node_modules`) e o `sample.sqlite` são **assets locais empacotados** (offline-
+   first; no `dist/`: `assets/node_modules/wa-sqlite/dist/wa-sqlite.<hash>.wasm` e
+   `assets/_assets/data/sample.<hash>.sqlite`). Como o `sample.sqlite` canônico vive
+   **fora** do projectRoot (`<repo>/assets/data`, ADR-0010) e o resolver do Metro
+   **recusa** imports que "escapam" o projectRoot com `../../` (e não indexa o
+   arquivo cross-root no file-map → "Failed to get the SHA-1"), versiona-se um
+   **symlink** `app/assets/data/sample.sqlite → ../../../assets/data/sample.sqlite`.
+   O symlink mantém o asset **dentro** do projectRoot (Metro empacota sem hack de
+   resolução) **preservando a única fonte da verdade** (os bytes vivem só no arquivo
+   canônico; verificado: o asset no `dist/` é **byte-idêntico** ao canônico).
+
+4. **Runtime no browser = OPFS-persistência + leitura em VFS de memória
+   (`app/web/sqlite-opfs.web.ts`, guard `typeof navigator`):** na 1ª vez, os bytes
+   do `sample.sqlite` (asset empacotado) são **persistidos em OPFS**
+   (`navigator.storage.getDirectory` + `createWritable`, main-thread); nas próximas,
+   lidos do OPFS. A **leitura SQLite** roda num **VFS de memória do `wa-sqlite`
+   hidratado** com esses bytes. Motivo: o **VFS OPFS "ao vivo"** do `wa-sqlite` exige
+   `FileSystemSyncAccessHandle` (`createSyncAccessHandle`), que só existe em **Web
+   Worker** — usar VFS de memória hidratado do OPFS roda na **main thread sem Worker
+   e sem `SharedArrayBuffer`**, mantendo: **store local = OPFS**, **leitura via
+   `wa-sqlite`**, **texto verbatim do store**. (Um VFS OPFS em Worker é evolução
+   futura, fora do escopo de viabilidade da Fase 0.)
+
+5. **Prova HEADLESS honesta (node, `app/web/__tests__/getPassage.web.test.mjs`):**
+   instancia `parseReference` via wasm (bytes do `index_bg.wasm`) **+** abre o
+   `wa-sqlite` (build sync, bytes do `wa-sqlite.wasm`) sobre um **VFS de memória
+   semeado com os BYTES de `assets/data/sample.sqlite`** **+** chama a **MESMA**
+   `queryPassage`/`readPassage` de produção. Assere `text == <KJV verbatim>` e
+   `book=43, chapter=3, verse=16`. OPFS **não existe em node**; o VFS de memória
+   exercita a MESMA query e leitura do mesmo sample que o browser hidrata do OPFS.
+   A constante KJV existe **só na asserção** do teste — nunca no produto.
+
+### Consequências
+- **Versionado:** `app/web/sqlite.web.ts`, `app/web/sqlite-opfs.web.ts`,
+  `app/web/passage.web.ts`, `app/web/passage.ts` (stub nativo),
+  `app/web/assets.d.ts` (tipos de import de asset),
+  `app/web/__tests__/getPassage.web.test.mjs` + `getPassage-headless-entry.ts`,
+  `app/app/index.tsx` (web → `getPassage`), `app/metro.config.js` (`.sqlite`),
+  `app/assets/data/sample.sqlite` (**symlink**), `app/package.json`(+lock,
+  `wa-sqlite@1.0.0`), `DECISIONS.md`.
+- **Gerado/IGNORADO (inalterado):** `app/web/generated/`, `rust_modules/`,
+  `dist/`, `node_modules/`. O `the-light` permanece **intacto** (consumo pinado
+  `rev 8f66004`); a forma da fronteira (parse_reference no Rust) é preservada — a
+  F0.10 vive **só** no glue TS de `app/` (o web **espelha** o SELECT, não consome o
+  store do core — ADR-0011).
+- **Offline-first:** nenhum recurso de rede externa em runtime (sample + `.wasm`
+  são assets locais; a carga em OPFS é fetch da própria origem). Rede só em
+  dev/build (npm/cargo/wasm-bindgen). Nenhum segredo em git/log.
+- **Verde:** prova headless do store web (texto KJV verbatim + 43/3/16);
+  `parseReference` web (F0.6b) e nativo (F0.7/F0.8) e store nativo (F0.9 `cargo
+  test`) **sem regressão**; `tsc --noEmit` do `app/` verde; `expo export
+  --platform web` **0** com `wa-sqlite` + `sample.sqlite` no bundle.
+- **Quando o web precisar de search/xref ou de OPFS "ao vivo"** (Worker), reavaliar
+  (Opção B da ADR-0011 / VFS OPFS em Worker) — novo ADR então.

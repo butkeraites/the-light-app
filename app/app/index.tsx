@@ -2,12 +2,16 @@ import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { parseReference, type Reference } from '../web/reference';
+import { getPassage, type Passage } from '../web/passage';
 import { runReferenceSelfTest } from '../web/selftest';
 
-// F0.6b — tela ligada à fronteira Rust no WEB (wasm). Ao submeter, a referência
-// digitada é resolvida PELO RUST (the-light-core via UniFFI→wasm), não por eco
-// nem parsing em TS. O glue (../web/reference) inicializa o wasm e delega a
-// `parseReference`. Em nativo o glue é um stub (F0.7/F0.8 ligam iOS/Android).
+// F0.6b/F0.10 — tela ligada à fronteira Rust. A referência é SEMPRE resolvida
+// PELO RUST (the-light-core via UniFFI), não por eco/parsing em TS.
+//   - WEB (F0.10): `getPassage` resolve a referência (wasm) E lê o TEXTO do
+//     versículo do store local (`wa-sqlite`/OPFS) — anti-alucinação: verbatim do
+//     store, nunca hardcoded.
+//   - NATIVO (F0.7/F0.8): `parseReference` via Turbo Module; a leitura de store
+//     nativa (F0.9) não está ligada nesta tela.
 const PLACEHOLDER = 'O resultado aparecerá aqui.';
 
 // Apresentação (NÃO parsing): formata o intervalo de versículos resolvido pelo Rust.
@@ -26,6 +30,16 @@ function formatVerses(verses: Reference['verses']): string {
 
 function formatReference(ref: Reference): string {
   return `livro ${ref.book} · cap. ${ref.chapter} · ${formatVerses(ref.verses)}`;
+}
+
+// Apresentação (NÃO parsing): mostra o TEXTO verbatim lido do store local.
+function formatPassage(passage: Passage): string {
+  if (passage.verses.length === 0) {
+    return 'Versículo não encontrado no store local.';
+  }
+  const header = formatReference(passage.reference);
+  const body = passage.verses.map((v) => v.text).join('\n');
+  return `${header}\n\n${body}`;
 }
 
 export default function HomeScreen() {
@@ -48,8 +62,15 @@ export default function HomeScreen() {
       return;
     }
     try {
-      const ref = await parseReference(input);
-      setResult(formatReference(ref));
+      if (Platform.OS === 'web') {
+        // WEB: resolve (Rust/wasm) + lê o texto do store local (wa-sqlite/OPFS).
+        const passage = await getPassage(input);
+        setResult(formatPassage(passage));
+      } else {
+        // NATIVO: resolve a referência pelo Turbo Module (store nativo = F0.9).
+        const ref = await parseReference(input);
+        setResult(formatReference(ref));
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setResult(`Não foi possível resolver: ${message}`);

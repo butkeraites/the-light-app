@@ -17,6 +17,14 @@ const config = getDefaultConfig(__dirname);
 // Trata .wasm como asset (e não como módulo de código-fonte) — caminho web (F0.6b).
 config.resolver.assetExts.push('wasm');
 
+// F0.10 (ADR-0011/ADR-0012): trata .sqlite como asset binário. O store web
+// (`app/web/sqlite-opfs.web.ts`) importa `app/assets/data/sample.sqlite` (um
+// SYMLINK versionado para o `sample.sqlite` canônico em <repo>/assets/data — KJV
+// domínio público) e o carrega em OPFS. O symlink mantém o asset DENTRO do
+// projectRoot (Metro o empacota sem resolução cross-root) preservando a única
+// fonte da verdade. Offline-first: asset local, sem rede.
+config.resolver.assetExts.push('sqlite');
+
 // Nota (F0.7/ADR-0008): a glue JS do Turbo Module nativo (barrel + bindings TS)
 // é GERADA na raiz pelo `ubrn build ios`, mas o `scripts/gen-bindings-ios.sh` a
 // COPIA para `app/web/native-generated/` (ignorada) — dentro do projectRoot.
