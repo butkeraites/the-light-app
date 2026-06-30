@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-07-01 03:15 UTC · Estado do loop: **▶️ ATIVO — F1.16 SEMEADA na queue (`F1.16-web-notas.task.md`, 🟡 ready, gate:false; depende de F1.12 decidida + F1.11 aceita) — ÚLTIMA paridade web: notas/marcações + export (I/O de userdata em TS sobre OPFS espelhando o formato do core; ADR-0022). Após aceita, F1.17 (Marco 1) fica elegível → HALT p/ sign-off.**
-Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.16 ready** (paridade web: notas/highlights OPFS + export, espelha `notes/<slug>.md`+`highlights.json` do core, slug `John_3.16.md`, ref via wasm; prova headless `WEB_NOTES … persisted=true export_ok=true`) · Próxima elegível: **F1.16** → **⛔ Marco 1 (F1.17)** (sign-off — leitura offline completa multiplataforma). Corpus completo (~59 MB) = backlog transversal pós-paridade.
+Última atualização: 2026-07-01 04:00 UTC · Estado do loop: **⛔ HALT — MARCO 1 (F1.17) aguardando sign-off humano. Fase 1 FUNCIONALMENTE COMPLETA: todas as 16 tarefas (F1.1–F1.16) aceitas e verdes nos 3 alvos (iOS+Android+Web) — leitura, busca FTS5, xref CC-BY, notas/export. Relatório em `queue/F1.17-marco-1.task.md`; `loop/HALT` escrito.**
+Heartbeat: ver `HEARTBEAT` · HALT: **PRESENTE** (`loop/HALT` — gate Marco 1) · **F1.16 passed** (`7557f0e`; ADR-0022; notas web OPFS) · **Sign-off decide:** (1) aprovar Fase 1; (2) liberar Fase 2 (IA BYOK + Gemini); (3) prioridade do backlog transversal "corpus completo no web (~59 MB)". Retomar = aprovar → Driver registra sign-off, arquiva F1.17, remove `loop/HALT`, planner decompõe a Fase 2. `the-light` intocado (`8f66004`).
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -52,7 +52,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.16 ready** (paridade web
 | F1.14 | Paridade web: busca FTS5 | ✅ aceito | F1.12, F1.6 | passed (b2f1d8f) — busca web FTS5 real; João 3:16 localizado; FTS5 vendorizado; ADR-0020 |
 | F1.15 | Paridade web: referências cruzadas + atribuição | ✅ aceito | F1.12, F1.9 | passed (1fe14e6) — xref web real; João 3:15 1º (439); CC-BY no bundle; ADR-0021 |
 | F1.16 | Paridade web: notas/marcações + export | ✅ aceito | F1.12, F1.11 | passed (7557f0e) — notas/highlights web em OPFS; WEB_NOTES persisted=true; export idêntico; ADR-0022 |
-| F1.17 | **Marco 1** (⛔ gate): leitura offline completa, multiplataforma | ⛔ gate | F1.4, F1.6, F1.9, F1.11, F1.13–F1.16 | — |
+| F1.17 | **Marco 1** (⛔ gate): leitura offline completa, multiplataforma | ⛔ **GATE → HALT** | F1.4, F1.6, F1.9, F1.11, F1.13–F1.16 | semeada (relatório de marco); `loop/HALT` escrito — aguardando sign-off humano |
 
 ## Fases seguintes
 
