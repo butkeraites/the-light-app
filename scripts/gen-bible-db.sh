@@ -1,15 +1,21 @@
 #!/usr/bin/env sh
-# gen-bible-db.sh — (re)gera assets/data/bible.sqlite (corpus COMPLETO: KJV + Almeida 1911)
-# de forma REPRODUTÍVEL e IDEMPOTENTE, rodando o IMPORTADOR CANÔNICO (`xtask import`)
-# do `the-light` no rev PINADO 8f66004 (ADR-0002) — SEM modificar/forkar o `the-light`.
+# gen-bible-db.sh — (re)gera assets/data/bible.sqlite (corpus COMPLETO: KJV + Almeida 1911
+# + referências cruzadas OpenBible/TSK) de forma REPRODUTÍVEL e IDEMPOTENTE, rodando os
+# IMPORTADORES CANÔNICOS (`xtask import` + `xtask import-xref`) do `the-light` no rev
+# PINADO 8f66004 (ADR-0002) — SEM modificar/forkar o `the-light`.
 #
 # Anti-alucinação: o texto bíblico vem SEMPRE do importador sobre fontes de DOMÍNIO
 # PÚBLICO registradas no `SPECS` do xtask (kjv = scrollmapper KJV.json; alm1911 =
 # damarals ALM1911.json) — NUNCA texto inventado/hardcoded nem versão protegida.
-# Idempotência: `import_translation` apaga+reinsere as linhas de cada versão.
+# As referências cruzadas vêm SEMPRE do `import-xref` sobre a fonte CC-BY fixada no
+# xtask (OpenBible.info / TSK; XREF_URL = mirror raw do scrollmapper) — NUNCA xrefs
+# inventados/hardcoded. CC-BY exige atribuição (ver ADR-0016).
+# Idempotência: `import_translation` apaga+reinsere as linhas de cada versão;
+# `import-xref` faz DELETE+reinsert da tabela `cross_references` (reimportar não duplica).
 #
 # Offline-first é regra de RUNTIME: a única rede é em DEV/BUILD (download dos datasets
-# de domínio público para o seed-dir). O app em runtime NÃO faz rede. Nenhum segredo.
+# de domínio público + do TSV de xrefs ~8,3 MB para o seed-dir). O app em runtime NÃO
+# faz rede. Nenhum segredo.
 #
 # Como NÃO toca o `the-light` (ADR-0013): roda o member `xtask` do CHECKOUT PINADO do
 # cargo (clone do GitHub gerenciado pelo cargo, independente do repo local protegido),
@@ -20,8 +26,8 @@
 # e IGNORADO no git (.gitignore); o seed-dir (datasets brutos) é SEMPRE ignorado.
 #
 # Uso:
-#   ./scripts/gen-bible-db.sh            # baixa (se preciso) e importa kjv + alm1911
-#   ./scripts/gen-bible-db.sh --force    # re-baixa os datasets mesmo se já em cache
+#   ./scripts/gen-bible-db.sh            # baixa (se preciso) e importa kjv + alm1911 + xrefs
+#   ./scripts/gen-bible-db.sh --force    # re-baixa os datasets/xrefs mesmo se já em cache
 #   ./scripts/gen-bible-db.sh --offline  # falha em vez de baixar (usa só o cache do seed)
 set -eu
 
@@ -62,5 +68,18 @@ mkdir -p "$ROOT/assets/data" "$SEED" "$TARGET"
 CARGO_TARGET_DIR="$TARGET" cargo run --quiet --locked \
   --manifest-path "$XTASK_MANIFEST" -- \
   import --version kjv,alm1911 --db "$OUT" --seed-dir "$SEED" $EXTRA
+
+# Pipeline ÚNICO: APÓS popular verses+FTS, popula `cross_references` no MESMO --db com o
+# subcomando DEDICADO `import-xref` (≠ `import --xref`) do MESMO rev pinado. Mesmo padrão
+# de isolamento (checkout do cargo + CARGO_TARGET_DIR fora + --locked → the-light intocado).
+# Fonte CC-BY fixada no xtask (XREF_URL; OpenBible.info / TSK via mirror raw do scrollmapper):
+# baixa cross_references.txt ~8,3 MB para o seed-dir na 1ª vez (ausente da F1.1) e o reusa
+# depois (offline OK a partir da 2ª vez). xref é independente de tradução → SEM --version.
+# O xtask aborta se < 300.000 linhas válidas (guarda de drift; esperado ~344.799).
+# `import_rows` faz DELETE+reinsert → idempotente (reimportar mantém a contagem).
+# shellcheck disable=SC2086
+CARGO_TARGET_DIR="$TARGET" cargo run --quiet --locked \
+  --manifest-path "$XTASK_MANIFEST" -- \
+  import-xref --db "$OUT" --seed-dir "$SEED" $EXTRA
 
 echo "OK: $OUT"

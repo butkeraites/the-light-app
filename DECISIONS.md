@@ -1439,3 +1439,128 @@ persistência em disco.
   (leitura/lado-a-lado no browser) é a **F1.13**; persistência do tema entre
   reinícios é melhoria futura. Não antecipados aqui.
 
+---
+
+## ADR-0016 — Referências cruzadas (DADOS): `cross_references` populada pelo `xtask import-xref` canônico (OpenBible.info / TSK, CC-BY) + atribuição obrigatória + armazenamento gerar-ignorado
+
+- **Data:** 2026-06-30 · **Status:** aceito · **Tarefa:** F1.7 · **Depende:** ADR-0002, ADR-0013
+
+### Contexto
+A F1.7 popula a tabela **`cross_references`** do `assets/data/bible.sqlite`
+(gerado pela F1.1, ADR-0013) com as **referências cruzadas** do **OpenBible.info /
+Treasury of Scripture Knowledge (TSK)** (~344.799). Como na F1.1, a lógica de
+download/parse/insert vive **só** no member `xtask` do `the-light` (não no
+`the-light-core` que consumimos como lib): o subcomando **dedicado**
+`import-xref` (≠ `import --xref`), confirmado na fonte do rev pinado `8f66004`
+(`xtask/src/main.rs`: `Some("import-xref") => xref_import::run(&args[1..])`;
+lógica em `xtask/src/xref_import.rs`). Por isso o plano manda **rodar o
+importador canônico**, não reimplementá-lo (uma fonte da verdade;
+anti-alucinação). A diferença-chave em relação à F1.1: os xrefs do OpenBible são
+**CC-BY** (não domínio público) → exigem **atribuição obrigatória**, registrada
+aqui (a exibição visível na UI é da **F1.9**).
+
+### Decisão
+
+1. **Popular `cross_references` rodando `xtask import-xref` do rev pinado `8f66004`
+   — sem tocar o `the-light`.** O `scripts/gen-bible-db.sh` (molde da F1.1) foi
+   **estendido**: **após** o `import` (verses + FTS), roda o **`import-xref`** no
+   **mesmo** `--db assets/data/bible.sqlite` e **mesmo** `--seed-dir .cache/seed`,
+   num **pipeline único** (evita o footgun de um banco só-com-xrefs sem versículos):
+   - `CARGO_TARGET_DIR=.cache/xtask-target cargo run --quiet --locked
+     --manifest-path <checkout 8f66004>/xtask/Cargo.toml -- import-xref
+     --db assets/data/bible.sqlite --seed-dir .cache/seed [$EXTRA]`.
+   - Mesmo isolamento da ADR-0013: o `xtask` roda do **checkout do cargo** (clone
+     do GitHub gerenciado pelo cargo, independente do repo local protegido
+     `/Users/butkeraites/Documents/the-light`), com **`CARGO_TARGET_DIR` fora** do
+     checkout e **`--locked`** → **nenhum** artefato/lock escrito no source do
+     `the-light`. **Verificado:** `the-light` em `8f66004`, working tree **limpo**,
+     **sem** `target/` no checkout, antes e depois.
+   - **Flags reais confirmadas na fonte** (`xref_import.rs::run`, parser próprio):
+     `--db <path>`, `--seed-dir <dir>`, `--force`, `--offline`. **Não há
+     `--version`** (xref é independente de tradução; chaveado pela tríade canônica
+     `book/chapter/verse`) — o script **não** repassa `--version` ao `import-xref`,
+     só `--offline`/`--force` (ambos válidos). Qualquer flag desconhecida → o xtask
+     aborta.
+
+2. **Fonte (CC-BY) — URL FIXADA no `xtask`, não parametrizável pelo app.** O
+   `XREF_URL` (em `xref_import.rs`) é
+   `https://raw.githubusercontent.com/scrollmapper/bible_databases/master/sources/extras/cross_references.txt`
+   — TSV plano (`From Verse` OSIS, `To Verse` OSIS único/intervalo, `Votes`),
+   espelho **raw** do scrollmapper dos dados **OpenBible.info**. **Atribuição é à
+   OpenBible.info, NÃO ao scrollmapper** (o scrollmapper é só o mirror
+   git-pinnable; a camada CC-BY votada/compilada é da OpenBible). O xtask
+   grava/lê o arquivo em `<seed-dir>/cross_references.txt` (~8,3 MB; baixado:
+   **8.293.834 bytes**) e baixa por rede **só** se ausente e **sem** `--offline`.
+   - **Anti-alucinação / licenciamento:** os xrefs vêm **sempre** do importador
+     canônico sobre essa fonte CC-BY; **nenhum** xref hardcoded/inventado no app;
+     **nenhuma** fonte não-livre. Votos **negativos** (refs disputadas) são
+     **preservados** verbatim (observados: 1.166 linhas com `votes < 0`); o
+     threshold `min_votes` é decisão da fronteira **F1.8**.
+
+3. **Atribuição CC-BY obrigatória (string canônica).** A licença CC-BY exige
+   crédito. A **string canônica** a exibir (de `DATA_SOURCES.md` do core) é:
+   **`Cross references courtesy of OpenBible.info (CC-BY)`**, com link para
+   `https://www.openbible.info/labs/cross-references/`. A tabela
+   `cross_references` **não** tem coluna de licença/atribuição (diferente de
+   `translations.license`) → a atribuição é registrada **aqui** (ADR-0016) e a
+   **exibição visível na UI** é responsabilidade da **F1.9**.
+
+4. **Idempotência.** `import_rows` (no xtask) faz `DELETE FROM cross_references` +
+   reinsert em transação → reimportar **não duplica**. **Verificado** rodando o
+   script **2×**: a contagem permanece **estável** (`344799`) e João 3:16 estável
+   (`23`).
+
+5. **Armazenamento: continua gerar-ignorado (ADR-0013 mantém-se).** O xref só
+   **popula** a tabela `cross_references` que já existia (vazia) no `bible.sqlite`
+   (mesmo schema v1, aplicado por `Store::open`). O banco cresceu (com xrefs +
+   índice `idx_xref_from` já presente): **53.481.472 bytes** (~51 MB) na geração
+   fresca; ~59 MB após reimport idempotente, por páginas livres do SQLite no
+   DELETE+reinsert (sem `VACUUM`, que não altera as contagens) — mesmo
+   comportamento documentado na ADR-0013. O `bible.sqlite` segue **artefato de
+   build IGNORADO** e o `seed-dir` (incl. `cross_references.txt`) **sempre
+   ignorado** — `.gitignore` já cobre (`assets/data/bible.sqlite*` + `/.cache/`):
+   **nenhuma** mudança de `.gitignore` foi necessária (verificado via
+   `git check-ignore`). **Não** se versiona o binário.
+
+### Verificação (lendo do banco, não hardcode)
+- **Guarda de drift no xtask:** se `parse_tsv` der **< 300.000** linhas válidas, o
+  `import-xref` **aborta** (`"apenas N … esperado ~344.799; fonte incompleta?"`).
+- **Contagem observada:** `SELECT count(*) FROM cross_references` = **344.799**
+  (igual ao esperado — snapshot atual do mirror, sem perdas por OSIS irresolúvel).
+- **Sanidade João 3:16:** `from_book=43 AND from_chapter=3 AND from_verse=16` →
+  **23** xrefs (top por votos: Rm 5:8 = 871; 1Jo 4:9-10 = 618; Jo 3:15 = 439).
+- **Verses intactos:** o `import-xref` toca **só** `cross_references`; `verses`
+  permanece com **62.203** linhas (kjv 31.102 + alm1911 31.101). 
+
+### Alternativas rejeitadas
+- **Versionar o `bible.sqlite` com os xrefs:** ❌ blob de dezenas de MB; o script +
+  URL pinada já dão reprodutibilidade (mesma lógica da ADR-0013).
+- **Script `gen-xref.sh` dedicado num `--db` próprio:** ❌ rodar `import-xref` num
+  `--db` inexistente criaria um banco **só com xrefs** e **sem** versículos (footgun);
+  o pipeline único (`import` → `import-xref` no mesmo `--db`) evita isso.
+- **Reimplementar o parser de xref no app (ler o TSV/OSIS em TS/Rust local):** ❌
+  viola "uma fonte da verdade"/anti-alucinação — o `xtask` é o único que conhece o
+  formato OSIS + a guarda de drift; mudar o core seria **PR + ADR** (ação humana).
+- **Filtrar votos negativos / aplicar `min_votes` aqui:** ❌ é decisão da fronteira
+  **F1.8**; F1.7 só importa os dados **verbatim** (votos preservados).
+
+### Consequências
+- `./scripts/gen-bible-db.sh` (estendido) (re)gera o banco **completo** (verses +
+  FTS + xrefs) de forma **reprodutível** e **idempotente**, rodando o `xtask import`
+  **e** `xtask import-xref` do rev pinado `8f66004` **sem tocar** o `the-light`.
+- **Offline-first preservado:** a **única** rede é em **dev/build** (download do TSV
+  de xrefs ~8,3 MB para o seed-dir, **só na 1ª vez**; offline OK a partir da 2ª, com
+  o `cross_references.txt` em cache). O app em **runtime não faz rede**. Nenhum
+  segredo em git/log.
+- **`the-light` intocado** (ADR-0002): rev `8f66004`, working tree limpo; o `xtask`
+  roda do checkout do cargo com target/lock fora do source.
+- **Versionado nesta tarefa:** `scripts/gen-bible-db.sh` (passo `import-xref`),
+  `DECISIONS.md` (este ADR), `PROGRESS.md`. **Gerado/IGNORADO:**
+  `assets/data/bible.sqlite` (agora com xrefs), `.cache/seed/cross_references.txt`.
+  **`.gitignore` inalterado** (já cobre ambos).
+- **Escopo:** F1.7 entrega **só os DADOS** (`cross_references` no `bible.sqlite`). A
+  **leitura de xref na fronteira** (`cross_refs`/`for_verse`/`passage_labels`, com o
+  threshold `min_votes`) é **F1.8**; a **UI + atribuição CC-BY visível** + a
+  propagação dos xrefs ao `reading-sample.sqlite` (bundling) é **F1.9**. Não
+  antecipados aqui.
+
