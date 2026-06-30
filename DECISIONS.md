@@ -39,6 +39,32 @@ resolvíveis por script na tarefa que precisar de cada alvo. Os dois BLOQUEIOS
 reais (Xcode completo e Android SDK/NDK) exigem setup humano de máquina e
 deverão disparar HALT nas tarefas F0.7/F0.8 se ainda não resolvidos.
 
+### Atualização do ambiente — 2026-06-30 (instalação de toolchains)
+
+Para destravar os alvos nativos, foram **instalados** (rede em dev/build):
+
+| Ferramenta | Versão / valor | Status |
+| --- | --- | --- |
+| Targets Rust `wasm32-unknown-unknown` | instalado (F0.6a) | OK |
+| Targets Rust iOS (`aarch64-apple-ios`, `-ios-sim`) | instalados | OK |
+| Targets Rust Android (`aarch64-linux-android`, `armv7-`, `x86_64-`) | instalados | OK |
+| `cargo-ndk` | **4.1.2** | OK |
+| OpenJDK | **17.0.19** (`/opt/homebrew/opt/openjdk@17`) | OK |
+| Android cmdline-tools / `sdkmanager` | brew cask; `ANDROID_HOME=/opt/homebrew/share/android-commandlinetools` | OK |
+| Android platform-tools (`adb`) | 37.0.0 / adb 1.0.41 | OK |
+| Android platform | `platforms;android-35` | OK |
+| Android build-tools | `35.0.0` | OK |
+| **Android NDK** | **`27.1.12297006`** (`ANDROID_NDK_HOME`) | OK |
+| **Xcode completo (`xcodebuild`)** | **ainda ausente** (só Command Line Tools) | **BLOQUEIO (iOS/F0.7) — só via App Store, ação humana** |
+
+Env persistido em `~/.zshrc` (bloco marcado "The Light App"): `JAVA_HOME`,
+`ANDROID_HOME`, `ANDROID_SDK_ROOT`, `ANDROID_NDK_HOME`, `PATH` — herdado por sessões
+novas do loop. **Smoke test verde (2026-06-30):** `cargo ndk -t arm64-v8a build -p
+the-light-app-core` compila a fronteira (com `embedded` → rusqlite SQLite-C +
+reqwest) para **Android arm64** em ~24s → o toolchain Android está **provado** para o
+core. Consequência: **F0.8 (Android) destravada no nível de build**; **F0.7 (iOS)
+permanece bloqueada** aguardando Xcode (ação humana).
+
 ---
 
 ## ADR-0001 — Stack e fronteira (core Rust + Expo/RN/TS via UniFFI)
