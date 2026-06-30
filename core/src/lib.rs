@@ -31,6 +31,15 @@
 //! corpo da F0.9 para as três funções DB-backed; [`list_books`] é **puro** (só a
 //! tabela canônica `reference::BOOKS`, disponível em todos os alvos, inclusive
 //! wasm).
+//!
+//! F1.5 expõe a **busca full-text (FTS5)**: [`search`], que **delega** a
+//! `the_light_core::source::BibleSource::search` (via `EmbeddedSource`, montando
+//! `the_light_core::search::SearchOptions` a partir de `translation`/`book`/`limit`)
+//! e adapta cada `model::SearchHit` para o Record [`SearchHit`]. Nenhum SQL/FTS é
+//! reimplementado aqui (sem `verses_fts MATCH`/`bm25`/`highlight`): a busca, o
+//! índice acento-insensível (`remove_diacritics 2`) e o ranking BM25 vivem no core.
+//! Mesmo gating de corpo da F0.9/F1.2 (corpo DB `cfg(not(wasm32))` + stub web), e
+//! anti-alucinação: todo texto de hit vem **do store local**.
 
 uniffi::setup_scaffolding!();
 
@@ -199,6 +208,43 @@ impl From<the_light_core::model::Passage> for Passage {
         Passage {
             reference: p.reference.into(),
             verses: p.verses.into_iter().map(Verse::from).collect(),
+        }
+    }
+}
+
+/// Um resultado de busca full-text (FTS5), na fronteira UniFFI.
+///
+/// Espelha `the_light_core::model::SearchHit` (tipo **puro** do core, presente em
+/// todos os alvos). O `text` vem **verbatim do store local** — a fronteira nunca
+/// gera texto bíblico (anti-alucinação): a busca apenas **localiza** ocorrências no
+/// índice FTS5 do core. O Record é definido em **todos** os alvos para manter a
+/// forma da fronteira UniFFI idêntica entre nativo e web (a extração de metadata do
+/// `ubrn` ocorre no host; ver nota em [`get_passage`]). Construído **somente** via
+/// [`From`]. Não deriva `Eq`/`Copy`: carrega o `score: f64` (BM25) do core.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct SearchHit {
+    /// Versículo onde o termo foi encontrado (`verses` é sempre `Single`).
+    pub reference: Reference,
+    /// Slug da tradução de origem (ex.: `"kjv"`).
+    pub translation: String,
+    /// Texto do versículo, **verbatim** da tradução no store local (sem marcação).
+    pub text: String,
+    /// Texto com os termos casados envolvidos pelos marcadores do core
+    /// (`the_light_core::search::HL_START`/`HL_END`); a UI da F1.6 decide a
+    /// renderização (fora de escopo aqui).
+    pub highlighted: String,
+    /// Pontuação BM25 do core (menor = correspondência mais relevante).
+    pub score: f64,
+}
+
+impl From<the_light_core::model::SearchHit> for SearchHit {
+    fn from(h: the_light_core::model::SearchHit) -> Self {
+        SearchHit {
+            reference: h.reference.into(),
+            translation: h.translation.to_string(),
+            text: h.text,
+            highlighted: h.highlighted,
+            score: h.score,
         }
     }
 }
@@ -500,6 +546,70 @@ pub fn chapter_count(db_path: String, translation: String, book: u8) -> Result<u
     #[cfg(target_arch = "wasm32")]
     {
         let _ = (db_path, translation, book);
+        Err(CoreError::Generic {
+            message: "store local indisponível no alvo web (F0.10: wa-sqlite+OPFS)".to_string(),
+        })
+    }
+}
+
+/// Busca full-text (FTS5) no **store SQLite local**, delegando ao `the-light-core`.
+///
+/// Pipeline no **nativo** (tudo no core — uma fonte da verdade):
+/// `Store::open(db_path)` → `EmbeddedSource::new(&store)` → monta
+/// `search::SearchOptions::new(TranslationId)` aplicando `book`/`limit` quando
+/// informados → `BibleSource::search(&query, &opts)` → adapta cada
+/// `model::SearchHit` para o Record [`SearchHit`] e mapeia o erro para
+/// [`CoreError`]. **Nenhum** SQL/FTS é reimplementado aqui (sem `verses_fts MATCH`,
+/// `bm25(...)` nem `highlight(...)`): o índice, o ranking BM25 e o destaque vivem
+/// no core.
+///
+/// A busca é **acento-insensível em PT** (índice do core com `remove_diacritics 2`:
+/// `ceus` casa `céus`) e combina múltiplas palavras com AND — comportamento
+/// herdado do core. Uma `query` sem termo utilizável (vazia/só espaços) retorna
+/// `Vec` **vazio** (não é erro, não panica). `limit` `None` usa o padrão do core
+/// (`DEFAULT_LIMIT` = 20); `book` `None` não filtra por livro. Tradução inexistente
+/// no store → [`CoreError`] (via `SourceError::UnknownTranslation` do core).
+///
+/// Anti-alucinação: o `text` de cada hit vem **sempre do store** (verbatim).
+/// Offline-first: nenhuma rede — apenas I/O local no `db_path`.
+///
+/// **Gating por alvo (ver ADR-0010):** mesmo molde de [`get_passage`] — corpo DB
+/// `cfg(not(target_arch = "wasm32"))`; stub web retornando [`CoreError`] (store web
+/// = F0.10), sem arrastar `search`/`source`/`store`/`rusqlite` para o grafo wasm.
+#[uniffi::export]
+pub fn search(
+    db_path: String,
+    query: String,
+    translation: String,
+    book: Option<u8>,
+    limit: Option<u32>,
+) -> Result<Vec<SearchHit>, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        // Trait em escopo para chamar `.search(...)` em `EmbeddedSource`.
+        use the_light_core::source::BibleSource;
+
+        let store =
+            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })?;
+        let source = the_light_core::source::EmbeddedSource::new(&store);
+        let translation = the_light_core::model::TranslationId::new(translation);
+        let mut opts = the_light_core::search::SearchOptions::new(translation);
+        opts.book = book;
+        if let Some(limit) = limit {
+            opts.limit = limit as usize;
+        }
+        let hits = source
+            .search(&query, &opts)
+            .map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })?;
+        Ok(hits.into_iter().map(SearchHit::from).collect())
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (db_path, query, translation, book, limit);
         Err(CoreError::Generic {
             message: "store local indisponível no alvo web (F0.10: wa-sqlite+OPFS)".to_string(),
         })
@@ -853,5 +963,222 @@ mod read_tests {
             .find(|v| v.reference.verses == VerseRange::Single { verse: 16 })
             .expect("João 3:16 presente no corpus real");
         assert_eq!(v16.text, JOHN_3_16_KJV, "KJV verbatim no corpus real");
+    }
+}
+
+/// Testes de **busca full-text** da F1.5 (`search`), **apenas no nativo** (host com
+/// a feature `embedded`, ADR-0005). As asserções primárias são **offline** e
+/// **determinísticas**: constroem um fixture pequeno num diretório temporário
+/// (schema = migrações do core via `Store::open`; DML de domínio público) e —
+/// crítico — **populam o índice `verses_fts`** com `verse_id` igual ao `verses.id`
+/// (o schema do core **não** tem trigger que copie `verses` → `verses_fts`; sem
+/// isso a busca volta vazia, como o próprio core faz em `search.rs::seeded`).
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod search_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    // ── Textos **verbatim** (domínio público), usados SÓ no fixture/assert; nenhum
+    //    texto bíblico é gerado em produção (anti-alucinação). ─────────────────────
+    /// João 3:16 — King James Version (contém "God"/"world").
+    const JOHN_3_16_KJV: &str = "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.";
+    /// João 3:17 — King James Version (também contém "world" — p/ testar `limit`).
+    const JOHN_3_17_KJV: &str = "For God sent not his Son into the world to condemn the world; but that the world through him might be saved.";
+    /// Gênesis 1:1 — Almeida (**acentuado**: prova `remove_diacritics`, `ceus`↔`céus`).
+    const GENESIS_1_1_ALM: &str = "No princípio criou Deus os céus e a terra";
+
+    /// `bible.sqlite` (gerado-ignorado, ADR-0013): opcional — só para asserção
+    /// **bônus** guardada por `exists()`. As primárias passam só com o fixture.
+    const BIBLE_DB: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/data/bible.sqlite");
+
+    /// Banco temporário do fixture: remove o arquivo (e sidecars WAL/SHM) no `Drop`.
+    struct TmpDb(PathBuf);
+
+    impl TmpDb {
+        fn path(&self) -> String {
+            self.0.to_string_lossy().into_owned()
+        }
+    }
+
+    impl Drop for TmpDb {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+            if let Some(name) = self.0.file_name().and_then(|n| n.to_str()) {
+                let dir = self.0.parent().map(PathBuf::from).unwrap_or_default();
+                let _ = std::fs::remove_file(dir.join(format!("{name}-wal")));
+                let _ = std::fs::remove_file(dir.join(format!("{name}-shm")));
+            }
+        }
+    }
+
+    /// Caminho temporário único (offline, sem deps externas).
+    fn unique_tmp_db() -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "the-light-app-f1_5-{}-{nanos}-{n}.sqlite",
+            std::process::id()
+        ))
+    }
+
+    /// Constrói o fixture de busca: schema via migrações do core (`Store::open`) +
+    /// DML de domínio público (setup de teste, não produto). Insere em `verses`
+    /// com `id` **explícito** e replica o mesmo `id` em `verses_fts.verse_id` (a
+    /// busca faz `JOIN verses v ON v.id = verses_fts.verse_id`). Nenhum schema é
+    /// escrito à mão; as `const`s não têm aspas simples → seguras inline em DML.
+    fn build_search_fixture() -> TmpDb {
+        let path = unique_tmp_db();
+        let _ = std::fs::remove_file(&path);
+
+        {
+            let store =
+                the_light_core::store::Store::open(&path).expect("abrir/migrar fixture de busca");
+            let conn = store.conn();
+
+            // Traduções de domínio público: KJV (en) e Almeida (pt).
+            conn.execute(
+                "INSERT INTO translations(id,abbrev,name,language,license,embeddable) \
+                 VALUES ('kjv','KJV','King James Version','en','public-domain',1)",
+                [],
+            )
+            .expect("inserir tradução kjv");
+            conn.execute(
+                "INSERT INTO translations(id,abbrev,name,language,license,embeddable) \
+                 VALUES ('alm','ALM','Almeida','pt','public-domain',1)",
+                [],
+            )
+            .expect("inserir tradução alm");
+
+            // (id, tradução, livro, capítulo, versículo, texto).
+            for (id, tid, book, chapter, verse, text) in [
+                (1u16, "kjv", 43u16, 3u16, 16u16, JOHN_3_16_KJV),
+                (2, "kjv", 43, 3, 17, JOHN_3_17_KJV),
+                (3, "alm", 1, 1, 1, GENESIS_1_1_ALM),
+            ] {
+                let verse_sql = format!(
+                    "INSERT INTO verses(id,translation_id,book_number,chapter,verse,text) \
+                     VALUES ({id},'{tid}',{book},{chapter},{verse},'{text}')"
+                );
+                conn.execute(&verse_sql, []).expect("inserir versículo");
+                // CRÍTICO: popular o índice FTS5 (sem trigger no schema do core).
+                let fts_sql = format!(
+                    "INSERT INTO verses_fts(text, translation_id, verse_id) \
+                     VALUES ('{text}','{tid}',{id})"
+                );
+                conn.execute(&fts_sql, []).expect("popular verses_fts");
+            }
+        } // `store`/`conn` fecham aqui (flush no arquivo).
+
+        TmpDb(path)
+    }
+
+    #[test]
+    fn search_finds_john_3_16_verbatim() {
+        let db = build_search_fixture();
+        let hits = search(db.path(), "God".to_string(), "kjv".to_string(), None, None)
+            .expect("buscar 'God' na KJV");
+        assert!(!hits.is_empty(), "esperado ≥1 hit para 'God'");
+
+        // Há um hit em João 3:16, com a referência canônica e o texto KJV verbatim.
+        let hit = hits
+            .iter()
+            .find(|h| h.reference.verses == VerseRange::Single { verse: 16 })
+            .expect("João 3:16 presente nos hits");
+        assert_eq!(hit.reference.book, 43, "João é o livro 43");
+        assert_eq!(hit.reference.chapter, 3, "capítulo 3");
+        assert_eq!(hit.translation, "kjv", "tradução kjv");
+        assert_eq!(
+            hit.text, JOHN_3_16_KJV,
+            "texto deve ser KJV verbatim (anti-alucinação)"
+        );
+    }
+
+    #[test]
+    fn search_is_accent_insensitive_in_pt() {
+        let db = build_search_fixture();
+        // 'ceus' (sem acento) deve casar 'céus' (acentuado) via remove_diacritics 2.
+        let hits = search(db.path(), "ceus".to_string(), "alm".to_string(), None, None)
+            .expect("buscar 'ceus' na Almeida");
+        assert!(!hits.is_empty(), "esperado ≥1 hit acento-insensível");
+        let hit = &hits[0];
+        assert_eq!(hit.reference.book, 1, "Gênesis é o livro 1");
+        assert!(
+            hit.text.contains("céus"),
+            "texto verbatim acentuado do store: {}",
+            hit.text
+        );
+    }
+
+    #[test]
+    fn search_no_match_and_blank_return_empty_without_panic() {
+        let db = build_search_fixture();
+
+        // Query que não casa nada → Vec vazio (não Err, não panic).
+        let none = search(
+            db.path(),
+            "zzqxnomatch".to_string(),
+            "kjv".to_string(),
+            None,
+            None,
+        )
+        .expect("query sem correspondência não deve panicar");
+        assert!(none.is_empty(), "sem correspondência = vazio");
+
+        // Query só de espaços → core devolve Ok(vec![]) (sem termo utilizável).
+        let blank = search(db.path(), "   ".to_string(), "kjv".to_string(), None, None)
+            .expect("query em branco não deve panicar");
+        assert!(blank.is_empty(), "query só de espaços = vazio");
+    }
+
+    #[test]
+    fn search_unknown_translation_maps_to_core_error() {
+        let db = build_search_fixture();
+        let err = search(
+            db.path(),
+            "God".to_string(),
+            "nao-existe".to_string(),
+            None,
+            None,
+        )
+        .expect_err("tradução inexistente deve falhar");
+        assert!(matches!(err, CoreError::Generic { .. }));
+    }
+
+    #[test]
+    fn search_respects_limit() {
+        let db = build_search_fixture();
+        // "world" aparece em João 3:16 e 3:17 (KJV); limit=1 → exatamente 1 hit.
+        let hits = search(
+            db.path(),
+            "world".to_string(),
+            "kjv".to_string(),
+            None,
+            Some(1),
+        )
+        .expect("buscar 'world' com limit=1");
+        assert_eq!(hits.len(), 1, "limit=1 deve retornar exatamente 1 hit");
+    }
+
+    #[test]
+    fn bonus_full_bible_db_search_when_present() {
+        // BÔNUS, NÃO-REQUISITO: só roda se o `bible.sqlite` (gerado-ignorado)
+        // existir. As asserções primárias acima passam só com o fixture, offline.
+        if !std::path::Path::new(BIBLE_DB).exists() {
+            return;
+        }
+        let hits = search(
+            BIBLE_DB.to_string(),
+            "God".to_string(),
+            "kjv".to_string(),
+            None,
+            Some(50),
+        )
+        .expect("buscar 'God' no bible.sqlite");
+        assert!(!hits.is_empty(), "corpus real deve ter hits para 'God'");
     }
 }

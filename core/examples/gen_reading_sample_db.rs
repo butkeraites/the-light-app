@@ -39,12 +39,15 @@ fn main() {
     const BOOKS: &[u8] = &[1, 19, 43];
 
     let mut args = std::env::args().skip(1);
-    let out = args.nth(0).unwrap_or_else(|| {
-        format!("{}/../assets/data/reading-sample.sqlite", env!("CARGO_MANIFEST_DIR"))
+    let out = args.next().unwrap_or_else(|| {
+        format!(
+            "{}/../assets/data/reading-sample.sqlite",
+            env!("CARGO_MANIFEST_DIR")
+        )
     });
-    let source = args.next().unwrap_or_else(|| {
-        format!("{}/../assets/data/bible.sqlite", env!("CARGO_MANIFEST_DIR"))
-    });
+    let source = args
+        .next()
+        .unwrap_or_else(|| format!("{}/../assets/data/bible.sqlite", env!("CARGO_MANIFEST_DIR")));
 
     if !std::path::Path::new(&source).exists() {
         eprintln!(
@@ -109,7 +112,8 @@ fn main() {
         )
         .expect("copiar versículos");
 
-    conn.execute("DETACH DATABASE src", []).expect("desanexar src");
+    conn.execute("DETACH DATABASE src", [])
+        .expect("desanexar src");
 
     // ── Sanidade (asserções do self-test) ───────────────────────────────────
     let john_chapters: u16 = conn
@@ -119,7 +123,10 @@ fn main() {
             |r| r.get(0),
         )
         .expect("max(chapter) de João KJV");
-    assert_eq!(john_chapters, 21, "João KJV deve ter 21 capítulos no subset");
+    assert_eq!(
+        john_chapters, 21,
+        "João KJV deve ter 21 capítulos no subset"
+    );
 
     let john_3_16: String = conn
         .query_row(
@@ -128,7 +135,10 @@ fn main() {
             |r| r.get(0),
         )
         .expect("João 3:16 KJV presente no subset");
-    assert_eq!(john_3_16, JOHN_3_16_KJV, "João 3:16 KJV deve ser verbatim do store");
+    assert_eq!(
+        john_3_16, JOHN_3_16_KJV,
+        "João 3:16 KJV deve ser verbatim do store"
+    );
 
     let translations: i64 = conn
         .query_row("SELECT count(*) FROM translations", [], |r| r.get(0))
