@@ -9,6 +9,10 @@
 // Usa o MESMO `parseReference` do glue da tela (./reference) — sem parser
 // paralelo, sem eco: a referência vem do Rust (the-light-core via UniFFI/JSI).
 import { parseReference, type Reference } from './reference';
+// F1.3: prova de LEITURA no device (marcador TLA_READ). É um par nativo/web por
+// extensão — no web, `reading-selftest.web.ts` é um SKIP, mantendo o bundle web
+// sem `expo-file-system`/o banco bundled (leitura web = F1.13).
+import { runReadingSelfTest } from './reading-selftest';
 
 // Marcador (prefixo grep-ável). console.error garante o nível alto no log
 // unificado; console.log o complementa. O script assere o texto exato.
@@ -48,5 +52,8 @@ export async function runReferenceSelfTest(): Promise<void> {
   console.log(`${MARK} START`);
   await probe('PT', 'Jo 3.16');
   await probe('EN', 'John 3:16');
+  // F1.3: prova de LEITURA (livro→capítulo→texto) pela fronteira nativa, lendo do
+  // banco bundled copiado p/ um caminho gravável. Emite o marcador TLA_READ.
+  await runReadingSelfTest();
   console.log(`${MARK} DONE`);
 }

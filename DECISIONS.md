@@ -1188,3 +1188,143 @@ gerado (binário grande, ~27 MB) sem versionar um blob pesado.
   via fronteira (`list_books`/`get_chapter`/…) é **F1.2**; o bundling do banco no
   app é F1.13+. Não antecipados aqui.
 
+---
+
+## ADR-0014 — Bundling do banco no app NATIVO: subset de leitura como **asset** + **cópia p/ caminho gravável** no 1º boot (`expo-asset`/`expo-file-system`), e UI de leitura delegando à fronteira
+
+- **Data:** 2026-06-30 · **Status:** aceito · **Tarefa:** F1.3 · **Depende:** ADR-0010, ADR-0012, ADR-0013
+
+### Contexto
+A F1.3 entrega a **primeira UI de leitura NATIVA** (livro → capítulo → texto +
+seletor de versão KJV ⇄ Almeida), lendo **do store no device** pela fronteira da
+F1.2 (`list_books`/`get_chapter`/`chapter_count`/`list_translations` → Turbo
+Module → JSI → `the-light-core`). O **subproblema central** é o **bundling do
+banco**: `get_chapter(db_path, …)` (rusqlite, via core) exige um **caminho de
+arquivo REAL e GRAVÁVEL** porque (1) no **Android** o asset vive **dentro do APK**
+(não há path de arquivo p/ o rusqlite) e (2) `Store::open` roda **migrações
+idempotentes** (precisa de **write**). O `bible.sqlite` completo (ADR-0013) mede
+**~47 MB** — empacotá-lo inteiro infla o bundle. Era preciso decidir **o que
+empacotar** e **como** levá-lo a um caminho gravável.
+
+Observação de fronteira (sem violação): a F1.2 só alterou `core/src/lib.rs` + os
+testes Rust; os **bindings nativos gerados** (xcframework + barrel TS em
+`app/web/native-generated/`, IGNORADOS) ainda eram da F0.7 (só `parse_reference`).
+A F1.3 **regenera** esses artefatos GERADOS via `scripts/gen-bindings-ios.sh`
+(`ubrn build ios` rebuilda o staticlib do **mesmo** core pinado `8f66004` +
+regenera os bindings) — **sem tocar** `the-light` nem `core/src/lib.rs`. Os
+checksums UniFFI dos novos símbolos (`get_chapter`=24118, `list_books`=43013,
+`chapter_count`=51215, `list_translations`=61181) batem entre o `.a` e o barrel
+(gerados do mesmo build).
+
+### Decisão
+
+1. **Empacotar um SUBSET DE LEITURA, não o banco completo (trade-off de tamanho).**
+   Gera-se `assets/data/reading-sample.sqlite` (**~1,8 MB**) com **KJV (en) +
+   Almeida 1911 (pt)** dos livros **Gênesis (1)**, **Salmos (19)** e **João (43)** —
+   9.746 versículos. **João KJV completo (21 capítulos)** é **obrigatório** p/ as
+   asserções do self-test; Gênesis/Salmos dão navegação plausível em AT + NT nas
+   duas traduções (o seletor de versão funciona em todos). O **banco completo
+   (~47 MB)** fica para uma **otimização posterior** (download/expansão sob demanda
+   ou empacotamento seletivo) — fora do escopo da F1.3.
+   - **Geração (uma fonte da verdade + anti-alucinação):**
+     `core/examples/gen_reading_sample_db.rs` (via `scripts/gen-reading-sample-db.sh`)
+     abre o subset com **`Store::open`** (schema = **migrações do core**, nunca SQL
+     à mão), **ATTACHa** o `bible.sqlite` e **copia o texto VERBATIM do store**
+     (`INSERT … SELECT … WHERE book_number IN (1,19,43)`) — nenhum texto bíblico é
+     inventado/hardcodado. Sanidade no próprio gerador: João KJV `max(chapter)==21`
+     e João 3:16 == KJV verbatim.
+   - **Armazenamento:** como deriva do `bible.sqlite` (ignorado, ADR-0013) e é
+     **reprodutível por script**, o `reading-sample.sqlite` é **artefato de build
+     IGNORADO** (`.gitignore`: `/assets/data/reading-sample.sqlite` + sidecars).
+
+2. **Asset + resolução pelo Metro.** `app/metro.config.js` trata `sqlite`/`db`
+   como **asset binário** (`assetExts`). Um **SYMLINK VERSIONADO**
+   `app/assets/data/reading-sample.sqlite` → `../../../assets/data/reading-sample.sqlite`
+   mantém o asset **dentro do projectRoot** (padrão do `sample.sqlite`, ADR-0012);
+   o symlink é rastreado (a regra do `.gitignore` é **anchorada à raiz**, não casa
+   o symlink em `app/`), com **alvo** ignorado/regenerável. `app/lib/db.ts` o
+   referencia via `require('../assets/data/reading-sample.sqlite')` (tipado por
+   `app/web/assets.d.ts`).
+
+3. **Cópia p/ caminho GRAVÁVEL no 1º boot (`expo-asset` + `expo-file-system`).**
+   Adicionados ao `app/package.json` (`expo-asset` `~56.0.17`, `expo-file-system`
+   `~56.0.8`; já presentes como deps transitivas — autolinkados no prebuild).
+   `app/lib/db.ts::ensureReadingDb()`: resolve o asset
+   (`Asset.fromModule(…).downloadAsync()`), **copia** p/
+   `FileSystem.documentDirectory + 'reading-sample.sqlite'` **só se ausente**
+   (idempotente) e retorna o **caminho de arquivo real** — **removendo o esquema
+   `file://`** (o rusqlite abre um path, não uma URI). Usa a **API legacy**
+   (`expo-file-system/legacy`: `documentDirectory`/`getInfoAsync`/`copyAsync`),
+   estável e suficiente. `app/lib/db.web.ts` é **stub** (não arrasta
+   `expo-file-system` nem o asset p/ o bundle web).
+
+4. **Glue de leitura delega à fronteira (sem SQL em TS).** `app/web/reading.ts`
+   (nativo) embrulha `listBooks`/`getChapter`/`chapterCount`/`listTranslations` do
+   **barrel gerado** (JSI → Rust); `reading.web.ts` é **stub** que lança erro
+   explícito (**leitura web = F1.13**). UI em `app/app/read/` (expo-router:
+   `index` → `[book]/index` → `[book]/[chapter]`) + componentes
+   `app/components/Reader{BookList,ChapterGrid,ChapterView,VersionPicker}.tsx`
+   (apresentacionais): a tela exibe **versículos numerados com texto verbatim do
+   store**; trocar a versão recarrega o capítulo na outra tradução. `index.tsx`
+   ganha o ponto de entrada "Ler a Bíblia" (oculto no web).
+
+5. **Prova de leitura no device — alvo iOS.** `app/web/reading-selftest.ts`
+   (par nativo; `.web.ts` = SKIP) roda sob `EXPO_PUBLIC_TLA_SELFTEST=1`: copia/abre
+   o banco bundled e chama a fronteira nativa, emitindo o marcador **composto do
+   RETORNO REAL** (texto **não** hardcoded):
+   `TLA_READ books=66 john3_v16="For God so loved the world…" john_chapters=21`.
+   `scripts/run-ios-selftest.sh` amplia o predicado de captura (`TLA_`) e **asserta
+   também** `books=66`, o substring `For God so loved the world` e
+   `john_chapters=21`, além de PT/EN (sem regressão F0.7). **Alvo da prova: iOS**
+   (simulador iPhone 17). Android herda a mesma arquitetura (asset + copy + barrel)
+   e fica como prova adicional opcional.
+
+### Trade-off de tamanho (registrado)
+- **(a) `bible.sqlite` completo (~47 MB):** prova trivial e cobre toda a Bíblia,
+  mas **infla o bundle** (IPA/APK) e a cópia inicial. **Adiado** (otimização).
+- **(b) subset de leitura (~1,8 MB) — ESCOLHIDA:** ~26× menor, contém **João KJV
+  completo** (asserções) + Gênesis/Salmos (navegação plausível, 2 traduções);
+  reprodutível do corpus completo. Custo: cobre **3 livros** (não a Bíblia inteira)
+  até a otimização de bundling do corpus completo.
+- **(c) gzip + descompactar no 1º boot:** reduz o asset, mas adiciona passo de
+  descompressão/erro e mantém 47 MB descomprimidos no device. Desnecessário p/ a
+  prova. Reavaliar junto da otimização (a).
+
+### Alternativas rejeitadas
+- **Abrir o asset read-only direto do bundle (sem copiar):** ❌ no Android o asset
+  não tem path de arquivo (vive no APK) e `Store::open` precisa de **write**
+  (migrações) → rusqlite falharia. A cópia p/ `documentDirectory` é necessária.
+- **Passar `file://…` ao `get_chapter`:** ❌ o rusqlite espera um **path**; mantemos
+  o strip de `file://` no `db.ts`.
+- **Reimplementar SELECT/leitura em TS:** ❌ viola "uma fonte da verdade"; toda
+  leitura passa pela fronteira (`get_chapter`/…).
+- **Nova API do `expo-file-system` (`File`/`Paths`):** preterida pela **legacy**
+  (mais simples e estável p/ `documentDirectory`/`copy`); reavaliável depois.
+- **Versionar o subset (binário ~1,8 MB):** ❌ é regenerável do `bible.sqlite`;
+  ignorado como ele (ADR-0013), com symlink versionado p/ o Metro.
+
+### Consequências
+- **Leitura REAL provada no device (iOS):** `TLA_READ books=66`,
+  `john3_v16="For God so loved the world…"` (KJV verbatim do store) e
+  `john_chapters=21`, capturados por `simctl log`; o script sai **0**. O texto vem
+  do **retorno de `get_chapter`** (verificável no código — não hardcoded).
+- **Offline-first:** **zero rede em runtime** (asset local + I/O no device). Rede só
+  em dev/build (gen scripts, Metro, cargo/pods). Nenhum segredo em git/log.
+- **`the-light` e `core/src/lib.rs` INTACTOS** (consumo pinado `8f66004`); só
+  artefatos GERADOS (xcframework, barrel, jniLibs) e o subset são (re)gerados.
+- **Sem regressão:** parse PT/EN (`TLA_SELFTEST`) intacto; `tsc --noEmit` 0; web
+  com stubs (`reading.web.ts`/`db.web.ts`/`reading-selftest.web.ts`) mantém o
+  bundle web sem `expo-file-system`/asset do banco (leitura web = F1.13).
+- **Versionado nesta tarefa:** `core/examples/gen_reading_sample_db.rs`,
+  `scripts/gen-reading-sample-db.sh`, `app/metro.config.js`, `app/package.json`
+  (+ lock), `app/lib/db.ts`/`db.web.ts`, `app/web/reading.ts`/`reading.web.ts`/
+  `reading-selftest.ts`/`reading-selftest.web.ts`, `app/web/selftest.ts`,
+  `app/app/_layout.tsx`/`index.tsx`/`read/**`, `app/components/Reader*.tsx`,
+  `app/assets/data/reading-sample.sqlite` (symlink), `scripts/run-ios-selftest.sh`,
+  `.gitignore`, `DECISIONS.md`, `PROGRESS.md`. **Gerado/IGNORADO:**
+  `assets/data/reading-sample.sqlite`, `app/web/native-generated/`, xcframework,
+  `app/ios`/`app/android`, jniLibs.
+- **Escopo:** F1.3 entrega **UI nativa + bundling + prova de leitura**. Paridade
+  **web** (ler do store no browser) é a **F1.13**; bundling do **corpus completo**
+  (otimização de tamanho) é posterior. Não antecipados aqui.
+

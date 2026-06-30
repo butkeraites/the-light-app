@@ -73,6 +73,16 @@ local.properties
 /assets/data/bible.sqlite-wal
 /assets/data/bible.sqlite-shm
 /assets/data/bible.sqlite-journal
+# Subset de LEITURA (F1.3/ADR-0014): KJV+Almeida de Gênesis/Salmos/João, ~1.8 MB,
+# DERIVADO do bible.sqlite por `scripts/gen-reading-sample-db.sh` (texto verbatim
+# do store). É o asset empacotado no app nativo (copiado p/ path gravável no 1º
+# boot). Artefato de BUILD reprodutível, NÃO versionado — como o bible.sqlite. O
+# SYMLINK app/assets/data/reading-sample.sqlite (dentro do projectRoot p/ o Metro)
+# É versionado: a regra abaixo é anchorada à raiz, não casa o symlink em app/.
+/assets/data/reading-sample.sqlite
+/assets/data/reading-sample.sqlite-wal
+/assets/data/reading-sample.sqlite-shm
+/assets/data/reading-sample.sqlite-journal
 # Cache de dev/build: datasets brutos JSON baixados (seed-dir) + CARGO_TARGET_DIR
 # do xtask (fora do checkout do the-light). SEMPRE ignorado.
 /.cache/

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'expo-router';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { parseReference, type Reference } from '../web/reference';
@@ -99,6 +100,14 @@ export default function HomeScreen() {
       <Text testID="result" style={styles.result}>
         {result}
       </Text>
+
+      {/* F1.3: entrada para a UI de leitura nativa (livro → capítulo → texto +
+          seletor de versão). Lê do store local no device pela fronteira nativa. */}
+      {Platform.OS === 'web' ? null : (
+        <Link href="/read" style={styles.readLink} testID="open-reader">
+          Ler a Bíblia →
+        </Link>
+      )}
     </View>
   );
 }
@@ -131,5 +140,11 @@ const styles = StyleSheet.create({
   result: {
     fontSize: 16,
     color: '#333333',
+  },
+  readLink: {
+    marginTop: 8,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0a5bd3',
   },
 });

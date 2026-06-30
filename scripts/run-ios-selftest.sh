@@ -15,9 +15,14 @@
 #      mount da HomeScreen;
 #   4) instala + lança o app, capturando o log unificado do simulador
 #      (`simctl spawn booted log stream`);
-#   5) ASSERTA os DOIS marcadores (PT e EN). Sai 0 só se AMBOS aparecerem:
+#   5) ASSERTA os marcadores de PARSE (PT e EN) E de LEITURA (F1.3/ADR-0014). Sai
+#      0 só se TODOS aparecerem:
 #        TLA_SELFTEST PT book=43 chapter=3 verse=16
 #        TLA_SELFTEST EN book=43 chapter=3 verse=16
+#        TLA_READ books=66 john3_v16="For God so loved the world..." john_chapters=21
+#      (o texto de João 3:16 vem do RETORNO de get_chapter — store local, KJV
+#       verbatim — não hardcoded; o app copia o banco bundled p/ um caminho
+#       gravável no 1º boot e lê pela fronteira nativa → JSI → the-light-core.)
 #   6) limpa: encerra o app, o Metro, o stream e desliga o simulador.
 #
 # Pré-requisito: app/ios/ já gerado (expo prebuild) com Pods instalados, e o
@@ -48,6 +53,12 @@ WORKSPACE="$IOS_DIR/thelightapp.xcworkspace"
 SCHEME="thelightapp"
 MARK_PT="TLA_SELFTEST PT book=43 chapter=3 verse=16"
 MARK_EN="TLA_SELFTEST EN book=43 chapter=3 verse=16"
+# F1.3 (ADR-0014): marcadores da PROVA DE LEITURA no device. O texto de João 3:16
+# vem do RETORNO de get_chapter (store local, KJV verbatim) — não hardcoded no
+# glue/selftest; aqui o script só asserta um substring esperado.
+MARK_READ_BOOKS="TLA_READ books=66"          # list_books (puro, 66 livros)
+MARK_READ_TEXT="For God so loved the world"  # João 3:16 KJV verbatim do store
+MARK_READ_CHAP="john_chapters=21"            # chapter_count(kjv,43) DB-backed
 
 export PATH="/opt/homebrew/bin:$PATH"  # cocoapods/node instalados via brew
 LOG_DIR="$(mktemp -d -t f07-ios-selftest)"
@@ -72,6 +83,16 @@ trap cleanup EXIT
   echo "ERRO: workspace iOS ausente em $WORKSPACE — rode 'expo prebuild -p ios' + 'pod install'." >&2
   exit 1
 }
+
+# ── Banco de leitura bundled (F1.3/ADR-0014) ─────────────────────────────────
+# O bundle empacota o subset de leitura via o SYMLINK app/assets/data/reading-sample.sqlite
+# → assets/data/reading-sample.sqlite (gerado-ignorado). Se ausente, (re)gera a
+# partir do bible.sqlite (idempotente; reprodutível) p/ a prova de leitura ser
+# independente. Sem isso, o Metro não resolve o asset e o marcador TLA_READ some.
+if [ ! -f "$ROOT/assets/data/reading-sample.sqlite" ]; then
+  echo "==> reading-sample.sqlite ausente — gerando (ADR-0014)"
+  "$ROOT/scripts/gen-reading-sample-db.sh"
+fi
 
 # ── [1/5] Device ─────────────────────────────────────────────────────────────
 UDID="$(xcrun simctl list devices available | grep "$DEVICE_NAME (" | head -1 | grep -oE '[0-9A-Fa-f-]{36}' | head -1)"
@@ -101,8 +122,12 @@ APP_PATH="$(find "$DERIVED/Build/Products" -maxdepth 2 -name '*.app' -type d 2>/
 echo "    app: $APP_PATH"
 
 # ── [3/5] Metro em background (com o env de self-test) ───────────────────────
-echo "==> [3/5] Metro (EXPO_PUBLIC_TLA_SELFTEST=1) em background — log: $METRO_LOG"
-( cd "$APP_DIR" && EXPO_PUBLIC_TLA_SELFTEST=1 CI=1 npx expo start --port 8081 >"$METRO_LOG" 2>&1 ) &
+# `--clear` (F1.3): reseta o cache do Metro a cada prova. A F1.3 introduz novos
+# módulos (reading*/db*/selftest) e o cache persistente pode servir um bundle
+# DEFASADO (sintoma: o gancho de leitura não roda e o marcador TLA_READ some).
+# Limpar o cache garante que o bundle servido reflete o disco (prova determinística).
+echo "==> [3/5] Metro (EXPO_PUBLIC_TLA_SELFTEST=1, --clear) em background — log: $METRO_LOG"
+( cd "$APP_DIR" && EXPO_PUBLIC_TLA_SELFTEST=1 CI=1 npx expo start --port 8081 --clear >"$METRO_LOG" 2>&1 ) &
 METRO_PID=$!
 for _ in $(seq 1 60); do
   curl -s "http://localhost:8081/status" 2>/dev/null | grep -q "packager-status:running" && break
@@ -117,19 +142,24 @@ xcrun simctl terminate "$UDID" "$BUNDLE_ID" 2>/dev/null || true
 xcrun simctl uninstall "$UDID" "$BUNDLE_ID" 2>/dev/null || true
 xcrun simctl install "$UDID" "$APP_PATH"
 
-# Captura o log unificado filtrando o marcador (robusto a formatação do RCTLog).
+# Captura o log unificado filtrando os marcadores TLA_* (parse=TLA_SELFTEST e
+# leitura=TLA_READ — prefixo comum "TLA_"; robusto a formatação do RCTLog).
 xcrun simctl spawn "$UDID" log stream --level debug --style compact \
-  --predicate 'eventMessage CONTAINS "TLA_SELFTEST"' >"$STREAM_LOG" 2>/dev/null &
+  --predicate 'eventMessage CONTAINS "TLA_"' >"$STREAM_LOG" 2>/dev/null &
 STREAM_PID=$!
 sleep 2
 
 xcrun simctl launch "$UDID" "$BUNDLE_ID" >/dev/null
 
-# ── [5/5] Asserção determinística dos DOIS marcadores ────────────────────────
-echo "==> [5/5] Aguardando marcadores PT+EN (até ${LAUNCH_WAIT}s)"
+# ── [5/5] Asserção determinística: parse (PT+EN) + leitura (TLA_READ) ─────────
+echo "==> [5/5] Aguardando marcadores PT+EN + leitura (até ${LAUNCH_WAIT}s)"
 found=0
 for _ in $(seq 1 "$LAUNCH_WAIT"); do
-  if grep -qF "$MARK_PT" "$STREAM_LOG" && grep -qF "$MARK_EN" "$STREAM_LOG"; then
+  if grep -qF "$MARK_PT" "$STREAM_LOG" \
+    && grep -qF "$MARK_EN" "$STREAM_LOG" \
+    && grep -qF "$MARK_READ_BOOKS" "$STREAM_LOG" \
+    && grep -qF "$MARK_READ_TEXT" "$STREAM_LOG" \
+    && grep -qF "$MARK_READ_CHAP" "$STREAM_LOG"; then
     found=1
     break
   fi
@@ -137,15 +167,16 @@ for _ in $(seq 1 "$LAUNCH_WAIT"); do
 done
 
 echo "----- marcadores capturados (simulador) -----"
-grep -F "TLA_SELFTEST" "$STREAM_LOG" | sed 's/.*\(TLA_SELFTEST\)/\1/' | sort -u || true
+grep -F "TLA_" "$STREAM_LOG" | sed 's/.*\(TLA_\)/\1/' | sort -u || true
 echo "---------------------------------------------"
 
 if [ "$found" != "1" ]; then
-  echo "ERRO: marcadores PT e/ou EN não apareceram em ${LAUNCH_WAIT}s." >&2
+  echo "ERRO: marcadores de parse (PT/EN) e/ou de leitura (TLA_READ) não apareceram em ${LAUNCH_WAIT}s." >&2
   exit 1
 fi
 
-# Reemite as linhas EXATAS p/ o bloco de verificação (grep no stdout do script).
+# Reemite as linhas/asserções EXATAS p/ o bloco de verificação (grep no stdout).
 echo "$MARK_PT"
 echo "$MARK_EN"
-echo "==> OK — parse_reference provado pelo Rust nativo via Turbo Module (PT==EN)."
+grep -F "TLA_READ books=66" "$STREAM_LOG" | sed 's/.*\(TLA_READ\)/\1/' | head -1
+echo "==> OK — parse_reference (PT==EN) E leitura (books=66, João 3:16 KJV verbatim, john_chapters=21) provados pelo Rust nativo via Turbo Module."

@@ -25,6 +25,13 @@ config.resolver.assetExts.push('wasm');
 // fonte da verdade. Offline-first: asset local, sem rede.
 config.resolver.assetExts.push('sqlite');
 
+// F1.3 (ADR-0014): trata .db como asset binário também (paridade com .sqlite). O
+// app nativo empacota `app/assets/data/reading-sample.sqlite` (SYMLINK versionado
+// p/ o subset de leitura em <repo>/assets/data — KJV+Almeida domínio público) e o
+// COPIA p/ FileSystem.documentDirectory no 1º boot (app/lib/db.ts), onde o rusqlite
+// (core) o abre p/ ler capítulos. Offline-first: asset local, sem rede.
+config.resolver.assetExts.push('db');
+
 // Nota (F0.7/ADR-0008): a glue JS do Turbo Module nativo (barrel + bindings TS)
 // é GERADA na raiz pelo `ubrn build ios`, mas o `scripts/gen-bindings-ios.sh` a
 // COPIA para `app/web/native-generated/` (ignorada) — dentro do projectRoot.
