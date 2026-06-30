@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-30 15:30 UTC · Estado do loop: **▶️ ATIVO — Fase 1 decomposta; F1.1 semeada (🟡 ready)**
-Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **Fase 0 COMPLETA** (F0.0–F0.11; Marco 0 aprovado `aed825d`) · **Fase 1 decomposta** em `backlog/PHASE-1.md` (F1.1–F1.17, 2 gates) · Próximo: **executor roda F1.1** (pipeline de dados + banco embarcado completo via xtask do the-light)
+Última atualização: 2026-06-30 15:10 UTC · Estado do loop: **▶️ ATIVO — F1.1 aceita (banco bíblico completo); próxima F1.2**
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F1.1 passed** (`b1a9be4`; banco KJV 31102 + Almeida1911 31101 via xtask, gerar-ignorado) · Próxima elegível: **F1.2** (expor leitura no core: books/chapter/passage/versions) → … → gate F1.12 → Marco 1 (F1.17)
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -36,7 +36,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **Fase 0 COMPLETA** (F0.0–F
 
 | ID | Tarefa | Estado | Depende de | Resultado |
 |----|--------|--------|------------|-----------|
-| F1.1 | Pipeline de dados + banco embarcado completo (KJV+ALM1911 via xtask) | 🟡 ready | — | — (na `queue/`) |
+| F1.1 | Pipeline de dados + banco embarcado completo (KJV+ALM1911 via xtask) | ✅ aceito | — | passed (b1a9be4) — kjv 31102 / alm1911 31101 |
 | F1.2 | Expor leitura no core (fronteira nativo): translations/books/chapter/passage | ⬜ backlog | F1.1 | — |
 | F1.3 | UI de leitura nativa: navegação livro→cap→texto + seletor de versão | ⬜ backlog | F1.2 | — |
 | F1.4 | UI de leitura nativa: múltiplas versões lado a lado + tema | ⬜ backlog | F1.3 | — |
