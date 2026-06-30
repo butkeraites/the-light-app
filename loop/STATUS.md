@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-30 03:58 UTC · Estado do loop: **⛔ PARADO (HALT) — F0.7/F0.8 blocked (toolchains nativos ausentes; setup humano)**
-Heartbeat: ver `HEARTBEAT` · HALT: **PRESENTE** (`loop/HALT`) · Web provado (host+web); falta iOS/Android · Retomar: instalar Xcode + Android SDK/NDK/cargo-ndk + targets Rust → remover `loop/HALT`
+Última atualização: 2026-06-30 04:30 UTC · Estado do loop: **▶️ RETOMADO — toolchains nativos instalados; F0.7/F0.8 destravadas**
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** (resolvido — Xcode 26.6 + sim iOS 26.5; Android NDK 27.1 + emulador headless OK) · Próxima elegível: **F0.7 (iOS)** → depois F0.8 (Android) → F0.9/F0.10 → **F0.11 (gate Marco 0)**
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -21,8 +21,8 @@ Heartbeat: ver `HEARTBEAT` · HALT: **PRESENTE** (`loop/HALT`) · Web provado (h
 | F0.6a | Consumir core c/ features por alvo (re-pin `8f66004`) | ✅ aceito | F0.4, F0.5, core | matriz por alvo OK; SQLite-no-WASM resolvido |
 | F0.6c | Alinhar `uniffi` da fronteira a `=0.31.0` (compat. ubrn web) | ✅ aceito | F0.6a | passed (7b98644) |
 | F0.6b | Bindings web (ubrn) + glue + tela + prova headless | ✅ aceito | F0.6a, F0.6c | passed (1cdde6c) — web/WASM ponta a ponta |
-| F0.7 | Ligar core no **iOS**: chamar parse_reference | 🔴 blocked | F0.4, F0.5 | Xcode completo ausente (setup humano) |
-| F0.8 | Ligar core no **Android**: chamar parse_reference | 🔴 blocked | F0.4, F0.5 | Android SDK/NDK + cargo-ndk ausentes (setup humano) |
+| F0.7 | Ligar core no **iOS**: chamar parse_reference | 🟡 desbloqueada | F0.4, F0.5 | Xcode 26.6 + sim iOS 26.5 instalados |
+| F0.8 | Ligar core no **Android**: chamar parse_reference | 🟡 desbloqueada | F0.4, F0.5 | NDK 27.1 + emulador headless OK |
 | F0.9 | Store nativo (`rusqlite`): ler 1 passagem do sample.sqlite | ⬜ | F0.6/7/8 | — |
 | F0.10 | Store web (`wa-sqlite`+OPFS): ler 1 passagem | ⬜ | F0.9 | — |
 | F0.11 | **Marco 0** (⛔ gate): revisão dos 3 alvos + store; ADR + PROGRESS | ⬜⛔ | F0.9, F0.10 | — |

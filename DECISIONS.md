@@ -55,15 +55,19 @@ Para destravar os alvos nativos, foram **instalados** (rede em dev/build):
 | Android platform | `platforms;android-35` | OK |
 | Android build-tools | `35.0.0` | OK |
 | **Android NDK** | **`27.1.12297006`** (`ANDROID_NDK_HOME`) | OK |
-| **Xcode completo (`xcodebuild`)** | **ainda ausente** (só Command Line Tools) | **BLOQUEIO (iOS/F0.7) — só via App Store, ação humana** |
+| **Xcode completo (`xcodebuild`)** | **26.6** (Build 17F113); `xcode-select` → `/Applications/Xcode.app` | OK (instalado pelo humano) |
+| Runtime simulador iOS | **iOS 26.5** (simuladores iPhone 17 disponíveis) | OK |
+| Emulador Android | `emulator` + `system-images;android-35;google_apis;arm64-v8a`; AVD `thelight_avd` **boota headless** (`boot_completed=1`) | OK |
 
 Env persistido em `~/.zshrc` (bloco marcado "The Light App"): `JAVA_HOME`,
 `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `ANDROID_NDK_HOME`, `PATH` — herdado por sessões
 novas do loop. **Smoke test verde (2026-06-30):** `cargo ndk -t arm64-v8a build -p
 the-light-app-core` compila a fronteira (com `embedded` → rusqlite SQLite-C +
 reqwest) para **Android arm64** em ~24s → o toolchain Android está **provado** para o
-core. Consequência: **F0.8 (Android) destravada no nível de build**; **F0.7 (iOS)
-permanece bloqueada** aguardando Xcode (ação humana).
+core. **Atualização (humano instalou o Xcode):** os **3 alvos** agora têm toolchain
+funcional (web, iOS com Xcode 26.6 + simulador iOS 26.5, Android com NDK + emulador
+headless). **F0.7 (iOS) e F0.8 (Android) destravadas** — o HALT de toolchains foi
+resolvido; o loop pode rodar os alvos nativos com **run real** em simulador/emulador.
 
 ---
 
