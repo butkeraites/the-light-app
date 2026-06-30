@@ -1726,3 +1726,30 @@ paridade web.
   → **F1.15** (xref web + atribuição) → **F1.16** (notas web + export) sobre o subset
   A1; o **corpus completo (~59 MB)** vira item de backlog transversal (pós-paridade).
 - **`loop/HALT` removido** (motivo do gate resolvido por este sign-off); loop retomado.
+
+## ADR-0019 — Store WEB de LEITURA (A1): espelho TS dos SELECTs de capítulo/`chapter_count`/translations sobre o subset `reading-sample.sqlite` (wa-sqlite/OPFS+MemoryVFS), `listBooks` via wasm, `db.web.ts` sentinela
+
+- **Data:** 2026-06-30 · **Status:** aceito · **Tarefa:** F1.13 · **Depende:** ADR-0018 (Opção A/A1), ADR-0011/0012 (wa-sqlite+OPFS, build SYNC sem SharedArrayBuffer, MemoryVFS), ADR-0014 (subset bundled), ADR-0010/0005 (gating por alvo / anti-alucinação) · **Habilita:** F1.14 (busca web), F1.15 (xref web), F1.16 (notas web)
+
+### Contexto
+Decidida a Opção A/A1 (ADR-0018), a F1.13 dá **paridade web de LEITURA** (livro→cap→texto + versões + lado a lado) sobre o **subset `reading-sample.sqlite` (~4,4 MB)** — o MESMO que o nativo empacota (ADR-0014). `app/web/reading.web.ts` era **stub**; as telas `app/app/read/**` são compartilhadas com o nativo (`reading.ts` → Turbo Module → the-light-core). Era preciso espelhar em TS os SELECTs que a fronteira nativa (F1.2) delega ao `EmbeddedSource`, **sem** reimplementar domínio e **sem** tocar o `the-light`/core.
+
+### Decisão
+**Espelhar em TS, como pura INFRAESTRUTURA, os SELECTs de leitura do core** (fonte: `the-light-core/src/source/embedded.rs`), abrindo o subset via `wa-sqlite`:
+- **`app/web/sqlite-reading.web.ts`** (par de `sqlite.web.ts`, VFS-agnóstico): constantes SQL espelhadas — `CHAPTER_SELECT_WHOLE` (`EmbeddedSource::passage`/`WholeChapter`), `CHAPTER_COUNT_SELECT` (`chapter_count`, NULL→0), `TRANSLATIONS_SELECT` (`translations`, ordem do SQLite), `HAS_TRANSLATION_SELECT` (`has_translation`); funções `queryChapter`/`queryChapterCount`/`queryTranslations`/`hasTranslation` + `composeChapterPassage` (Record `Passage` com referência `WholeChapter`; cada `Verse` com referência `Single` e `text` VERBATIM do store).
+- **`app/web/sqlite-reading-opfs.web.ts`** (par de `sqlite-opfs.web.ts`, browser-only): persiste o subset em OPFS (dir `the-light`, arquivo `reading-sample.sqlite`, separado do `sample.sqlite` da F0.10) e lê via **MemoryVFS hidratado** (build SYNC, sem SharedArrayBuffer/COOP-COEP); `openReadingDbWeb()`.
+- **`app/web/reading.web.ts`** destubado p/ leitura: `listTranslations`/`getChapter` (checa `has_translation` → tradução ausente lança `versão desconhecida: <id>`, espelhando `SourceError::UnknownTranslation`)/`chapterCount`; `search`/`crossRefs`/userdata **seguem stubs** (F1.14–F1.16).
+- **`listBooks()` vem do RUST (wasm)** — `listBooks` dos bindings gerados, SÍNCRONO (não relista os 66 à mão nem lê a tabela `books`). Como o `listBooks` wasm exige init, **`app/web/wasm.web.ts`** pré-aquece o wasm e **`app/app/_layout.tsx`** gateia a stack via `useWasmReady()`; no NATIVO `app/web/wasm.ts` é no-op (`true`), sem regressão.
+- **`app/lib/db.web.ts`** deixa de lançar: `ensureReadingDb()` devolve o **sentinela** `'web:reading-sample'` (as telas passam o valor; o glue abre o subset internamente). Sem `expo-file-system`/asset do banco no bundle web.
+- **Prova determinística HEADLESS node** (`app/web/__tests__/reading.web.test.mjs` + `reading-headless-entry.ts`, molde F0.10): MemoryVFS sobre os bytes do subset + funções de produção → asserta, do RETORNO REAL: `getChapter('kjv',43,3)` v16 = KJV verbatim; `getChapter('alm1911',43,3)` v16 = Almeida verbatim; João 3 KJV = 36 versículos; `chapterCount('kjv',43)` = 21; `listTranslations` = kjv+alm1911; `listBooks` (wasm) = 66. **Paridade** com `TLA_READ`/`TLA_PARALLEL` do nativo.
+
+### Alternativas rejeitadas
+- **Reimplementar `listBooks` (66) ou ler a tabela `books` em TS:** duplicaria o cânon e divergiria do core — o cânon vem do RUST (uma fonte da verdade).
+- **`getChapter`/`listTranslations` SÍNCRONOS abrindo o store no construtor:** o OPFS é assíncrono; manter as funções `async` (par do nativo embrulhado em Promise) e abrir/fechar por chamada (o lado a lado = 2× `getChapter`) é coerente com a assinatura compartilhada.
+- **Corpus completo (~59 MB) com VFS-live em Worker:** fora de A1 (ADR-0018) — backlog transversal pós-paridade.
+
+### Consequências
+- **Drift mitigado:** os SELECTs citam a fonte do core em comentário; a prova de paridade trava os MESMOS valores do nativo. Nenhuma lógica de domínio (cânon/ranqueamento) em TS — só SELECT direto + composição de Records.
+- **Anti-alucinação preservada:** o texto vem SEMPRE do store local (subset domínio público), verbatim; constantes de asserção existem só no teste.
+- **Offline-first:** `.sqlite` (~4,4 MB) + `wa-sqlite.wasm` empacotados (asset local; `expo export --platform web` os inclui); zero rede em runtime.
+- **Sem regressão nativa:** `reading.ts`/`reading-selftest.ts`/`db.ts`/core/fronteira intactos; o gate de `_layout.tsx` é no-op no nativo.

@@ -4,9 +4,11 @@
 // respeitando `useColorScheme` + override por sessão). As telas de LEITURA ganham
 // o header temático e um toggle de tema (`ThemeToggleButton`) no canto direito.
 import { Stack } from 'expo-router';
+import { ActivityIndicator, View } from 'react-native';
 
 import { ThemeToggleButton } from '../components/ThemeToggleButton';
 import { ThemeProvider, useTheme } from '../lib/theme';
+import { useWasmReady } from '../web/wasm';
 
 export default function RootLayout() {
   return (
@@ -18,6 +20,18 @@ export default function RootLayout() {
 
 function RootNavigator() {
   const { colors } = useTheme();
+  // F1.13: no WEB, `listBooks()` (cânon de 66) vem do wasm e é síncrono — pré-
+  // aquecemos o wasm antes de renderizar a stack para que as telas de leitura o
+  // chamem sem erro. No NATIVO `useWasmReady()` é sempre `true` (no-op, sem
+  // regressão): o cânon vem do JSI e a stack renderiza de imediato.
+  const wasmReady = useWasmReady();
+  if (!wasmReady) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator color={colors.text} />
+      </View>
+    );
+  }
   // Opções comuns às telas de leitura: header e fundo seguindo os tokens de tema,
   // com o toggle de tema visível no header.
   const readOptions = {

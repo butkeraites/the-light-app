@@ -1,10 +1,15 @@
-// app/lib/db.web.ts — F1.3 (ADR-0014)
+// app/lib/db.web.ts — F1.13 (ADR-0018/ADR-0019)
 //
-// STUB web do serviço de banco de leitura. A leitura nativa usa o the-light-core
-// (rusqlite) sobre um arquivo copiado p/ um caminho gravável (db.ts). No web, a
-// leitura do store é a F1.13 (wa-sqlite/OPFS) — não construída aqui. Este stub
-// mantém `tsc`/Metro web verdes E evita arrastar `expo-file-system` + o asset
-// (~1.8 MB) do banco para o bundle web (o Metro escolhe este `.web.ts` no web).
+// Serviço web do banco de LEITURA. No nativo, `ensureReadingDb()` copia o subset
+// para um caminho gravável e devolve esse caminho (db.ts). No web, o store é o
+// `reading-sample.sqlite` aberto INTERNAMENTE pelo glue (`reading.web.ts` →
+// `sqlite-reading-opfs.web.ts`, via wa-sqlite/OPFS); aqui devolvemos apenas um
+// SENTINELA lógico para as telas (`app/app/read/**`) seguirem o mesmo contrato:
+// chamar `ensureReadingDb()` e passar o valor às funções web (que ignoram o path e
+// abrem o subset). NÃO arrasta `expo-file-system`/`expo-asset` nem o asset do banco
+// para o bundle web (o Metro escolhe este `.web.ts` no web). Offline-first.
+const WEB_READING_DB_SENTINEL = 'web:reading-sample';
+
 export async function ensureReadingDb(): Promise<string> {
-  throw new Error('Banco de leitura nativo indisponível no web (leitura web = F1.13).');
+  return WEB_READING_DB_SENTINEL;
 }
