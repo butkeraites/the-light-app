@@ -28,22 +28,22 @@ import { build } from 'esbuild';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import assert from 'node:assert/strict';
 
-import SQLiteESMFactory from 'wa-sqlite/dist/wa-sqlite.mjs';
 import * as SQLite from 'wa-sqlite';
 import { MemoryVFS } from 'wa-sqlite/src/examples/MemoryVFS.js';
+// F1.14 (ADR-0020): UM ÚNICO artefato wa-sqlite (build SÍNCRONO COM FTS5,
+// vendored) p/ leitura E busca — a leitura NÃO regride com o wasm novo.
+import SQLiteESMFactory from '../vendor/wa-sqlite-fts5/wa-sqlite.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const require = createRequire(import.meta.url);
 
 const ENTRY = join(__dirname, 'reading-headless-entry.ts');
 const FRONTIER_WASM = join(__dirname, '..', 'generated', 'wasm-bindgen', 'index_bg.wasm');
 const READING_DB = join(__dirname, '..', '..', '..', 'assets', 'data', 'reading-sample.sqlite');
-const WA_SQLITE_WASM = require.resolve('wa-sqlite/dist/wa-sqlite.wasm');
+const WA_SQLITE_WASM = join(__dirname, '..', 'vendor', 'wa-sqlite-fts5', 'wa-sqlite.wasm');
 
 // João 3:16 — texto VERBATIM do store (domínio público). SÓ no teste (asserção).
 const JOHN_3_16_KJV =

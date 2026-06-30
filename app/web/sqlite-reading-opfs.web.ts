@@ -19,13 +19,20 @@
 //
 // BROWSER-ONLY (guard `typeof navigator`); dynamic-imported por `reading.web.ts`.
 // A prova headless NÃO o importa (usa a query isolada direto sobre o subset).
-import SQLiteESMFactory from 'wa-sqlite/dist/wa-sqlite.mjs';
+// F1.14 (ADR-0020): o factory/wasm vêm do build SÍNCRONO do wa-sqlite COM FTS5
+// (vendored em `app/web/vendor/wa-sqlite-fts5/`, gerado por
+// `scripts/build-wa-sqlite-fts5.sh`). O `dist/` do npm NÃO compila FTS5 (probe:
+// "no such module: fts5"), o que impediria a BUSCA (F1.14: `verses_fts MATCH`/
+// `bm25`/`highlight`). É UM ÚNICO artefato p/ LEITURA e BUSCA (a leitura, F1.13,
+// não regride). A API JS (`wa-sqlite`, `MemoryVFS`) segue do npm — casa com este
+// build (mesmo commit do release `1.0.0`, `registerVFS`).
+import SQLiteESMFactory from './vendor/wa-sqlite-fts5/wa-sqlite.mjs';
 import * as SQLite from 'wa-sqlite';
 import { MemoryVFS } from 'wa-sqlite/src/examples/MemoryVFS.js';
 
 // Assets EMPACOTADOS pelo Metro (servidos pela própria origem; offline-first).
 // eslint-disable-next-line import/no-unresolved
-import waSqliteWasmUri from 'wa-sqlite/dist/wa-sqlite.wasm';
+import waSqliteWasmUri from './vendor/wa-sqlite-fts5/wa-sqlite.wasm';
 // `app/assets/data/reading-sample.sqlite` é um SYMLINK (versionado) para o subset
 // canônico em `<repo>/assets/data` (KJV + Almeida 1911, domínio público) — uma
 // única fonte da verdade. Mantê-lo DENTRO do projectRoot permite ao Metro
