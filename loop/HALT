@@ -1,6 +1,43 @@
-F0.6 blocked: gate estratégico SQLite-no-WASM — exige decisão humana/Guia (não retry).
+F0.6 re-escopada (ADR-0005): aguardando PR de feature-gating mesclado no the-light + re-pin do rev. Loop segue parado até lá.
 
 # HALT — Loop autônomo parado
+
+## ATUALIZAÇÃO 2026-06-30 — direção decidida (humano aprovou)
+
+O motivo abaixo (fricção SQLite-no-WASM) foi **endereçado por uma decisão de
+direção**, registrada em **ADR-0005** (`DECISIONS.md`): tornar `rusqlite`/`reqwest`
+**opcionais atrás de features** (`store`/`net`, default-on) no `the-light-core` —
+mudança **não-quebrante** — e consumir, no app, com **`default-features = false` +
+matriz de features por alvo** (web/wasm = só `reference`/`model`; nativo = completo).
+O desacoplamento `reference`/`model` ↔ módulos pesados foi **verificado** na fonte do
+core. A F0.6 foi **arquivada (blocked)** e **re-escopada** em **F0.6a** (consumir o
+core com features + compilar a fronteira p/ wasm) e **F0.6b** (bindings web do ubrn +
+glue + tela + prova headless) — drafts em `loop/backlog/PHASE-0.md`.
+
+**Spec do PR ao `the-light`:** `loop/proposals/the-light-PR-feature-gating.md`
+(diff do `Cargo.toml` + estratégia de `cfg` + critérios de aceite).
+
+### Por que o HALT PERMANECE
+A mudança habilitadora é **no `the-light`** = **PR + ADR = ação humana** (o loop não
+toca o core). Enquanto o PR não estiver **mesclado** e o `rev` **re-pinado** no
+`core/Cargo.toml`, a F0.6a **não** é elegível (semear antes re-bloquearia).
+
+### Condição EXATA para retomar
+1. Humano abre o PR no `the-light` conforme `loop/proposals/the-light-PR-feature-gating.md`
+   e o **mescla**; anota o novo `rev`.
+2. (No `the-light-app`) re-pinar `core/Cargo.toml` para o novo `rev` com
+   `default-features = false` — isso pode ser a 1ª ação da F0.6a.
+3. **Remover este `loop/HALT`** (ou editar) — no próximo ciclo o planner semeia a
+   **F0.6a** (a pré-condição externa estará satisfeita).
+
+> Alternativa, se preferir não mexer no core agora: escolher outra estratégia de
+> store-web do ADR-0005 (ex.: web como "leitura+IA" pré-indexada) e re-escopar — mas
+> a recomendação aprovada é o feature-gating, que destrava a F0.6 de forma mínima.
+
+---
+
+## Motivo original (evidência do bloqueio — preservado)
+
 
 - **Quando:** 2026-06-29 23:54 UTC (ciclo 13)
 - **Tarefa:** F0.6 — Ligar o core no alvo web (WASM): `parse_reference` no navegador

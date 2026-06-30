@@ -239,3 +239,96 @@ fronteira do core usa `uniffi = "0.31.2"` (modo *library*, ADR-0003).
   `uniffi-bindgen-javascript`, troca-se a dependência num novo ADR.
 - A F0.5 (app Expo) instalará `@ubjs/core` e poderá adicionar `tsc --noEmit`
   sobre os bindings como validação extra.
+
+---
+
+## ADR-0005 — Fricção SQLite-no-WASM: feature-gating no core + matriz de features por alvo
+
+- **Data:** 2026-06-29 · **Status:** aceito (decisão de direção) · **Tarefa:** F0.6
+  (bloqueada → re-escopada em F0.6a/F0.6b) · **Depende de:** PR de habilitação no
+  `the-light` (ver `loop/proposals/the-light-PR-feature-gating.md`).
+
+### Contexto
+A F0.6 (ligar o core no alvo **web/WASM**) bloqueou no portão decisivo:
+`cargo build -p the-light-app-core --target wasm32-unknown-unknown` falha
+(`exit 101`) porque o `the-light-core` (rev `0888ac0`, v1.2.0) arrasta
+`rusqlite = { features = ["bundled"] }` (SQLite-C) e
+`reqwest = { features = ["blocking","json","default-tls"] }`, **ambas
+incondicionais**. No alvo wasm, `rusqlite["bundled"]` resolve para
+`sqlite-wasm-rs v0.5.5`, cujo build script compila SQLite-C via `cc`/clang e
+falha; `reqwest` (blocking + TLS nativo) também não é compatível com
+`wasm32-unknown-unknown`. Evidência completa em `loop/done/F0.6.result.md` (e no
+arquivo, ver `loop/archive/F0.6.result.md`) e em `loop/HALT`.
+
+**Apuração na fonte do core** (checkout consumido em `~/.cargo/git/checkouts/…/0888ac0`,
+leitura permitida — **não** é o `../the-light` bloqueado):
+
+- `crates/the-light-core/Cargo.toml` **não tem `[features]`**; `rusqlite`/`reqwest`
+  **não** são `optional`; não há `[target.'cfg(...)']`.
+- **Desacoplamento verificado** (chave da viabilidade): `reference.rs` (o parser)
+  importa **apenas** `crate::model` + `regex` + `std`; `model.rs` **não** usa
+  `rusqlite`/`reqwest`. As deps pesadas vivem só em módulos *separados*:
+  - `rusqlite` → `store`, `search`, `xref`, `source/{embedded,mod}`, `scholarly`,
+    `ai/lexicon`.
+  - `reqwest` → `scholarly`, `ai/research`, `ai/providers`, `source/http`.
+- Como o cargo compila o **crate inteiro** e não há feature para opt-out, **nenhuma**
+  configuração de consumo (`default-features = false`/seleção de features na git dep)
+  exclui `rusqlite`/`reqwest` a partir do `the-light-app`. Excluí-los exige mudar o
+  **próprio** core ⇒ PR + ADR (decisão humana). Confirma a fricção #1 da VISION §4.
+
+### Decisão
+1. **Habilitação (PR mínimo e não-quebrante ao `the-light`):** tornar as deps
+   pesadas **opcionais atrás de features** no `the-light-core`, com defaults ligados
+   (CLI/TUI/`xtask` seguem idênticos):
+   - `[features] default = ["store", "net"]`; `store = ["dep:rusqlite"]`;
+     `net = ["dep:reqwest"]`.
+   - `rusqlite`/`reqwest` marcados `optional = true`.
+   - `#[cfg(feature = "store")]` / `#[cfg(feature = "net")]` nos `pub mod` pesados
+     em `lib.rs` (e nos pontos de uso). `reference`/`model` permanecem **sem** deps
+     pesadas, sempre disponíveis. Detalhe completo do diff proposto em
+     `loop/proposals/the-light-PR-feature-gating.md`.
+2. **Consumo (no `the-light-app`):** após o PR mesclado e o **rev re-pinado**, o
+   `core/Cargo.toml` passa a depender com `default-features = false` e **matriz de
+   features por alvo**:
+   - **web/wasm:** sem features pesadas → só `reference`/`model` → compila p/
+     `wasm32-unknown-unknown`.
+   - **nativo (iOS/Android):** `features = ["store", "net"]` → capacidade completa.
+3. **Seams para o futuro:** `core/src/store_bridge.rs` (store `rusqlite` nativo /
+   `wa-sqlite`+OPFS web) e `core/src/transport.rs` (`LlmProvider` `reqwest` nativo /
+   `fetch` web), já previstos na seção 1 do `IMPLEMENTATION_PLAN.md`, concretizam o
+   store/transporte plugável **quando o web precisar** de store (F0.10) e IA (F2) —
+   **não** são necessários para destravar a F0.6 (parse_reference é puro).
+4. **Re-escopo da F0.6** (ver `loop/backlog/PHASE-0.md`):
+   - **F0.6a** — consumir o core com matriz de features por alvo + compilar a
+     fronteira p/ `wasm32-unknown-unknown` (depende do PR mesclado + re-pin).
+   - **F0.6b** — bindings web do `ubrn` + glue `app/web/` + ligar a tela + prova
+     headless de `parseReference` via wasm.
+
+### Justificativa
+- **Cirúrgico e não-quebrante:** features default-on preservam o comportamento atual
+  do core; tornar deps `optional` é mudança aditiva. O desacoplamento
+  `reference/model` ↔ módulos pesados foi **verificado**, então o gating é mecânico.
+- **Alinhado ao design:** mantém **uma fonte da verdade** (parsing continua no Rust),
+  **offline-first** (nada de rede no runtime do produto), e realiza o ADR-0001 §4/§5
+  e o layout `core/src/{store_bridge,transport}.rs` do plano. Mudança no core pela
+  via sancionada (**PR + ADR**, nunca fork silencioso — ADR-0002).
+- **Destrava agora e prepara depois:** F0.6 (puro) compila p/ wasm; F0.9/F0.10
+  (store) e F2 (IA) ganham os seams corretos.
+
+### Alternativas rejeitadas
+- **Compilar o core inteiro p/ wasm** (corrigindo só o clang): ❌ `reqwest`
+  blocking+TLS não compila p/ wasm32; e embutir SQLite incha o bundle — contra o
+  design (VISION quer `wa-sqlite` no web).
+- **`[patch]` nas deps transitivas** (`rusqlite`/`reqwest`): ❌ frágil, não é
+  target-scoped, equivale a forkar terceiros.
+- **Web como "leitura+IA pré-indexada" apenas:** ❌ não resolve o grafo de compilação
+  (parse_reference é puro, mas o crate ainda arrasta as deps).
+- **Copiar/reimplementar o parser:** ❌ viola "uma fonte da verdade" (inegociável).
+
+### Consequências / pré-condições
+- A F0.6a **não** é elegível até o PR de feature-gating ser **mesclado** no
+  `the-light` e o `rev` ser **re-pinado** no `core/Cargo.toml`. Até lá, o
+  **`loop/HALT` permanece** (ajustado para refletir este plano). Quem abre/mescla o
+  PR é o humano (Renan); o loop não toca o `the-light`.
+- Decisão pendente do humano ao abrir o PR: nome/recorte das features — adotado
+  **`store` + `net`**; alternativa registrada era um único `embedded`.

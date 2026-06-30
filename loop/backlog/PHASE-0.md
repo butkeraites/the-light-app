@@ -51,11 +51,40 @@ resultado (ainda sem chamar o core).
 **Verificação:** `npx expo start --web`, `run:ios`, `run:android` abrem a tela.
 **Depende:** F0.1.
 
-## F0.6 — Ligar core no WEB (WASM)
-**Objetivo:** chamar `parse_reference` a partir da tela no alvo web (WASM).
-**Aceite:** digitar "Jo 3.16" mostra a referência resolvida pelo Rust no browser.
-**Verificação:** `npx expo start --web` + teste manual documentado.
-**Depende:** F0.4, F0.5.
+## F0.6 — Ligar core no WEB (WASM)  — **BLOQUEADA → RE-ESCOPADA (ADR-0005)**
+A F0.6 original bloqueou no portão decisivo (fricção SQLite-no-WASM): o
+`the-light-core` arrasta `rusqlite`/`reqwest` incondicionais e não compila p/
+`wasm32` sem ser modificado (ver `loop/archive/F0.6.result.md`, `loop/HALT`,
+ADR-0005). Resolvida via **feature-gating no core (PR — `loop/proposals/the-light-PR-feature-gating.md`)**
++ matriz de features por alvo no app. Re-escopada em F0.6a e F0.6b.
+
+### F0.6a — Consumir o core com features por alvo + compilar a fronteira p/ wasm
+**Pré-condição (humano/Guia):** PR de feature-gating **mesclado** no `the-light` e
+**rev re-pinado** disponível. **NÃO semear na queue antes disso** (senão re-bloqueia).
+**Objetivo:** re-pinar `core/Cargo.toml` no rev pós-PR com `default-features = false`
+e configurar a **matriz de features por alvo** (web/wasm: sem features pesadas → só
+`reference`/`model`; nativo: `["store","net"]`); compilar a fronteira para
+`wasm32-unknown-unknown`.
+**Aceite:** `cargo build -p the-light-app-core --target wasm32-unknown-unknown` verde
+(sem `rusqlite`/`reqwest` no grafo wasm — `cargo tree` confirma); `cargo build`/`test`
+nativos seguem verdes; `parse_reference` continua delegando ao core (uma fonte da
+verdade); fmt/clippy limpos; working tree limpo.
+**Verificação:** `cargo build --target wasm32-unknown-unknown` + `cargo tree
+--target wasm32-unknown-unknown` sem `rusqlite`/`reqwest` + `cargo test` (host).
+**Depende:** F0.4, F0.5 **e** o PR ao core mesclado (pré-condição externa).
+
+### F0.6b — Bindings web (ubrn) + glue + ligar a tela + prova headless
+**Objetivo:** gerar os bindings **web/wasm** via o caminho web do `ubrn` (não o
+`jsi`), criar o glue em `app/web/` (carregar o módulo wasm + wrapper sobre
+`parseReference`), ligar `app/app/index.tsx` para resolver a referência pelo Rust no
+web, e provar de forma **headless**.
+**Aceite:** teste headless (node) prova `parseReference("Jo 3.16")` e `("John 3:16")`
+→ `book=43, chapter=3, verses=Single 16` via wasm+bindings; a tela web exibe a
+referência resolvida pelo Rust (não eco/lógica TS); `npx expo export --platform web`
+(de `app/`) sai 0; working tree limpo (wasm/bindings ignorados).
+**Verificação:** script de bindings web + teste node headless + expo export web.
+**Depende:** F0.6a. Se o caminho web do `ubrn 0.31.0-3` for imaturo/inoperante →
+`blocked` legítimo com erro exato (decisão sobre o caminho web do ubrn).
 
 ## F0.7 — Ligar core no iOS
 **Objetivo:** `parse_reference` via Turbo Module nativo no simulador iOS.
