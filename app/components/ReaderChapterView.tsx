@@ -19,6 +19,8 @@ export function ReaderChapterView({
   passage,
   onVersePress,
   selectedVerse,
+  highlightedVerses,
+  notedVerses,
 }: {
   passage: Passage;
   /**
@@ -29,6 +31,17 @@ export function ReaderChapterView({
   onVersePress?: (verse: number) => void;
   /** Versículo selecionado (realce por token); só usado com `onVersePress`. */
   selectedVerse?: number | null;
+  /**
+   * F1.11: indicador de HIGHLIGHT do usuário — mapa `versículo → cor de fundo`
+   * (hex já resolvido p/ o tema, a partir de `list_highlights`). OPCIONAL
+   * (retrocompat). A cor do usuário é distinta da seleção (`verseSelected`).
+   */
+  highlightedVerses?: Map<number, string>;
+  /**
+   * F1.11: indicador de NOTA do usuário — conjunto de versículos com nota (de
+   * `list_notes`). OPCIONAL (retrocompat); mostra um realce/marcador discreto.
+   */
+  notedVerses?: Set<number>;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -46,15 +59,24 @@ export function ReaderChapterView({
         const n = verseNumber(v.reference.verses);
         const selectable = onVersePress != null && n != null;
         const isSelected = selectable && selectedVerse === n;
+        // F1.11: realce de highlight do usuário (cor escolhida) + marcador de nota.
+        // A seleção (`verseSelected`) tem precedência visual sobre o highlight.
+        const highlightColor = n != null ? highlightedVerses?.get(n) : undefined;
+        const isNoted = n != null && notedVerses?.has(n) === true;
         return (
           <Text
             key={n ?? i}
-            style={[styles.verse, isSelected ? styles.verseSelected : null]}
+            style={[
+              styles.verse,
+              highlightColor ? { backgroundColor: highlightColor } : null,
+              isSelected ? styles.verseSelected : null,
+            ]}
             testID={n != null ? `verse-${n}` : undefined}
             onPress={selectable ? () => onVersePress!(n!) : undefined}
             accessibilityRole={selectable ? 'button' : undefined}
           >
             {n != null ? <Text style={styles.verseNumber}>{n} </Text> : null}
+            {isNoted ? <Text style={styles.noteMark}>✎ </Text> : null}
             <Text style={styles.verseText}>{v.text}</Text>
           </Text>
         );
@@ -69,6 +91,7 @@ function makeStyles(colors: ThemeColors) {
     verse: { fontSize: 17, lineHeight: 26 },
     verseSelected: { backgroundColor: colors.chipActiveBg, color: colors.chipActiveText },
     verseNumber: { fontSize: 12, color: colors.accent, fontWeight: '700' },
+    noteMark: { fontSize: 12, color: colors.accent, fontWeight: '700' },
     verseText: { color: colors.verseText },
     empty: { fontSize: 14, color: colors.muted },
   });

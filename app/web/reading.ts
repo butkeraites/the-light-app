@@ -16,6 +16,13 @@ import {
   chapterCount as chapterCountNative,
   search as searchNative,
   crossRefs as crossRefsNative,
+  putNote as putNoteNative,
+  getNote as getNoteNative,
+  deleteNote as deleteNoteNative,
+  listNotes as listNotesNative,
+  addHighlight as addHighlightNative,
+  removeHighlight as removeHighlightNative,
+  listHighlights as listHighlightsNative,
 } from './native-generated/src/index';
 import type {
   Book,
@@ -23,9 +30,11 @@ import type {
   Translation,
   SearchHit,
   CrossRef,
+  Note,
+  Highlight,
 } from './native-generated/bindings/the_light_app_core';
 
-export type { Book, Passage, Translation, SearchHit, CrossRef };
+export type { Book, Passage, Translation, SearchHit, CrossRef, Note, Highlight };
 
 /** 66 livros canônicos (PURO — `reference::BOOKS`, independe do banco). */
 export function listBooks(): Book[] {
@@ -102,4 +111,59 @@ export async function crossRefs(
   limit?: number,
 ): Promise<CrossRef[]> {
   return crossRefsNative(dbPath, book, chapter, verse, minVotes, limit);
+}
+
+// ── USERDATA (notas/highlights) — F1.11, fronteira F1.10 ─────────────────────
+// Glue NATIVO da fronteira `userdata` (F1.10): delega às 7 funções geradas
+// (`putNote`/`getNote`/`deleteNote`/`listNotes`/`addHighlight`/`removeHighlight`/
+// `listHighlights`) → JSI → o módulo `userdata` do the-light-core.
+// NÃO reimplementa I/O de arquivo, serialização de userdata, slug de
+// referência nem ordenação em TS — tudo vive no core (uma fonte da verdade). A UI só
+// chama estas funções e apresenta os Records `Note`/`Highlight` retornados.
+//
+// O `dataDir` é o diretório GRAVÁVEL de userdata (`${documentDirectory}userdata/`,
+// via `app/lib/userdata.ts`), SEPARADO do banco só-leitura (`ensureReadingDb`). A
+// `reference` é a string canônica (ex.: `"John 3:16"`); o core a parseia
+// (`parse_reference`) — PT e EN caem na MESMA nota/highlight. O `body`/`color`/`tag`
+// são dado livre do usuário (anti-alucinação não se aplica ao corpo). Síncrono no
+// JSI; embrulhado em Promise p/ assinatura uniforme com o web (stub = F1.16).
+
+/** Cria/substitui a NOTA (Markdown) de uma referência (escrita atômica no core). */
+export async function putNote(dataDir: string, reference: string, body: string): Promise<void> {
+  return putNoteNative(dataDir, reference, body);
+}
+
+/** Lê a NOTA de uma referência; ausente → `undefined` (não erro). */
+export async function getNote(dataDir: string, reference: string): Promise<Note | undefined> {
+  return getNoteNative(dataDir, reference);
+}
+
+/** Remove a NOTA; `true` se removeu, idempotente → `false` se não havia. */
+export async function deleteNote(dataDir: string, reference: string): Promise<boolean> {
+  return deleteNoteNative(dataDir, reference);
+}
+
+/** Lista todas as NOTAS (ordenadas por referência canônica pelo core). */
+export async function listNotes(dataDir: string): Promise<Note[]> {
+  return listNotesNative(dataDir);
+}
+
+/** Marca/atualiza um HIGHLIGHT (mesma referência substitui a cor); `tag` opcional. */
+export async function addHighlight(
+  dataDir: string,
+  reference: string,
+  color: string,
+  tag?: string,
+): Promise<void> {
+  return addHighlightNative(dataDir, reference, color, tag);
+}
+
+/** Desmarca o HIGHLIGHT da referência; devolve quantos saíram (idempotente → 0). */
+export async function removeHighlight(dataDir: string, reference: string): Promise<number> {
+  return removeHighlightNative(dataDir, reference);
+}
+
+/** Lista todos os HIGHLIGHTS do usuário. */
+export async function listHighlights(dataDir: string): Promise<Highlight[]> {
+  return listHighlightsNative(dataDir);
 }

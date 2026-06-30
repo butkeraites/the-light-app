@@ -21,6 +21,10 @@ import { runSearchSelfTest } from './search-selftest';
 // por extensão — no web, `xref-selftest.web.ts` é um SKIP (xref web = F1.15),
 // mantendo o bundle web sem `expo-file-system`/o banco bundled.
 import { runXrefSelfTest } from './xref-selftest';
+// F1.11: prova de NOTAS/HIGHLIGHTS + PERSISTÊNCIA no device (marcador TLA_NOTES). Par
+// nativo/web por extensão — no web, `notes-selftest.web.ts` é um SKIP (notas web =
+// F1.16), mantendo o bundle web sem `expo-file-system`/userdata.
+import { runNotesSelfTest } from './notes-selftest';
 
 // Marcador (prefixo grep-ável). console.error garante o nível alto no log
 // unificado; console.log o complementa. O script assere o texto exato.
@@ -68,5 +72,8 @@ export async function runReferenceSelfTest(): Promise<void> {
   // F1.9: prova de XREF (versículo→fronteira cross_refs→referências) no device.
   // Emite TLA_XREF (composto do retorno real de `cross_refs`).
   await runXrefSelfTest();
+  // F1.11: prova de NOTAS/HIGHLIGHTS + PERSISTÊNCIA (put/get/list + 2ª leitura
+  // independente do disco) via a fronteira userdata. Emite TLA_NOTES.
+  await runNotesSelfTest();
   console.log(`${MARK} DONE`);
 }

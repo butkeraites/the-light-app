@@ -1564,3 +1564,110 @@ aqui (a exibição visível na UI é da **F1.9**).
   propagação dos xrefs ao `reading-sample.sqlite` (bundling) é **F1.9**. Não
   antecipados aqui.
 
+## ADR-0017 — UI de notas/highlights nativa (F1.11): diretório de USERDATA gravável separado do conteúdo público + EXPORT como agregado dos Records (sem reimplementar serialização) + Share nativo
+
+- **Data:** 2026-06-30 · **Status:** aceito · **Tarefa:** F1.11 · **Depende:** ADR-0014 (bundling/`documentDirectory`), ADR-0015 (tema), ADR-0010/0005 (matriz por alvo + anti-alucinação), F1.10 (fronteira `userdata`)
+
+### Contexto
+A F1.10 entregou as **7 funções** de userdata na fronteira UniFFI (`put_note`/
+`get_note`/`delete_note`/`list_notes`/`add_highlight`/`remove_highlight`/
+`list_highlights`) + os Records `Note`/`Highlight`, delegando ao módulo `userdata`
+do `the-light-core` (`NoteStore` file-based → `notes/<slug>.md`; `HighlightStore` →
+um `highlights.json`). A F1.11 entrega a **UI nativa** ancorada no Reader e a
+**persistência no device**, **sem reimplementar** I/O/serialização/slug/ordenação em
+TS (uma fonte da verdade; anti-alucinação aplica-se à **referência**, não ao **corpo**
+da nota, que é texto livre do usuário). Três subproblemas exigiram decisão: **onde
+gravar** (diretório), **como exportar** e **como compartilhar**.
+
+### Decisão
+
+1. **Diretório de USERDATA gravável e SEPARADO do conteúdo público.** O
+   `app/lib/userdata.ts` (`ensureUserDataDir()`, molde do `db.ts`) garante
+   `${FileSystem.documentDirectory}userdata/` (`makeDirectoryAsync`,
+   `intermediates:true`, **idempotente**) e devolve o **caminho real** (sem o esquema
+   `file://`, que o `std::fs` do core espera). Esse caminho é o `data_dir` das 7
+   funções. É **distinto** do `ensureReadingDb()` (que devolve o
+   `reading-sample.sqlite` **só-leitura**, conteúdo de domínio público): nunca se
+   passa o banco como `data_dir`. Sob `data_dir`, o **core** cria `notes/` (1 arquivo
+   por referência) + o agregado de marcações — formato aberto, base do export. O par
+   `app/lib/userdata.web.ts` é um **stub** (notas web = F1.16) que mantém
+   `expo-file-system` fora do bundle web.
+
+2. **EXPORT = agregado Markdown montado a partir dos Records (apresentação), não
+   serialização do store.** O `app/lib/notesExport.ts` (`buildNotesExport`) é uma
+   função **pura** (sem I/O) que recebe os Records de `list_notes`/`list_highlights`
+   e produz um Markdown legível (cabeçalho + notas por referência + lista de
+   marcações). **NÃO** reescreve os arquivos que o core já produziu no `data_dir`
+   (nada de gerar `.md` por nota nem o agregado de marcações à mão) — é só
+   apresentação dos Records. Reaproveita o que a fronteira retorna → preserva "uma
+   fonte da verdade". Só vaza **dados do próprio usuário** (nenhum texto bíblico,
+   nenhum segredo). A **prova é HEADLESS** (self-test `TLA_NOTES … export_ok=true`):
+   confere que o exportável BATE com `list_notes`/`list_highlights`, sem abrir o Share
+   sheet.
+
+3. **Share nativo via `react-native` `Share` — SEM nova dependência.** O botão
+   "Exportar minhas notas" passa o texto do agregado ao `Share.share({ message })` do
+   **core do React Native**. **NÃO** foi adicionado `expo-sharing` (a UX de Share de
+   texto já é coberta pelo `Share` embutido; evita dependência nova). `package.json`
+   **inalterado**.
+
+4. **UI ancorada no Reader, mesmo gesto da F1.9.** Ao selecionar um versículo, abre o
+   `ReaderVersePanel` (bottom sheet, molde do `ReaderXrefPanel`) com: editor de
+   **nota** (`TextInput` multiline; Salvar→`put_note`, Remover→`delete_note`),
+   controles de **marcação** (paleta nomeada `highlightColors.ts`; chip→`add_highlight`,
+   Desmarcar→`remove_highlight`), **export** e as **referências cruzadas** (F1.9, com a
+   atribuição CC-BY ADR-0016 reusada via `XREF_ATTRIBUTION`). Indicadores por versículo
+   (`ReaderChapterView`, props **opcionais** retrocompatíveis): cor de fundo do
+   highlight do usuário (distinta da seleção e do realce de busca) + marcador de nota.
+   Cores de highlight são **dado do usuário** (paleta própria, não tokens de tema);
+   demais cores via `useTheme()` (sem hex hardcoded).
+
+5. **Persistência provada por 2ª leitura independente.** Cada chamada da fronteira
+   reabre o store a partir do disco → o self-test (`app/web/notes-selftest.ts`, dir
+   ISOLADO `${documentDirectory}userdata-selftest/`, **limpo no início**) faz
+   `put_note`→`get_note`/`list_notes`→`add_highlight`→`list_highlights` e depois uma
+   **2ª leitura** (`persisted=true` sse reencontra nota+highlight). Emite
+   `TLA_NOTES note_ref="John 3:16" note_len=<n> highlights=<m> persisted=true
+   export_ok=true` — tudo do **retorno real** (não hardcoded). `run-ios-selftest.sh`
+   asserta `note_ref="John 3:16"` + `highlights>=1` + `persisted=true`, **sem
+   regressão** de `TLA_SELFTEST` PT/EN, `TLA_READ`, `TLA_PARALLEL`, `TLA_SEARCH`,
+   `TLA_XREF`.
+
+### Verificação (do RETORNO da fronteira, não hardcode)
+- Bindings nativos **regenerados** (`gen-bindings-ios.sh`, exit 0): as 7 funções +
+  tipos `Note`/`Highlight` passam a existir em `app/web/native-generated/bindings/`.
+- `tsc --noEmit` (app) **verde**; `expo export --platform web` **exit 0** (glue web de
+  userdata = stub que só lança em **runtime**, sem quebrar o bundle).
+- Anti-fake: `app/app`/`app/components`/`reading.ts`/`reading.web.ts` **não** contêm
+  reimplementação de I/O/serialização de userdata; a escrita passa **sempre** pela
+  fronteira (glue delega aos bindings).
+- `TLA_NOTES` capturado no simulador com `persisted=true` e `export_ok=true`.
+
+### Alternativas rejeitadas
+- **Gravar userdata no `reading-sample.sqlite`:** ❌ é conteúdo público **só-leitura**;
+  misturar dado do usuário viola a separação (e o subset é regenerável/descartável).
+- **Export reescrevendo `.md`/o agregado de marcações à mão em TS:** ❌ reimplementaria
+  a serialização do core (proibido); o `data_dir` que o core produz **já é** o formato
+  aberto, e o agregado dos Records é só apresentação.
+- **Adicionar `expo-sharing`:** ❌ desnecessário — `Share` do React Native já
+  compartilha texto; menos dependência.
+- **Paridade web nesta tarefa:** ❌ é a **F1.16** (pós-gate F1.12); aqui o caminho web
+  é stub.
+
+### Consequências
+- **Offline-first preservado:** userdata é I/O **100% local** (via a fronteira → core);
+  export é local/Share sheet. **Zero rede** em runtime; sem segredos em git/log.
+- **`the-light` e o core intactos:** rev pinado `8f66004`; `core/src/lib.rs`/
+  `core/Cargo.toml` **não** modificados (a F1.10 já entregou as 7 funções; **nenhuma**
+  função de fronteira nova). A F1.11 é só app/UI/glue/serviço/self-test/script +
+  bindings **gerados-ignorados**.
+- **Versionado nesta tarefa:** `app/web/reading.ts` + `reading.web.ts` (glue userdata),
+  `app/lib/userdata.ts` + `.web.ts`, `app/lib/notesExport.ts`, `app/lib/highlightColors.ts`,
+  `app/components/ReaderVersePanel.tsx`, `app/components/ReaderChapterView.tsx`,
+  `app/app/read/[book]/[chapter].tsx`, `app/web/notes-selftest.ts` + `.web.ts`,
+  `app/web/selftest.ts`, `scripts/run-ios-selftest.sh`, `DECISIONS.md` (este ADR).
+  **Gerado/IGNORADO:** `app/web/native-generated/` (bindings regenerados),
+  `app/dist/` (export web), userdata copiado em runtime. `.gitignore` **inalterado**.
+- **Marco:** F1.11 é a **última tarefa nativa antes do gate estratégico F1.12** —
+  após aceita, o loop **PARA (HALT)** p/ sign-off humano (store web do corpus completo).
+

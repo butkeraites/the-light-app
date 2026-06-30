@@ -9,20 +9,24 @@
 //      fronteira — SEM SQL/leitura/texto em TS).
 //   2) TEMA claro/escuro: cores via tokens (`useTheme`), não mais hex hardcoded.
 // Anti-alucinação: o texto vem sempre do Rust/store, nunca gerado na UI.
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ReaderChapterView } from '../../../components/ReaderChapterView';
 import { ReaderParallelView } from '../../../components/ReaderParallelView';
 import { ReaderVersionPicker } from '../../../components/ReaderVersionPicker';
-import { ReaderXrefPanel } from '../../../components/ReaderXrefPanel';
+import { ReaderVersePanel } from '../../../components/ReaderVersePanel';
 import { ensureReadingDb } from '../../../lib/db';
+import { ensureUserDataDir } from '../../../lib/userdata';
+import { resolveHighlightColor } from '../../../lib/highlightColors';
 import { useTheme, type ThemeColors } from '../../../lib/theme';
 import {
   crossRefs,
   getChapter,
   listBooks,
+  listHighlights,
+  listNotes,
   listTranslations,
   type CrossRef,
   type Passage,
@@ -36,9 +40,14 @@ function bookNamePt(book: number): string {
   return listBooks().find((b) => b.number === book)?.namePt ?? `Livro ${book}`;
 }
 
+/** Nome (EN) de um livro — base da referência CANÔNICA passada à fronteira userdata. */
+function bookNameEn(book: number): string {
+  return listBooks().find((b) => b.number === book)?.nameEn ?? `Book ${book}`;
+}
+
 export default function ChapterScreen() {
   const navigation = useNavigation();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { book, chapter } = useLocalSearchParams<{ book: string; chapter: string }>();
   const bookNumber = Number(book);
@@ -60,6 +69,14 @@ export default function ChapterScreen() {
   const [xrefs, setXrefs] = useState<CrossRef[]>([]);
   const [xrefLoading, setXrefLoading] = useState(false);
   const [xrefError, setXrefError] = useState<string | null>(null);
+
+  // F1.11: userdata gravável (notas/highlights) — diretório SEPARADO do banco
+  // só-leitura. Os indicadores por versículo vêm SEMPRE de `list_notes`/
+  // `list_highlights` (fronteira F1.10) — sem I/O/serialização/ordenação em TS.
+  const [dataDir, setDataDir] = useState<string | null>(null);
+  const [notedVerses, setNotedVerses] = useState<Set<number>>(new Set());
+  // versículo → NOME da cor (dado do usuário); resolvido p/ hex no render.
+  const [highlightColors, setHighlightColors] = useState<Map<number, string>>(new Map());
 
   useEffect(() => {
     const name = listBooks().find((b) => b.number === bookNumber)?.namePt ?? `Livro ${bookNumber}`;
@@ -170,6 +187,66 @@ export default function ChapterScreen() {
     };
   }, [selectedVerse, bookNumber, chapterNumber]);
 
+  // F1.11: resolve o diretório de userdata gravável uma vez (separado do banco
+  // só-leitura). Sem ele, a leitura segue normal e as notas/highlights ficam off.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const dir = await ensureUserDataDir();
+        if (alive) setDataDir(dir);
+      } catch {
+        // userdata indisponível neste alvo → indicadores/edição ficam inativos.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // F1.11: deriva os indicadores do capítulo atual a partir de `list_notes`/
+  // `list_highlights` (fronteira). NÃO ordena/parseia nada — só FILTRA os Records
+  // do livro/capítulo correntes e mapeia versículo→cor/nota p/ apresentação.
+  const refreshUserData = useCallback(async () => {
+    if (!dataDir) {
+      return;
+    }
+    try {
+      const [notes, highlights] = await Promise.all([listNotes(dataDir), listHighlights(dataDir)]);
+      const noted = new Set<number>();
+      for (const note of notes) {
+        const r = note.reference;
+        if (r.book === bookNumber && r.chapter === chapterNumber && r.verses.tag === 'Single') {
+          noted.add(r.verses.inner.verse);
+        }
+      }
+      const colorsByVerse = new Map<number, string>();
+      for (const h of highlights) {
+        const r = h.reference;
+        if (r.book === bookNumber && r.chapter === chapterNumber && r.verses.tag === 'Single') {
+          colorsByVerse.set(r.verses.inner.verse, h.color);
+        }
+      }
+      setNotedVerses(noted);
+      setHighlightColors(colorsByVerse);
+    } catch {
+      // best-effort: sem indicadores se a fronteira falhar; a leitura não regride.
+    }
+  }, [dataDir, bookNumber, chapterNumber]);
+
+  useEffect(() => {
+    void refreshUserData();
+  }, [refreshUserData]);
+
+  // Resolve os nomes de cor (dado do usuário) p/ a amostra de fundo do tema corrente.
+  const highlightedVerses = useMemo(() => {
+    const resolved = new Map<number, string>();
+    highlightColors.forEach((name, verse) => {
+      resolved.set(verse, resolveHighlightColor(name, isDark));
+    });
+    return resolved;
+  }, [highlightColors, isDark]);
+
   // Navega ao capítulo de destino de uma xref (rota F1.3). `verse` vai como param
   // OPCIONAL (best-effort: a ancoragem/realce é follow-up; chegar ao capítulo já
   // satisfaz o aceite). Fecha o painel antes de navegar.
@@ -247,24 +324,36 @@ export default function ChapterScreen() {
           passage={passage}
           onVersePress={setSelectedVerse}
           selectedVerse={selectedVerse}
+          highlightedVerses={highlightedVerses}
+          notedVerses={notedVerses}
         />
       )}
 
-      {/* F1.9: painel de referências cruzadas (xref) do versículo selecionado.
-          Os dados vêm da fronteira `cross_refs`; a atribuição CC-BY (ADR-0016) é
-          exibida pelo próprio painel. */}
-      <ReaderXrefPanel
+      {/* F1.11: painel por-versículo (nota + marcação + referências cruzadas +
+          exportar), aberto pelo mesmo gesto de seleção. Nota/highlight vão pela
+          fronteira `userdata` (F1.10); xref pela `cross_refs` (F1.9) com a
+          atribuição CC-BY (ADR-0016). A referência canônica (EN) é passada à
+          fronteira; o rótulo do cabeçalho é o nome PT. */}
+      <ReaderVersePanel
         visible={selectedVerse != null}
         sourceLabel={
           selectedVerse != null
             ? `${bookNamePt(bookNumber)} ${chapterNumber}:${selectedVerse}`
             : ''
         }
+        reference={
+          selectedVerse != null
+            ? `${bookNameEn(bookNumber)} ${chapterNumber}:${selectedVerse}`
+            : ''
+        }
+        dataDir={dataDir}
+        currentHighlight={selectedVerse != null ? (highlightColors.get(selectedVerse) ?? null) : null}
         refs={xrefs}
-        loading={xrefLoading}
-        error={xrefError}
+        xrefLoading={xrefLoading}
+        xrefError={xrefError}
         bookNameOf={bookNamePt}
-        onSelect={openXref}
+        onSelectXref={openXref}
+        onChanged={() => void refreshUserData()}
         onClose={() => setSelectedVerse(null)}
       />
     </View>

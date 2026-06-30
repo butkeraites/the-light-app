@@ -84,6 +84,14 @@ MARK_SEARCH_TEXT="For God so loved"          # texto KJV verbatim do store (sem 
 # um versículo de João (João 3:15, ~439 votos). Aqui o script só confere substrings/
 # padrões: query de João 3:16, count>=1 e first_ref de um livro do subset.
 MARK_XREF_VERSE='TLA_XREF verse="John 3:16"'  # xref de João 3:16 via a fronteira cross_refs
+# F1.11 (ADR-0017): PROVA DE NOTAS/HIGHLIGHTS + PERSISTÊNCIA no device. O app exercita
+# a fronteira `userdata` (the_light_core::userdata via JSI) num dir de teste ISOLADO sob
+# documentDirectory: put_note → get_note/list_notes (round-trip) → add_highlight →
+# list_highlights → 2ª leitura INDEPENDENTE (persistência). O marcador é COMPOSTO do
+# RETORNO real: a ref da nota de João 3:16 (list_notes/get_note), o nº de highlights
+# (list_highlights, >=1) e persisted=true (2ª leitura). Aqui o script só confere
+# padrões: nota por ref "John 3:16", highlights>=1 e persisted=true.
+MARK_NOTES_REF='TLA_NOTES note_ref="John 3:16"'  # nota de João 3:16 via a fronteira userdata
 
 export PATH="/opt/homebrew/bin:$PATH"  # cocoapods/node instalados via brew
 LOG_DIR="$(mktemp -d -t f07-ios-selftest)"
@@ -176,8 +184,8 @@ sleep 2
 
 xcrun simctl launch "$UDID" "$BUNDLE_ID" >/dev/null
 
-# ── [5/5] Asserção: parse (PT+EN) + leitura + paralela + busca + xref ─────────
-echo "==> [5/5] Aguardando marcadores PT+EN + leitura + paralela + busca + xref (até ${LAUNCH_WAIT}s)"
+# ── [5/5] Asserção: parse (PT+EN) + leitura + paralela + busca + xref + notas ──
+echo "==> [5/5] Aguardando marcadores PT+EN + leitura + paralela + busca + xref + notas (até ${LAUNCH_WAIT}s)"
 found=0
 for _ in $(seq 1 "$LAUNCH_WAIT"); do
   if grep -qF "$MARK_PT" "$STREAM_LOG" \
@@ -193,7 +201,10 @@ for _ in $(seq 1 "$LAUNCH_WAIT"); do
     && grep -qF "$MARK_SEARCH_TEXT" "$STREAM_LOG" \
     && grep -qF "$MARK_XREF_VERSE" "$STREAM_LOG" \
     && grep -qE 'TLA_XREF .*count=[1-9][0-9]*' "$STREAM_LOG" \
-    && grep -qE 'first_ref="(Genesis|Psalm|Psalms|John) ' "$STREAM_LOG"; then
+    && grep -qE 'first_ref="(Genesis|Psalm|Psalms|John) ' "$STREAM_LOG" \
+    && grep -qF "$MARK_NOTES_REF" "$STREAM_LOG" \
+    && grep -qE 'TLA_NOTES .*highlights=[1-9][0-9]*' "$STREAM_LOG" \
+    && grep -qF 'persisted=true' "$STREAM_LOG"; then
     found=1
     break
   fi
@@ -205,7 +216,7 @@ grep -F "TLA_" "$STREAM_LOG" | sed 's/.*\(TLA_\)/\1/' | sort -u || true
 echo "---------------------------------------------"
 
 if [ "$found" != "1" ]; then
-  echo "ERRO: marcadores de parse (PT/EN), leitura (TLA_READ), leitura paralela (TLA_PARALLEL + Almeida), busca (TLA_SEARCH: query=\"God\", hits>=1, João 3:16, \"For God so loved\") e/ou xref (TLA_XREF: verse=\"John 3:16\", count>=1, first_ref de um livro do subset Genesis/Psalm(s)/John) não apareceram em ${LAUNCH_WAIT}s." >&2
+  echo "ERRO: marcadores de parse (PT/EN), leitura (TLA_READ), leitura paralela (TLA_PARALLEL + Almeida), busca (TLA_SEARCH: query=\"God\", hits>=1, João 3:16, \"For God so loved\"), xref (TLA_XREF: verse=\"John 3:16\", count>=1, first_ref de um livro do subset Genesis/Psalm(s)/John) e/ou notas (TLA_NOTES: note_ref=\"John 3:16\", highlights>=1, persisted=true) não apareceram em ${LAUNCH_WAIT}s." >&2
   exit 1
 fi
 
@@ -216,4 +227,5 @@ grep -F "TLA_READ books=66" "$STREAM_LOG" | sed 's/.*\(TLA_READ\)/\1/' | head -1
 grep -F "TLA_PARALLEL" "$STREAM_LOG" | sed 's/.*\(TLA_PARALLEL\)/\1/' | head -1
 grep -F 'TLA_SEARCH query="God"' "$STREAM_LOG" | sed 's/.*\(TLA_SEARCH\)/\1/' | head -1
 grep -F 'TLA_XREF verse="John 3:16"' "$STREAM_LOG" | sed 's/.*\(TLA_XREF\)/\1/' | head -1
-echo "==> OK — parse_reference (PT==EN), leitura (books=66, João 3:16 KJV verbatim, john_chapters=21), leitura PARALELA (João 3:16 KJV|Almeida 1911, ambos do store via get_chapter), busca (TLA_SEARCH: \"God\" via a fronteira search, João 3:16 + \"For God so loved\" verbatim do store, hits>=1) E xref (TLA_XREF: João 3:16 via a fronteira cross_refs, count>=1, first_ref do subset + votos do retorno) provados pelo Rust nativo via Turbo Module."
+grep -F 'TLA_NOTES note_ref="John 3:16"' "$STREAM_LOG" | sed 's/.*\(TLA_NOTES\)/\1/' | head -1
+echo "==> OK — parse_reference (PT==EN), leitura (books=66, João 3:16 KJV verbatim, john_chapters=21), leitura PARALELA (João 3:16 KJV|Almeida 1911, ambos do store via get_chapter), busca (TLA_SEARCH: \"God\" via a fronteira search, João 3:16 + \"For God so loved\" verbatim do store, hits>=1), xref (TLA_XREF: João 3:16 via a fronteira cross_refs, count>=1, first_ref do subset + votos do retorno) E notas/highlights (TLA_NOTES: João 3:16 via a fronteira userdata, highlights>=1, persisted=true — 2ª leitura independente do disco) provados pelo Rust nativo via Turbo Module."
