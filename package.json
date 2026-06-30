@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "The Light — geração de bindings TypeScript da fronteira UniFFI (the-light-app-core) via uniffi-bindgen-react-native. Ver ADR-0004.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/butkeraites/the-light-app"
+  },
   "scripts": {
     "gen-bindings": "./scripts/gen-bindings.sh"
   },

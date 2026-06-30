@@ -28,3 +28,37 @@ bindings:
   ts: bindings
   # Diretório do C++ JSI (byproduct do flavor `jsi`); sob bindings/ => ignorado.
   cpp: bindings/cpp
+
+# ── Caminho WEB / WASM (F0.6b, ADR-0007) ─────────────────────────────────────
+# Bloco consumido pelo subcomando `ubrn build web` (alias `wasm`). Schema
+# `WasmConfig` (chaves camelCase) em
+# node_modules/uniffi-bindgen-react-native/crates/ubrn_cli/src/wasm/config.rs.
+#
+# Fluxo de `ubrn build web`:
+#   1) cargo build (host, core/Cargo.toml) — extrai a metadata UniFFI;
+#   2) gera os .ts web (flavor wasm) + um *wasm-crate* wrapper (manifestPath) que
+#      path-depende da NOSSA fronteira (core/, pura no wasm32) e do runtime web do
+#      ubrn `uniffi-runtime-javascript` (feature wasm32 → resolve o `+Send`);
+#   3) cargo build --target wasm32-unknown-unknown do wasm-crate;
+#   4) wasm-bindgen (--target web) → app/web/generated/wasm-bindgen/.
+#
+# Tudo o que entra aqui é GERADO e IGNORADO pelo git (rust_modules/ e
+# app/web/generated/ no .gitignore). O glue hand-written em app/web/ (versionado)
+# importa de app/web/generated/.
+web:
+  # Manifesto do wasm-crate wrapper GERADO (default do ubrn). Dir ignorado.
+  manifestPath: rust_modules/wasm/Cargo.toml
+  # Patch TOML mesclado no Cargo.toml gerado do wasm-crate (serde_toml_merge).
+  # Conserta dois defeitos do template do ubrn 0.31.0-3:
+  #   (a) `[profile.release] opt-level = "3"` (STRING) — inválido no cargo 1.96
+  #       (exige número 0..3 ou "s"/"z") → sobrescrito por "s";
+  #   (b) `wasm-bindgen = "*"` — PIN exato p/ casar com o `wasm-bindgen` CLI que o
+  #       script instala fixado (a versão do .wasm e a do CLI precisam coincidir).
+  manifestPatchFile: wasm-crate.patch.toml
+  # Alvo wasm-bindgen. `web` (ESM) é o que o Metro/Expo consome; a prova headless
+  # em node instancia o módulo manualmente passando os bytes do .wasm (ver ADR-0007).
+  target: web
+  # Destino dos .ts web + da saída wasm-bindgen (sob app/web/generated/wasm-bindgen/).
+  ts: app/web/generated
+  # Barrel gerado (uniffiInitAsync + reexports). Sob o dir gerado => ignorado.
+  entrypoint: app/web/generated/index.web.ts

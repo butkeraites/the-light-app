@@ -24,6 +24,14 @@ Cargo.lock.orig
 /bindings/*
 !/bindings/.gitkeep
 
+# ── Caminho WEB / WASM (F0.6b) — artefatos GERADOS ───────────────────────────
+# wasm-crate wrapper gerado pelo `ubrn build web` (rust_modules/wasm/).
+/rust_modules/
+# .ts web + saída wasm-bindgen (index.js / index_bg.wasm / *.d.ts) e o barrel
+# index.web.ts — todos GERADOS. O glue hand-written de app/web/ (versionado) fica
+# diretamente em app/web/, NÃO sob generated/.
+/app/web/generated/
+
 # ── Segredos (BYOK) — chaves de IA jamais no git nem em logs ──────────────────
 secrets.toml
 .env

@@ -1,13 +1,50 @@
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 
-// F0.5 — tela mínima, puramente local (estado React).
-// Sem ligação ao core/bindings: digitar aqui NÃO interpreta nada ainda.
-// A ligação real chega em F0.6 (web/WASM), F0.7 (iOS) e F0.8 (Android).
+import { parseReference, type Reference } from '../web/reference';
+
+// F0.6b — tela ligada à fronteira Rust no WEB (wasm). Ao submeter, a referência
+// digitada é resolvida PELO RUST (the-light-core via UniFFI→wasm), não por eco
+// nem parsing em TS. O glue (../web/reference) inicializa o wasm e delega a
+// `parseReference`. Em nativo o glue é um stub (F0.7/F0.8 ligam iOS/Android).
 const PLACEHOLDER = 'O resultado aparecerá aqui.';
+
+// Apresentação (NÃO parsing): formata o intervalo de versículos resolvido pelo Rust.
+function formatVerses(verses: Reference['verses']): string {
+  switch (verses.tag) {
+    case 'Single':
+      return `v. ${verses.inner.verse}`;
+    case 'Range':
+      return `vv. ${verses.inner.start}-${verses.inner.end}`;
+    case 'WholeChapter':
+      return 'capítulo inteiro';
+    default:
+      return '';
+  }
+}
+
+function formatReference(ref: Reference): string {
+  return `livro ${ref.book} · cap. ${ref.chapter} · ${formatVerses(ref.verses)}`;
+}
 
 export default function HomeScreen() {
   const [query, setQuery] = useState('');
+  const [result, setResult] = useState(PLACEHOLDER);
+
+  async function handleSubmit() {
+    const input = query.trim();
+    if (input.length === 0) {
+      setResult(PLACEHOLDER);
+      return;
+    }
+    try {
+      const ref = await parseReference(input);
+      setResult(formatReference(ref));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setResult(`Não foi possível resolver: ${message}`);
+    }
+  }
 
   return (
     <View style={styles.container}>
@@ -17,13 +54,19 @@ export default function HomeScreen() {
         style={styles.input}
         value={query}
         onChangeText={setQuery}
+        onSubmitEditing={handleSubmit}
+        returnKeyType="search"
         placeholder="Digite uma passagem (ex.: João 3:16)"
         autoCapitalize="none"
         autoCorrect={false}
       />
 
+      {Platform.OS === 'web' ? (
+        <Text style={styles.hint}>Pressione Enter para interpretar (via Rust/wasm).</Text>
+      ) : null}
+
       <Text testID="result" style={styles.result}>
-        {query.trim().length > 0 ? query : PLACEHOLDER}
+        {result}
       </Text>
     </View>
   );
@@ -49,6 +92,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 16,
     color: '#111111',
+  },
+  hint: {
+    fontSize: 12,
+    color: '#888888',
   },
   result: {
     fontSize: 16,

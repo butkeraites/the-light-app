@@ -1,0 +1,34 @@
+# wasm-crate.patch.toml — F0.6b / ADR-0007
+#
+# Patch TOML mesclado (serde_toml_merge) no Cargo.toml GERADO do wasm-crate
+# wrapper do `ubrn build web` (ver bloco `web:` em ubrn.config.yaml). Conserta
+# dois defeitos do template do ubrn 0.31.0-3
+# (node_modules/uniffi-bindgen-react-native/crates/ubrn_cli/templates/wasm/Cargo.toml.txt):
+#
+# (a) O template emite `[profile.release] opt-level = "3"` — a STRING "3", que o
+#     cargo 1.96 rejeita ("must be `0`,`1`,`2`,`3`,`s` or `z`, but found the
+#     string"). Sobrescrevemos por "s" (otimiza tamanho — adequado a wasm).
+#
+# NOTA sobre a versão do `wasm-bindgen`: NÃO a pinamos aqui de propósito. O grafo
+# de RESOLUÇÃO do cargo (lockfile é agnóstico de alvo) inclui, via a dependência
+# `cfg(not(wasm32))` da fronteira em `the-light-core[embedded]`, a cadeia
+# rusqlite → sqlite-wasm-rs → js-sys, e `js-sys` fixa `wasm-bindgen` em lock-step
+# (=0.2.10x). Esses crates NÃO são COMPILADOS no alvo wasm32 (a feature `embedded`
+# é cfg(not(wasm32))), mas ENTRAM na seleção de versão. Pinar `wasm-bindgen` aqui
+# colidiria com o pin do js-sys. Por isso o template (`wasm-bindgen = "*"`) é
+# mantido e o scripts/gen-bindings-web.sh LÊ a versão resolvida do Cargo.lock
+# gerado e instala o binário `wasm-bindgen` (CLI) NESSA mesma versão — a única
+# forma honesta e robusta de manter crate e CLI em lock-step.
+# (c) O template gera o wasm-crate como `edition = "2018"` com um `[workspace]`
+#     nu → resolver de FEATURES default = v1. O resolver v1 IGNORA o gate de alvo
+#     (`cfg(not(wasm32))`) da matriz de features da fronteira (F0.6a) e ATIVA a
+#     feature `embedded` mesmo no wasm32 → puxa rusqlite → sqlite-wasm-rs (C/musl),
+#     que o clang não compila p/ wasm32 ("No available targets are compatible with
+#     triple wasm32-unknown-unknown"). Opt-in explícito em `resolver = "2"` faz o
+#     cargo respeitar o gate de alvo e PODAR o caminho `embedded`/sqlite no wasm32.
+#     (Isto NÃO toca a fronteira: corrige só a config de build do wrapper gerado.)
+[profile.release]
+opt-level = "s"
+
+[workspace]
+resolver = "2"

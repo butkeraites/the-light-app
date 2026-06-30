@@ -444,3 +444,103 @@ o mesmo `uniffi_core`, no grafo do wasm-crate gerado pelo `ubrn build web`:
 - Rede usada apenas em **dev/build** (download de `uniffi 0.31.0`); nada de rede no
   runtime, nenhum segredo. Os `.ts` gerados seguem **ignorados** (não versionados).
 - Versiona-se nesta tarefa: `core/Cargo.toml`, `core/Cargo.lock`, `DECISIONS.md`.
+
+---
+
+## ADR-0007 — Caminho WEB/WASM do `ubrn`: `build web`, config `wasm:`, manifest-patch do wasm-crate e prova headless
+
+- **Data:** 2026-06-30 · **Status:** aceito · **Tarefa:** F0.6b · **Depende:** ADR-0005, ADR-0006
+
+### Contexto
+A F0.6b fecha o caminho **WEB end-to-end** da ponte Rust→Expo. Com o pin de
+`uniffi` alinhado a `=0.31.0` (ADR-0006), o `ubrn build web` (alias `wasm`,
+v `0.31.0-3`) passa a poder compilar o wasm. O subcomando faz, em sequência:
+(1) `cargo build` do host (`core/`) p/ extrair a metadata UniFFI; (2) gera os `.ts`
+web (flavor wasm) + um **wasm-crate wrapper** (`rust_modules/wasm/`) que path-depende
+da NOSSA fronteira (pura no wasm32) e do runtime web `uniffi-runtime-javascript`
+(feature `wasm32` → `wasm-unstable-single-threaded`, que resolve o `+Send` do
+achado do ADR-0005); (3) `cargo build --target wasm32-unknown-unknown` do wasm-crate;
+(4) `wasm-bindgen` (CLI) → glue JS/`.wasm`. Três defeitos do template do wasm-crate
+e dois fatos do ecossistema precisaram de decisão.
+
+### Decisão
+1. **Subcomando e config.** Usa-se `ubrn build web --config ubrn.config.yaml`
+   (não `jsi`/nativo, não `cargo build` cru). O `ubrn.config.yaml` ganha o bloco
+   top-level **`web:`** (alias de `wasm:`, schema `WasmConfig`): `manifestPath`
+   (wasm-crate gerado em `rust_modules/wasm/Cargo.toml`), `manifestPatchFile`,
+   `target: web`, `ts: app/web/generated` (destino dos `.ts` + `wasm-bindgen/`) e
+   `entrypoint: app/web/generated/index.web.ts` (barrel gerado). Também foi
+   necessário adicionar `repository.url` ao `package.json` raiz (o caminho web do
+   `ubrn` exige esse campo p/ parsear o `package.json`).
+
+2. **Manifest-patch do wasm-crate** (`wasm-crate.patch.toml`, mesclado via
+   `serde_toml_merge` na geração) — corrige defeitos do template do `ubrn`, **sem
+   tocar a fronteira**:
+   - **(a) `opt-level` inválido:** o template emite `[profile.release] opt-level = "3"`
+     (a STRING "3"), rejeitada pelo cargo 1.96 (`must be 0,1,2,3,s or z, but found
+     the string`). Sobrescrito p/ `"s"`.
+   - **(b) resolver de features v1:** o template gera o wasm-crate como
+     `edition = "2018"` com `[workspace]` nu → resolver de features **v1**, que
+     IGNORA o gate de alvo `cfg(not(wasm32))` da matriz de features da fronteira
+     (ADR-0005) e ATIVA a feature `embedded` mesmo no wasm32 → puxa
+     `rusqlite → sqlite-wasm-rs` (C/musl), que o clang não compila p/ wasm32
+     (`No available targets are compatible with triple wasm32-unknown-unknown`).
+     Opt-in explícito **`[workspace] resolver = "2"`** faz o cargo respeitar o gate
+     e PODAR `embedded`/sqlite no wasm32. (É a feature-matriz do ADR-0005
+     funcionando — bastou o wrapper gerado optar pelo resolver v2.)
+   - **(c) `wasm-bindgen` NÃO é pinado no patch — de propósito.** O grafo de
+     RESOLUÇÃO do cargo (lockfile é agnóstico de alvo) inclui, via a dep
+     `cfg(not(wasm32))` em `the-light-core[embedded]`, a cadeia
+     `rusqlite → sqlite-wasm-rs → js-sys`, e `js-sys` fixa `wasm-bindgen` em
+     **lock-step** (hoje `=0.2.126`). Esses crates NÃO são COMPILADOS no wasm32
+     (resolver v2), mas ENTRAM na seleção de versão. Pinar `wasm-bindgen` colidiria
+     com o pin do `js-sys`. Mantém-se o `wasm-bindgen = "*"` do template.
+
+3. **CLI `wasm-bindgen` em lock-step com o crate.** A versão do binário
+   `wasm-bindgen` precisa BATER exatamente com a do crate (senão aborta por
+   mismatch de schema). Como (c) deixa a versão emergir da resolução, o
+   `scripts/gen-bindings-web.sh` **lê a versão de `wasm-bindgen` do `Cargo.lock`
+   gerado** e instala `wasm-bindgen-cli` NESSA mesma versão (`cargo install
+   --version <lock>`), de forma honesta e robusta a drift do registro. Por isso o
+   script roda `ubrn build web --no-wasm-pack` (só gera) e executa os passos
+   wasm32 + `wasm-bindgen` ele mesmo (controle total da ordem/versão).
+
+4. **Alvo `wasm-bindgen = web` + prova headless por instanciação manual.** O alvo
+   é **`web`** (ESM) — o que o Metro/Expo consome. O `web` não auto-carrega o
+   `.wasm` (espera `fetch`), mas seu `init` aceita `{ module_or_path: <bytes> }`;
+   logo a **prova headless** (`app/web/__tests__/parseReference.web.test.mjs`)
+   roda em **node sem browser**: empacota o binding gerado com `esbuild`, lê os
+   bytes de `index_bg.wasm`, instancia via `init({module_or_path: bytes})`, roda
+   `mod.initialize()` (confere contrato/checksums) e chama `parseReference`. Prova
+   que `"Jo 3.16"` (PT) e `"John 3:16"` (EN) resolvem AMBOS p/
+   `book=43, chapter=3, verses=Single{verse:16}` — **pelo Rust**, sem eco/stub/TS.
+
+5. **Metro e `.wasm`.** `app/metro.config.js` registra `.wasm` em
+   `resolver.assetExts` (o barrel faz `import wasmPath from '…/index_bg.wasm'`). O
+   `expo export --platform web` empacota o `.wasm` como **asset local** (servido
+   pela própria origem do app) — offline-first preservado; single-thread, sem
+   necessidade de `SharedArrayBuffer`/COOP-COEP.
+
+### Consequências
+- **Caminho web fecha de ponta a ponta:** `gen-bindings-web.sh` sai 0; prova
+  headless verde (PT==EN); tela web (`app/app/index.tsx`) exibe a referência
+  resolvida pelo Rust via glue `app/web/reference.web.ts`; `expo export --platform
+  web` sai 0 com o `.wasm` em `dist/assets/.../index_bg.<hash>.wasm`.
+- **Sem tocar a fronteira nem o `the-light`:** os ajustes vivem só no
+  `the-light-app` (config do `ubrn`, patch do wasm-crate GERADO, glue, app). A
+  matriz de features do core (ADR-0005) permaneceu correta — o resolver v2 do
+  wrapper a faz valer no wasm32.
+- **Gerados IGNORADOS:** `rust_modules/` e `app/web/generated/` no `.gitignore`.
+  Versiona-se: `ubrn.config.yaml`, `wasm-crate.patch.toml`,
+  `scripts/gen-bindings-web.sh`, `app/web/reference.{ts,web.ts}`,
+  `app/web/__tests__/*`, `app/metro.config.js`, `app/app/index.tsx`,
+  `app/package.json`(+lock, deps `@ubjs/core` e `esbuild`), `package.json`
+  (`repository`), `DECISIONS.md`.
+- **Rede só em dev/build** (instalar `wasm-bindgen-cli`/`@ubjs/core`/`esbuild`,
+  resolver deps de cargo/npm). Nenhuma rede no runtime; nenhum segredo.
+- **Risco a observar:** a versão de `wasm-bindgen` segue o `js-sys` que entra pela
+  cadeia `embedded`/sqlite (presente só na RESOLUÇÃO). Se um dia a fronteira parar
+  de declarar a dep `cfg(not(wasm32))` `embedded`, a versão de `wasm-bindgen`
+  passará a ser ditada só pelo runtime web (`^0.2.97`); o script continua correto
+  (lê do lock). A instanciação manual da prova depende do alvo `web` aceitar bytes
+  no `init` — contrato estável do `wasm-bindgen`.
