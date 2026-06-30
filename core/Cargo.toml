@@ -15,8 +15,10 @@ crate-type = ["lib", "cdylib", "staticlib"]
 
 [dependencies]
 # Caminho UniFFI escolhido: modo *library* (proc-macros + setup_scaffolding!),
-# sem UDL e sem build.rs. Versão FIXADA (sem "*") — ver ADR-0003.
-uniffi = "0.31.2"
+# sem UDL e sem build.rs. Versão FIXADA com pin EXATO (=) — re-alinhada de
+# "0.31.2" para "=0.31.0" por compatibilidade com o runtime web do ubrn 0.31.0-3
+# (uniffi_core "=0.31.0"). Ver ADR-0003 (nota) e ADR-0006.
+uniffi = "=0.31.0"
 # Display/std::error::Error do enum de erro UniFFI (padrão da fronteira).
 thiserror = "2.0.18"
 # Core canônico do The Light, consumido como git dep PINADA por commit

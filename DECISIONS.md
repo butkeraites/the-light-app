@@ -156,6 +156,13 @@ versão exata do crate `uniffi` ficou para ser fixada na instalação (ADR-0001)
   momento desta tarefa (índice esparso: `0.31.0/0.31.1/0.31.2`). `Cargo.lock`
   (`core/Cargo.lock`) é **versionado** para travar a resolução de forma
   reprodutível.
+  - **Nota (F0.6c, 2026-06-30):** esta versão foi **re-alinhada** para o pin
+    EXATO `uniffi = "=0.31.0"` por compatibilidade com o **runtime web do `ubrn`
+    0.31.0-3** (`uniffi-runtime-javascript` fixa `uniffi_core = "=0.31.0"`): no
+    grafo do wasm-crate, `=0.31.2` (fronteira) vs `=0.31.0` (runtime web) sobre o
+    mesmo `uniffi_core` eram irreconciliáveis. Mudou só a **versão** (não a forma
+    da fronteira); F0.2/F0.3 (build+test) e F0.4 (geração JSI) revalidados verdes
+    sob 0.31.0. Ver **ADR-0006**.
 - **Erro da fronteira:** enum `CoreError` derivando `thiserror::Error`
   (`thiserror = "2.0.18"`, para `Display`/`std::error::Error`) + `uniffi::Error`.
   Exercitado por `ping_checked(ok: bool) -> Result<String, CoreError>`, que
@@ -376,3 +383,64 @@ futures não são `Send`). Isso pertence à **F0.6b**, que deve usar o **caminho
 do `ubrn`** (não `cargo build` cru) — possivelmente com uma feature/config do
 `uniffi` p/ wasm. Se o caminho web do `ubrn 0.31.0-3` não tratar isso, é `blocked`
 legítimo da F0.6b (decisão sobre o caminho web do ubrn), **não** do core.
+
+---
+
+## ADR-0006 — Re-alinhamento do `uniffi` da fronteira para o pin EXATO `=0.31.0` (compat. com o runtime web do `ubrn`)
+
+- **Data:** 2026-06-30 · **Status:** aceito · **Tarefa:** F0.6c · **Atualiza:** ADR-0003
+
+### Contexto
+A F0.6b (attempt 1, ver `loop/archive/F0.6b.attempt1.result.md`) reprovou no
+caminho **web/WASM** do `ubrn`. A causa-raiz é um conflito de **pins exatos** sobre
+o mesmo `uniffi_core`, no grafo do wasm-crate gerado pelo `ubrn build web`:
+
+- Nossa fronteira `the-light-app-core` fixava `uniffi = "0.31.2"` (ADR-0003) →
+  arrasta `uniffi_core =0.31.2`.
+- O runtime web do `ubrn 0.31.0-3`
+  (`uniffi-bindgen-react-native/crates/uniffi-runtime-javascript`) fixa
+  `uniffi_core = { version = "=0.31.0" }` (a feature `wasm32` encaminha
+  `uniffi_core/wasm-unstable-single-threaded`, que resolve o `+Send` do achado
+  downstream do ADR-0005 — **não** é o muro).
+- Dois pins exatos divergentes (`=0.31.2` vs `=0.31.0`) sobre o **mesmo**
+  `uniffi_core` são irreconciliáveis → o `cargo` não resolve o grafo wasm.
+
+### Decisão
+- **Fixar `uniffi = "=0.31.0"`** (pin EXATO, sem `^`/`~`/`*`) em `core/Cargo.toml`,
+  casando com `uniffi_core =0.31.0` que a toolchain `ubrn 0.31.0-3` já usa nos dois
+  caminhos (bindgen `=0.31.0` no host — ADR-0004 — e runtime `=0.31.0` no web).
+- `core/Cargo.lock` regenerado (`cargo update -p uniffi --precise 0.31.0`):
+  `uniffi`/`uniffi_core`/`uniffi_macros`/`uniffi_bindgen`/`uniffi_meta`/
+  `uniffi_pipeline`/`uniffi_udl`/`uniffi_internal_macros` resolvem em **0.31.0**.
+- **Só a versão muda.** A *forma* da fronteira (modo *library* /
+  `setup_scaffolding!` / `#[uniffi::export]` / `CoreError` / `parse_reference` /
+  `crate-type`) permanece intacta — é mudança no nosso `core/`, **não** no
+  `the-light` (ADR-0002 preservado).
+
+### Justificativa
+- **Patch dentro de `0.31.x`:** `0.31.0`/`0.31.1`/`0.31.2` compartilham o mesmo
+  *contract version* do UniFFI; descer um patch não muda a forma da fronteira nem a
+  metadata lida pelo bindgen (o ADR-0004 já provou a leitura sem erro de contrato).
+- **Alinha os dois caminhos do `ubrn`:** com `=0.31.0`, host (JSI) e web (WASM)
+  consomem o mesmo `uniffi_core`, eliminando o conflito de resolução da F0.6b.
+- **Baixo risco, reversível:** subir/baixar é trocar a linha + `Cargo.lock` num
+  commit/ADR — auditável.
+
+### Revalidação (toda verde sob 0.31.0)
+- **Fronteira (F0.2/F0.3), de `core/`:** `cargo fmt --check`,
+  `cargo clippy -- -D warnings`, `cargo build`, `cargo test` — limpos; **5 testes**
+  passam, incluindo `pt_and_en_resolve_to_same_reference` ("Jo 3.16" == "John 3:16"
+  → livro 43, cap. 3, versículo 16) e o mapeamento de erro para `CoreError`. Nenhum
+  warning/erro novo de clippy ou compilação introduzido por 0.31.0 (zero ajustes na
+  forma da fronteira).
+- **JSI/nativo (F0.4):** `./scripts/gen-bindings.sh` sai **0** e repopula
+  `bindings/` com `the_light_app_core.ts` + `the_light_app_core-ffi.ts`,
+  referenciando `parseReference`/`ping`/`pingChecked`. Sem regressão da F0.4.
+
+### Consequências
+- Destrava a **F0.6b (retry)**: o caminho web do `ubrn` deixa de ter pins de
+  `uniffi_core` irreconciliáveis. (A validação real do build wasm/glue web continua
+  sendo escopo da F0.6b.)
+- Rede usada apenas em **dev/build** (download de `uniffi 0.31.0`); nada de rede no
+  runtime, nenhum segredo. Os `.ts` gerados seguem **ignorados** (não versionados).
+- Versiona-se nesta tarefa: `core/Cargo.toml`, `core/Cargo.lock`, `DECISIONS.md`.
