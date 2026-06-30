@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-06-30 02:10 UTC · Estado do loop: **▶️ RODANDO — F0.6b semeada na queue (ready)**
-Heartbeat: ver `HEARTBEAT` · HALT: **ausente** (resolvido — core mesclado na `main` do `the-light` + re-pin `8f66004`) · **F0.6a OK** (matriz por alvo: web puro / nativo embedded; 5 testes) · Elegível agora: **F0.6b** (`loop/queue/F0.6b-bindings-web-wasm.task.md` — caminho web do ubrn `ubrn web build`; achado uniffi-wasm `+Send`)
+Última atualização: 2026-06-30 03:10 UTC · Estado do loop: **▶️ RODANDO — F0.6b falhou (conflito uniffi); correção F0.6c semeada**
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · F0.6b attempt 1 → **failed** (conflito de versão `uniffi_core` 0.31.2 vs runtime web do ubrn `=0.31.0`; correção em escopo) · Elegível agora: **F0.6c** (alinhar `uniffi` da fronteira a `=0.31.0`) → depois **retry F0.6b**
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -19,7 +19,8 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** (resolvido — core mesclado na 
 | F0.5 | App Expo mínimo (expo-router) + tela | ✅ aceito | F0.1 | passed (3262f56) |
 | F0.6 | Ligar core no **web (WASM)** | 🔴 blocked → ♻️ re-escopada | F0.4, F0.5 | blocked (SQLite-no-WASM); ADR-0005 |
 | F0.6a | Consumir core c/ features por alvo (re-pin `8f66004`) | ✅ aceito | F0.4, F0.5, core | matriz por alvo OK; SQLite-no-WASM resolvido |
-| F0.6b | Bindings web (ubrn) + glue + tela + prova headless | 🟡 ready | F0.6a | achado: uniffi_core não compila cru p/ wasm (Send) → usar caminho web do ubrn |
+| F0.6c | Alinhar `uniffi` da fronteira a `=0.31.0` (compat. ubrn web) | 🟡 ready | F0.6a | correção da F0.6b/attempt1 |
+| F0.6b | Bindings web (ubrn) + glue + tela + prova headless | 🔴 failed(1) → retry | F0.6a, F0.6c | attempt1: conflito uniffi_core 0.31.2 vs =0.31.0 (runtime ubrn) |
 | F0.7 | Ligar core no **iOS**: chamar parse_reference | ⬜ | F0.4, F0.5 | — |
 | F0.8 | Ligar core no **Android**: chamar parse_reference | ⬜ | F0.4, F0.5 | — |
 | F0.9 | Store nativo (`rusqlite`): ler 1 passagem do sample.sqlite | ⬜ | F0.6/7/8 | — |
