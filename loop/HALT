@@ -1,0 +1,46 @@
+# ⛔ HALT — aguardando PUSH+MERGE humano do PR ao the-light (F2.7 / ai-pure) + re-pin
+
+Escrito pelo Driver em 2026-07-01. Motivo: **ação outward / mudança no the-light** — o
+branch está pronto e verde, mas **push + merge na `main` do `the-light` é ação do humano**
+(git push é negado ao loop; molde F2.3/F0.6a). Depois do merge, o Driver re-pina o core
+(ligando `ai-pure` na linha WEB) e o loop segue para a F2.7b (UI web de IA).
+
+## O que está pronto (verificado pelo reviewer — `loop/done/F2.7.result.md`)
+Branch **`feat/ai-pure-wasm`** no repo `/Users/butkeraites/Documents/the-light`, commit
+**`7486102`**, tocando só `crates/the-light-core/Cargo.toml`, `src/lib.rs` (1 linha) e `src/ai/`:
+- **Feature `ai-pure`** (opt-in, fora do default): as partes PURAS do `ai` (prompt/RAG +
+  `ask`/`ask_context`/`numbered_passage` + `citation::rewrite_anchors` anti-alucinação +
+  `default_model`/`estimate_cost_usd` + `*_body`/`*_extract`) compilam em **wasm32**. O peso
+  (`research`/`keys`/reqwest/rusqlite/deep-study) segue `#[cfg(embedded)]`.
+- **`embedded ⊃ ai-pure`** → sob o `default = ["embedded"]` **tudo** do `ai` compila
+  **byte-a-byte** (CLI/TUI/xtask inalterados). API pública nativa preservada.
+- **Fix:** `default_model` gemini `2.0-flash` → **`gemini-2.5-flash`** (2.0-flash retirado
+  3/mar/2026; achado da F2.6).
+- **PORTÃO D2:** `cargo build -p the-light-core --no-default-features --features ai-pure
+  --target wasm32-unknown-unknown` compila; `cargo tree` wasm **sem** reqwest/rusqlite.
+- **Verde e não-quebrante:** `cargo fmt --check` 0, `clippy -D warnings` 0, `cargo test
+  --workspace` 0 falhas (core **184**; teste gemini agora exige 2.5-flash). `main` intacto
+  em `133077a`; **sem push**. Detalhes em **ADR-0024** (`DECISIONS.md`).
+
+## O que você precisa fazer (push + merge)
+No repo `/Users/butkeraites/Documents/the-light` (rode com `! <cmd>` ou no seu terminal):
+```
+cd /Users/butkeraites/Documents/the-light
+git switch main && git merge --no-ff feat/ai-pure-wasm
+git push origin main
+git rev-parse main        # <-- me passe este rev (o merge)
+```
+(ou push do branch + PR no GitHub — como preferir.)
+
+## Como retomar
+Você mergeia e me passa o **rev mergeado da `main`** → o Driver:
+1. **re-pina** `core/Cargo.toml` nesse rev e **liga `features=["ai-pure"]` na linha WEB**
+   (default-features=false) — o wasm ganha prompt/citação puros em Rust,
+2. revalida a fronteira (build nativo + grafo wasm ainda puro),
+3. remove este `loop/HALT` e segue para **F2.7b** (UI web de IA: glue web usa o `ai-pure`
+   wasm p/ prompt/citação + `fetch` ao provedor com a chave; política de chave web; prova
+   headless node com mock de fetch) → depois **F2.8 (Marco 2)**.
+
+Regras intactas: chave nunca em git/log; anti-alucinação (mesma impl Rust no nativo e web —
+zero drift); offline-first (IA opt-in); the-light só por este PR sancionado (ADR-0023/0024).
+Nada foi improvisado; nenhum push feito.

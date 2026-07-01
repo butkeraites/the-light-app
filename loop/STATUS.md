@@ -4,7 +4,7 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-07-01 18:15 UTC · Estado do loop: **▶️ ATIVO (RETOMADO) — F2.6 VALIDADA por sign-off humano: `ask` REAL via Gemini (`gemini-2.5-flash`), `cited_text` = João 3:16 KJV do STORE (anti-alucinação provada na prática), chave nunca no loop. `loop/HALT` removido. Cadeia BYOK provada ponta a ponta. Queue vazia → próximo: F2.7 (paridade web de IA), que começa pelo **PR D2/wasm ao core** (batch: desacoplar study/citation p/ wasm + fix `default_model` gemini-2.0-flash→2.5-flash) — PR ao the-light = handoff BLOQUEANTE.** Corpus completo (~59 MB) permanece backlog transversal.
+Última atualização: 2026-07-01 20:20 UTC · Estado do loop: **⛔ HALT — F2.7 branch pronto e VERDE, aguardando PUSH+MERGE humano. Branch `feat/ai-pure-wasm` (`7486102`) no `the-light`: feature `ai-pure` (partes puras do `ai` compilam em wasm — PORTÃO D2 OK, `cargo tree` wasm sem reqwest/rusqlite) + fix `default_model` gemini→`2.5-flash`; default byte-a-byte intacto; workspace verde (core 184); `main` em `133077a`, sem push. ADR-0024 registrado. `loop/HALT` escrito. Retomar = humano push+merge de `feat/ai-pure-wasm` na `main` do the-light + informa o rev → Driver re-pina (liga `ai-pure` na linha WEB) → F2.7b (UI web de IA via fetch).** Corpus completo (~59 MB) permanece backlog transversal.
 Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **Re-escopagem F2.3–F2.8 (+F2.3a):** os 3 core-changes (D1 Gemini + D2 IA-pura-wasm + D4 streaming-no-trait) foram **consolidados num ÚNICO PR ao `the-light`** = **F2.3** (branch autorizado → **push+merge humano** → **re-pin** do rev, molde F0.6a) = 1º handoff BLOQUEANTE. **Investigação na fonte (8f66004) confirma:** `LlmProvider` (`ai/mod.rs:327`) é síncrono/não-streaming (`complete → String`; sem `stream`/callback/`async`; providers com `"stream": false`) → **D4 EXIGE mudar o trait** (entra no PR). `study.rs:11`/`citation.rs:18` acoplam `research::WebSource`→`reqwest` (`research.rs:48`) → **D2 = desacoplar** p/ wasm. Gemini encaixa no molde `AnthropicProvider` (`providers.rs`). **F2.4 é não-bloqueante** (app-side, testável sem chave real) → semeada agora. IA real com a chave = **F2.6** (gate). `the-light` intocado (`8f66004`) até o re-pin de F2.3. Diretriz do Driver: seguir até um **ponto bloqueante** (= F2.3/PR). Próximo ADR livre = **ADR-0024**.
 
 ## Fase 0 — Prova da ponte Rust → Expo
@@ -63,9 +63,12 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **Re-escopagem F2.3–F2.8 (+
 > (herdado da Fase 1): fronteira nativa + teste de host com **MOCK** → gate F2.2
 > [feito] → **PR consolidado ao core** (F2.3: Gemini+wasm+streaming, BLOQUEANTE) →
 > fronteira que consome o re-pin (F2.3a) → chave BYOK nativa (F2.4, paralela e
-> não-bloqueante) → UI nativa MOCK (F2.5) → validação real (F2.6, gate) → paridade
-> web (F2.7) → Marco 2 (F2.8). **F2.4 está SEMEADA** (ready); F2.3a/F2.5–F2.8 entram
-> conforme as deps forem aceitas. **Investigação do core (8f66004):** `ai` é
+> não-bloqueante) → UI nativa MOCK (F2.5) → validação real (F2.6, gate) → **PR
+> IA-pura-wasm ao core (F2.7, BLOQUEANTE)** → paridade web de IA (F2.7b) → Marco 2
+> (F2.8). **F2.7 está SEMEADA** (ready). O **D2/wasm foi fatiado da F2.3 para a F2.7**
+> (PR próprio, menor review): a F2.3 mergeou só D1(Gemini)+D4(streaming); a F2.7
+> desacopla as partes puras do `ai` do reqwest/rusqlite (feature `ai-pure`) e bate junto
+> o fix do `default_model` gemini `2.0`→`2.5-flash`. **Investigação do core (`133077a`):** `ai` é
 > `embedded`-only (só nativo); **Gemini não existe** e o `LlmProvider` é
 > **síncrono/não-streaming** → Gemini+streaming+wasm = **um PR ao the-light** (F2.3).
 
@@ -78,8 +81,9 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **Re-escopagem F2.3–F2.8 (+
 | F2.4 | **Gestão segura de chaves (BYOK) nativa — `expo-secure-store`** | ✅ aceito | F2.2 | passed (34c831f) — keystore por provedor (Keychain), chave nunca logada/versionada; stub web; app-side |
 | F2.5 | UI nativa: `ask` ancorado (provedor/modelo + custo + streaming + citado/interpretação) | ✅ aceito | F2.1, F2.3a, F2.4 | passed (31d191f) — TLA_ASK mock streamed; anti-alucinação visível; chave nunca logada |
 | F2.6 | **Validação real** (⛔): `ask` real com a chave do usuário (Claude/GPT/Gemini) | ✅ **VALIDADA** | F2.5 | sign-off humano — Gemini `gemini-2.5-flash` real; `cited_text` João 3:16 do store; anti-alucinação provada; HALT removido |
-| F2.7 | Paridade web de IA via core wasm-safe (D2) + `fetch` | ⬜ backlog | F2.3, F2.5 | prova headless MOCK; política de chave web fixada aqui |
-| F2.8 | **Marco 2** (⛔ gate): IA BYOK ancorada com Claude/GPT/Gemini | ⬜ backlog | F2.5, F2.6, F2.7 | HALT p/ sign-off humano |
+| F2.7 | **PR ao `the-light-core`**: IA-pura-wasm (D2, feature `ai-pure`) + fix `default_model` gemini `2.0`→`2.5-flash` | 🟢 branch verde — **aguardando merge humano** | F2.6 | branch `feat/ai-pure-wasm` (`7486102`) passed pelo reviewer; portão D2 wasm OK; workspace verde; ADR-0024; **HALT p/ push/merge + re-pin** |
+| F2.7b | Paridade web de IA: `ai-pure` wasm (prompt/RAG/citação) + `fetch` ao provedor + keystore/política de chave web; prova headless MOCK | ⬜ backlog | F2.7, F2.5 | destuba `reading.web.ts`; anti-alucinação = mesma impl Rust; stub→real |
+| F2.8 | **Marco 2** (⛔ gate): IA BYOK ancorada com Claude/GPT/Gemini | ⬜ backlog | F2.5, F2.6, F2.7, F2.7b | HALT p/ sign-off humano |
 
 ## Fases seguintes
 

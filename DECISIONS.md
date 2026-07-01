@@ -1917,3 +1917,56 @@ BYOK **API key** é o único caminho oficial/seguro p/ Claude+GPT+Gemini.
 - **Anti-alucinação preservada em todas as opções:** texto do versículo sempre do
   store local; o LLM só interpreta; `cited_text` (store) separado de `interpretation`.
 - **`loop/HALT` removido** (motivo do gate resolvido); loop retomado.
+
+## ADR-0024 — D2 do ADR-0023 concretizada: feature `ai-pure` (partes puras do `ai` compiláveis em wasm) + fix `default_model` gemini (2.0-flash retirado → 2.5-flash)
+
+- **Data:** 2026-07-01 · **Status:** aceito (PR sancionado ao the-light; branch `feat/ai-pure-wasm` `7486102`, mergeado por sign-off humano — ver re-pin abaixo) · **Tarefa:** F2.7 · **Depende:** ADR-0023 (D2 = IA no web via PR ao core) · ADR-0005 (precedente PR + matriz de features por alvo) · **Habilita:** F2.7b (UI web de IA)
+
+### Contexto
+A D2 do ADR-0023 pede a IA no web com **fonte única em Rust** (o anti-alucinação numa só
+impl; só o transporte HTTP é `fetch`/TS). Mas o módulo `ai` do `the-light-core` era
+inteiramente `#[cfg(feature="embedded")]` (puxa `reqwest`/`rusqlite`/`chrono`/`directories`/
+`toml`) → não compilava em `wasm32`. Investigação na fonte (`133077a`) mostrou que as
+funções da **Fase 2** (`ask`/`ask_context`/`numbered_passage`, `citation::rewrite_anchors`,
+`default_model`/`estimate_cost_usd`, os `*_body`/`*_extract` de provider) são **PURAS**
+(dependem só de `crate::model` + `serde_json`); o peso vem de `research`(reqwest+chrono),
+`keys`(directories+toml), do **transporte** reqwest de `providers`, do rusqlite de `lexicon`
+e do deep-study (Fase 3) de `study`.
+
+### Decisão
+Feature fina **`ai-pure`** (opt-in, **fora do `default`**), implementada no PR ao core:
+- `Cargo.toml`: `ai-pure = ["dep:serde_json"]`; **`embedded` passa a incluir `ai-pure`** → sob
+  o `default = ["embedded"]` **tudo** do `ai` segue compilando **byte-a-byte** (CLI/TUI/xtask
+  inalterados).
+- `lib.rs` (1 linha): `pub mod ai` sob `#[cfg(any(feature="embedded", feature="ai-pure"))]`.
+- Dentro de `ai/`, gatear por `#[cfg(feature="embedded")]` só o pesado: módulos `research`/
+  `keys` inteiros; transporte reqwest + `build_provider` em `providers`; queries rusqlite em
+  `lexicon`; itens `WebSource`/deep-study em `study`/`citation`; `AiError::Toml`/`TomlSer`.
+  Ficam em `ai-pure`: trait `LlmProvider`+`MockLlmProvider`, `ask`/`ask_context`/
+  `numbered_passage`, `citation::rewrite_anchors`+`Citation`, `default_model`/
+  `estimate_cost_usd`, os builders de prompt e `*_body`/`*_extract` puros.
+- Um `#![cfg_attr(not(feature="embedded"), allow(dead_code))]` em `providers.rs`: as helpers
+  puras (`*_body`/`*_extract`) ainda não têm chamador no caminho `ai-pure` (o transporte web
+  via `fetch` é a **F2.7b**); sob `embedded` são exercitadas por impls+testes, então
+  `-D warnings` segue plenamente válido no nativo.
+- **Fix batendo junto:** `default_model` gemini `2.0-flash` → **`gemini-2.5-flash`**
+  (`gemini-2.0-flash` foi **retirado em 3/mar/2026** → free-tier 0; achado da F2.6). Sem
+  inventar preço p/ 2.5-flash em `estimate_cost_usd` (cai em `None`; arm histórico do
+  2.0-flash mantido).
+
+### Prova (portão D2)
+`cargo build -p the-light-core --no-default-features --features ai-pure --target
+wasm32-unknown-unknown` **compila**; `cargo tree` do grafo `ai-pure`/wasm **sem** `reqwest`/
+`rusqlite`/`chrono`/`directories`/`toml` (só `regex`/`serde`/`serde_json`/`thiserror`).
+Não-quebrante: `default` intacto; workspace do the-light **verde** (fmt 0, clippy `-D warnings`
+0, `cargo test --workspace` 0 falhas; core 184); API pública nativa preservada. Escopo do PR
+= só `ai/` + 1 linha `lib.rs` + `[features]`.
+
+### Consequências
+- **the-light re-pinado** de `133077a` → `<rev do merge de feat/ai-pure-wasm>` (ver JOURNAL).
+- **F2.7b** (UI web de IA): a linha WEB de `core/Cargo.toml` passa a ligar `features =
+  ["ai-pure"]` (sem `embedded`) → o wasm ganha prompt/RAG/citação puros em Rust; o glue web
+  chama o provedor via `fetch` (a chave web = política registrada aqui/F2.7b) e monta a
+  resposta com `cited_text` do store + interpretação do LLM. Anti-alucinação: mesma impl Rust
+  (`rewrite_anchors`) no nativo e no web — **zero drift**.
+- Anti-alucinação, offline-first (IA opt-in) e BYOK (chave nunca em git/log) preservados.

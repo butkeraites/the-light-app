@@ -132,8 +132,9 @@ Anti-alucinação em todas: o texto do versículo vem do store local; o LLM só 
 | **F2.4** | **BYOK chave nativa (`expo-secure-store`)** — `app/lib/keystore.ts` + stub web; prova headless com fake + auditoria de log | F2.2 | **não** (app-side, testável SEM chave real) | **não** ← **PRÓXIMA A SEMEAR** |
 | F2.5 | UI nativa: `ask` ancorado (seletor provedor/modelo incl. Gemini + custo + streaming + citado/interpretação); MOCK, `TLA_ASK` | F2.1, F2.3a, F2.4 | não | não |
 | F2.6 | **Validação real** com a chave do usuário (Claude/GPT/Gemini) | F2.5 | **SIM** (chave/segredo/rede) → gate | não |
-| F2.7 | Paridade web de IA via core **wasm-safe (D2)** + `fetch` | F2.3, F2.5 | não | não |
-| F2.8 | **Marco 2** (gate) | F2.5, F2.6, F2.7 | **SIM** gate | não |
+| **F2.7** | **PR ao `the-light-core`: IA pura em wasm (D2, feature `ai-pure`) + fix `default_model` gemini `2.0`→`2.5-flash`** | F2.6 | **SIM** (branch + push/merge humano + re-pin) | **SIM** |
+| F2.7b | Paridade web de IA: `ai-pure` wasm (prompt/RAG/citação) + `fetch` ao provedor + política de chave web | F2.7, F2.5 | não | não |
+| F2.8 | **Marco 2** (gate) | F2.5, F2.6, F2.7, F2.7b | **SIM** gate | não |
 
 > **Mudanças de numeração vs. o backlog pré-ADR-0023 (explicadas):**
 > a numeração F2.4–F2.8 é **estável**. **F2.3** deixa de ser "Provedor Gemini
@@ -267,20 +268,51 @@ provedor). **Ponto BLOQUEANTE:** exige a **chave real** (segredo) + rede →
 chave/validar). O MOCK (F2.1/F2.3a/F2.5) já provou o determinístico.
 **Depende:** F2.5. **gate: true**.
 
-## F2.7 — Paridade web de IA via core wasm-safe (D2) + `fetch`
-**Objetivo:** com as partes puras da IA compilando em wasm (D2/F2.3), destubar o
-caminho web de IA em `app/web/reading.web.ts`: `ask` ancorado no browser montando o
-prompt/RAG/citação **pelo Rust wasm** (uma fonte da verdade, sem drift), transporte
-por **`fetch`** (delegado ao JS; CORS/TLS do browser), com o texto do versículo
-vindo do **store web** (`wa-sqlite`/OPFS, F1.13–F1.16). Fixar aqui a **política de
-chave no web** (session-only em memória + aviso, ou sem IA web) — decisão registrada
-em ADR. Streaming web via `fetch` streaming (`ReadableStream`) se viável; senão,
-não-streaming no web (registrado).
+## F2.7 — PR ao `the-light-core`: IA pura em wasm (D2) + fix `default_model` gemini · **SEMEADA (ready)**
+**Objetivo:** num **único PR ao `the-light`** (branch `feat/ai-pure-wasm` no repo
+`/Users/butkeraites/Documents/the-light`, autorizado; **push+merge é do humano**;
+**re-pin** do rev pelo Driver — molde F2.3/F0.6a), entregar as duas mudanças de core:
+1. **D2 (ADR-0023) — IA pura compilável em wasm.** Introduzir uma **feature fina
+   `ai-pure`** que compila só a superfície PURA do `ai` (montagem de prompt/RAG +
+   `ask` ancorado + stripping de citação anti-alucinação) para `wasm32` **sem**
+   `reqwest`/`rusqlite`/`chrono`/`directories`/`toml`, gateando por `embedded` os
+   módulos `research`+`keys` inteiros e as funções pontuais pesadas de
+   `providers`/`lexicon`/`study`/`citation`/`prompts`. `lib.rs` passa `ai` a
+   `#[cfg(any(feature="embedded", feature="ai-pure"))]`. Anti-alucinação numa **única
+   impl Rust** (nativo+wasm), sem drift. **Não-quebrante:** `default=["embedded"]`
+   intacto; `embedded` inclui `ai-pure`.
+2. **FIX batendo junto — `default_model` gemini.** `gemini-2.0-flash` (RETIRADO
+   3/mar/2026) → `gemini-2.5-flash`; ajustar testes que fixavam o antigo; **não
+   inventar preço** para 2.5-flash (fica `None`, honesto).
+**Aceite:** no repo `the-light`, branch sobre `133077a`: `cargo test --workspace`
+(defaults, ~184 testes) verde + **`cargo build -p the-light-core --no-default-features
+--features ai-pure --target wasm32-unknown-unknown` compila** (partes puras do `ai` no
+wasm) + `cargo tree` do build `ai-pure`/wasm **sem** `reqwest`/`rusqlite` +
+`clippy -D warnings`/`fmt --check` limpos + `default_model("gemini")=="gemini-2.5-flash"`.
+Spec do PR em `loop/proposals/the-light-PR-ai-pure-wasm.md` + **ADR novo**. Após
+**push+merge humano**, o **Driver re-pina** as 2 linhas de `core/Cargo.toml` (web
+`default-features=false` + nativa `["embedded"]`) e revalida a fronteira. **Ligar
+`features=["ai-pure"]` na linha web + consumir o prompt/citação puros = F2.7b.**
+**Verificação:** ver `queue/F2.7-pr-core-ai-wasm.task.md` (BLOCO DE VERIFICAÇÃO).
+**Depende:** F2.6. **BLOQUEANTE** (implementa no branch, roda a bateria, `blocked`/HALT
+no ponto de handoff = aguardando merge + re-pin). **Não** stubar/forkar/copiar.
+
+## F2.7b — Paridade web de IA via core `ai-pure` (wasm) + `fetch`  *(backlog; NÃO semear até F2.7 mergeada+re-pinada)*
+**Objetivo:** com as partes puras da IA compilando em wasm (D2/F2.7 mergeada e
+re-pinada, com `features=["ai-pure"]` ligada na linha web do `core/Cargo.toml`),
+destubar o caminho web de IA em `app/web/reading.web.ts`: `ask` ancorado no browser
+montando o prompt/RAG/citação **pelo Rust wasm** (uma fonte da verdade, sem drift),
+transporte por **`fetch`** (delegado ao JS; CORS/TLS do browser), com o texto do
+versículo vindo do **store web** (`wa-sqlite`/OPFS, F1.13–F1.16). Fixar aqui a
+**política de chave no web** (web keystore session-only em memória + aviso, ou sem IA
+web) — decisão registrada em ADR. Streaming web via `fetch` streaming (`ReadableStream`)
+se viável; senão, não-streaming no web (registrado). Bindings web regenerados
+(`gen-bindings-web.sh`) expondo a superfície `ai-pure`; stub→real.
 **Aceite:** `ask` ancorado no browser com o texto do store, separando
-citado/interpretação, prova headless node com **MOCK** (sem rede real); política de
-chave web registrada; `expo export web` 0.
+citado/interpretação, prova **headless node** com **MOCK de `fetch`** (sem rede real);
+política de chave web registrada; `expo export web` 0; anti-alucinação = mesma impl Rust.
 **Verificação:** prova headless node com MOCK + `expo export web` 0.
-**Depende:** F2.3, F2.5.
+**Depende:** F2.7 (mergeada + re-pinada), F2.5. **Não-bloqueante** (app-side).
 
 ## F2.8 — ⛔ Marco 2: IA BYOK ancorada com Claude/GPT/Gemini
 **Objetivo:** confirmar a **camada de IA BYOK ancorada** funcionando: `ask` numa
@@ -291,7 +323,7 @@ F2.3 registrado + re-pin). Atualizar `PROGRESS.md`; consolidar ADRs.
 **Aceite:** checklist do Marco 2 verde (≥ alvos decididos); IA opt-in (desligada, o
 app segue 100% offline); atribuições preservadas; sem vazamento de chave.
 **Verificação:** revisão do Guia; `PROGRESS.md` atualizado.
-**Depende:** F2.5, F2.6, F2.7. **gate: true** — marco; HALT para sign-off.
+**Depende:** F2.5, F2.6, F2.7, F2.7b. **gate: true** — marco; HALT para sign-off.
 
 ---
 
