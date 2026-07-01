@@ -27,7 +27,7 @@ import {
   View,
 } from 'react-native';
 
-import { getKey, listProviders, SUPPORTED_PROVIDERS } from '../lib/keystore';
+import { getKey, listProviders, setKey, SUPPORTED_PROVIDERS } from '../lib/keystore';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import { askAnchoredStream, type AiAnswer } from '../web/reading';
 
@@ -76,6 +76,11 @@ export function ReaderAskPanel({
   const [error, setError] = useState<string | null>(null);
   // NOMES dos provedores que TÊM chave no cofre (nunca os valores) — só p/ o badge.
   const [providersWithKey, setProvidersWithKey] = useState<string[]>([]);
+  // Rascunho da chave BYOK (input controlado) — NUNCA logado/exibido em claro (input
+  // mascarado). No web o cofre é session-only (perdido no reload, ADR-0025); no nativo,
+  // secure-store do device. Estado local, some ao fechar/salvar.
+  const [keyDraft, setKeyDraft] = useState('');
+  const [savingKey, setSavingKey] = useState(false);
 
   // Ao abrir, descobre quais provedores reais já têm chave (indicador visual, sem
   // expor valores). `mock` não precisa de chave. Best-effort: falha silenciosa.
@@ -97,11 +102,13 @@ export function ReaderAskPanel({
     };
   }, [visible]);
 
-  // Ao trocar de passagem (nova referência) ou fechar, limpa a resposta anterior.
+  // Ao trocar de passagem (nova referência) ou fechar, limpa a resposta e o rascunho
+  // de chave (o rascunho nunca persiste no estado além da sessão de uso).
   useEffect(() => {
     setAnswer(null);
     setStreamed('');
     setError(null);
+    setKeyDraft('');
   }, [reference, visible]);
 
   const isMock = provider === MOCK_PROVIDER;
@@ -150,6 +157,28 @@ export function ReaderAskPanel({
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
+    }
+  }
+
+  // Salva a chave BYOK do provedor selecionado no cofre (web = session-only, ADR-0025;
+  // nativo = secure-store). A chave NUNCA é logada/exibida: só `setKey` a recebe; o
+  // rascamento é limpo após salvar. Fluxo mínimo p/ inserir a chave sem sair do painel.
+  async function onSaveKey() {
+    const draft = keyDraft.trim();
+    if (draft.length === 0 || isMock) {
+      return;
+    }
+    setSavingKey(true);
+    setError(null);
+    try {
+      await setKey(provider, draft);
+      setKeyDraft('');
+      const withKey = await listProviders();
+      setProvidersWithKey(withKey);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingKey(false);
     }
   }
 
@@ -205,10 +234,42 @@ export function ReaderAskPanel({
             })}
           </View>
           {!isMock && !providerHasKey ? (
-            <Text style={styles.hint}>
-              Este provedor precisa de uma chave (BYOK). Configure-a nas configurações; a
-              chave fica só no cofre do aparelho e nunca é registrada.
-            </Text>
+            <View style={styles.keyBlock}>
+              <Text style={styles.hint}>
+                Este provedor precisa de uma chave (BYOK). Cole-a abaixo: no navegador ela
+                fica só nesta sessão (some ao recarregar); no app, no cofre do aparelho.
+                Nunca é registrada nem sai do dispositivo, exceto na chamada ao provedor.
+              </Text>
+              <TextInput
+                style={styles.keyInput}
+                value={keyDraft}
+                onChangeText={setKeyDraft}
+                placeholder={`Chave do provedor "${provider}"`}
+                placeholderTextColor={colors.muted}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!savingKey && !busy}
+                testID="ask-key-input"
+                accessibilityLabel={`Chave BYOK do provedor ${provider}`}
+              />
+              <Pressable
+                style={[
+                  styles.btn,
+                  keyDraft.trim().length === 0 || savingKey ? styles.btnDisabled : styles.btnPrimary,
+                ]}
+                onPress={onSaveKey}
+                disabled={keyDraft.trim().length === 0 || savingKey}
+                testID="ask-key-save"
+                accessibilityRole="button"
+              >
+                {savingKey ? (
+                  <ActivityIndicator color={colors.chipActiveText} />
+                ) : (
+                  <Text style={styles.btnText}>Salvar chave</Text>
+                )}
+              </Pressable>
+            </View>
           ) : null}
 
           {/* ── PERGUNTA ──────────────────────────────────────────────────── */}
@@ -336,6 +397,17 @@ function makeStyles(colors: ThemeColors) {
     provChipTextActive: { color: colors.chipActiveText },
     provKeyBadge: { fontSize: 11, color: colors.muted },
     hint: { fontSize: 12, color: colors.muted, marginTop: 6 },
+    keyBlock: { marginTop: 6, gap: 6 },
+    keyInput: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 14,
+      color: colors.verseText,
+      marginTop: 4,
+    },
     questionInput: {
       minHeight: 70,
       borderWidth: 1,

@@ -1970,3 +1970,73 @@ Não-quebrante: `default` intacto; workspace do the-light **verde** (fmt 0, clip
   resposta com `cited_text` do store + interpretação do LLM. Anti-alucinação: mesma impl Rust
   (`rewrite_anchors`) no nativo e no web — **zero drift**.
 - Anti-alucinação, offline-first (IA opt-in) e BYOK (chave nunca em git/log) preservados.
+
+## ADR-0025 — Paridade web de IA (F2.7b): prompt/RAG/citação em Rust `ai-pure` (wasm, ZERO drift) + transporte por `fetch` no TS (body/extract espelham os `*_body`/`*_extract` PRIVADOS do core) + política de chave web **session-only / in-memory**
+
+### Contexto
+A F2.7 deixou `askAnchored`/`askAnchoredStream` no web como **stub** (`AI_WEB_UNAVAILABLE`)
+e a chave web sem política (o `keystore.web` lançava em `setKey`, devolvia `null`/`[]`). A
+ADR-0024 ligou a feature **`ai-pure`** na linha WEB de `core/Cargo.toml` (rev **c8ecb2f**),
+trazendo as partes puras do `ai` ao wasm. Falta **destubar** o caminho web usando essas
+partes (uma fonte da verdade em Rust) e **fixar a política de chave web** — sem tocar o
+`the-light` (só via PR+ADR) nem `core/Cargo.toml` (re-pin já feito).
+
+**ACHADO na fonte do core (c8ecb2f, só-leitura):** sob `ai-pure` são **`pub`** (chamáveis da
+fronteira `the-light-app-core`): `numbered_verses`/`numbered_passage`/`ask_context`/`ask`/
+`default_model`/`estimate_cost_usd`, `LlmProvider`+`MockLlmProvider`, `citation::rewrite_anchors`,
+`prompts::ask_system_prompt` e `reference::*`. **MAS** os helpers de transporte
+`gemini_body`/`gemini_extract` (e `anthropic_*`/`openai_*`/`ollama_*`) são **`fn` privados**
+(não `pub`); `ask_user_prompt` (usado por `ask`) é **privado**; e `build_provider` é
+`#[cfg(feature="embedded")]` → **ausente no wasm**. Logo o **corpo do request do provedor** e a
+**extração da resposta crua** **não podem** ser feitos em Rust a partir da fronteira (seriam
+outro PR ao core para tornar `*_body`/`*_extract` `pub`). Já os prompts exatos de `ask` **podem**
+ser obtidos pela rota **pública** `ask` (dirigindo-a por um provedor de captura).
+
+### Decisão
+**Padrão prepare → fetch → finalize** (transporte = infra no TS, ADR-0023/D2; anti-alucinação =
+Rust `ai-pure`, ZERO drift):
+- **Fronteira web nova** em `core/src/lib.rs` (única mudança em `core/`; **cfg-free**, pois só
+  toca `ai-pure` — nada de store/`rusqlite`/`reqwest`):
+  - `ai_web_prepare(reference, question, provider_name, model, lang, verses: Vec<AiVerseInput>)
+    -> AiWebRequest{reference, cited_text, system, user, provider, model}`: `cited_text =
+    ai::numbered_verses(verses)` (verses **verbatim do store web**, F1.13 — a fronteira NÃO lê DB
+    no wasm); `context = ask_context(format_reference(ref,lang), cited_text, &[])`; `model =
+    model|default_model(provider)`; **system/user EXATOS** capturados por um `CaptureProvider`
+    local (impl `LlmProvider`) **dirigido por `ai::ask`** (porque `ask_user_prompt` é privado).
+  - `ai_web_finalize(reference, cited_text, provider, model, interpretation) -> AiAnswer`: aplica
+    `citation::rewrite_anchors(interpretation, &HashSet::new())` (citação anti-alucinação em Rust,
+    mesma impl do nativo) e monta o `AiAnswer` (cited_text do store **separado** da interpretation).
+- **Transporte TS** (`app/web/ai-anchored.web.ts`, sem OPFS/asset — par de `sqlite-*.web.ts`):
+  o corpo `generateContent` do Gemini e a extração `candidates[].content.parts[].text`
+  **espelham** os `gemini_body`/`gemini_extract` **privados** do core; a chave vai só no header
+  `x-goog-api-key` (NUNCA na URL/log); o modelo vai na URL. O `fetch` é **injetável** (a prova
+  usa MOCK). `reading.web.ts` abre o store web (subset) e delega a `askAnchoredOnHandle`;
+  `askAnchoredStream` web é **não-streaming** (emite a interpretação 1× via `onToken`;
+  SSE/`ReadableStream` = follow-up). Provedores reais além de **Gemini** (MVP, F2.6) são follow-up.
+- **Política de chave WEB = session-only / in-memory** (`app/lib/keystore.web.ts`): um `Map` de
+  MÓDULO (vive só na aba/sessão; **perdido no reload** → re-inserir a cada visita). Interface
+  `Keystore`/`createKeystore` **idêntica** ao nativo (mesma validação/`trim`/`listProviders`); só
+  o backend muda (sessão vs. secure-store). **NUNCA** storage persistente do navegador/git/log.
+  Justificativa (D3/ADR-0023): OAuth foi rejeitado e persistir segredo no navegador é inseguro →
+  session-only é a opção web mais segura. `ReaderAskPanel` (compartilhado) ganha um input mínimo
+  p/ colar a chave 1× por sessão (sem persistir).
+
+### Prova (portões F2.7b)
+`ai_web_prepare`/`ai_web_finalize` nos bindings web (`gen-bindings-web.sh` exit 0); grafo wasm
+**puro** (`cargo tree` wasm sem `rusqlite`/`reqwest`); `cargo fmt`/`clippy -D warnings`/`test`
+(41 + 2 host: `cited_text`/`system` idênticos ao `ask_anchored` nativo = **zero drift**;
+`rewrite_anchors` remove âncora inválida). Prova **headless node** (`askAnchored.web.test.mjs`,
+`fetch` **MOCK**, sem rede/chave real): `cited_text` = **João 3:16 KJV VERBATIM do store**
+(numerado pelo ai-pure), `interpretation` = texto da resposta MOCK; chave dummy só no header;
+paridade com o nativo. `tsc --noEmit` 0 + `expo export --platform web` 0.
+
+### Consequências
+- `the-light` **intacto** (`c8ecb2f`) e `core/Cargo.toml` **não** alterado — a fronteira web é a
+  única mudança em `core/`. Se um dia o transporte multi-provedor precisar do body/extract **em
+  Rust** (evitar drift de transporte), aí sim um PR ao core torna `*_body`/`*_extract` `pub`
+  (fora do escopo desta task).
+- Anti-alucinação **com ZERO drift**: prompt (`ask`) + citação (`rewrite_anchors`) do MESMO Rust
+  `ai-pure` no web e no nativo; `cited_text` SEMPRE do store; o LLM só interpreta.
+- Offline-first/BYOK: sem chave/sessão, o app segue 100% offline; a IA web é **opt-in** e a
+  **única** rede em runtime é o `fetch` ao provedor, com a chave session-only (nunca em git/log).
+- Depende de ADR-0024 (`ai-pure`), ADR-0023 (D2 transporte / D3 chave), ADR-0011 (infra TS no web).

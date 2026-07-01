@@ -98,6 +98,23 @@
 //! converter — `ai::ask` devolve só a `String` da interpretação), logo **não** há
 //! `From<ai::…>` a gatear. A chave real (BYOK), o armazenamento seguro e a UI vêm
 //! depois (F2.3–F2.6), após o **gate estratégico F2.2**.
+//!
+//! F2.7b expõe a **fronteira web de IA** (paridade web do `ask` ancorado, ADR-0025):
+//! [`ai_web_prepare`] e [`ai_web_finalize`] (+ os Records [`AiVerseInput`]/
+//! [`AiWebRequest`]). Diferente de [`ask_anchored`] (corpo nativo `cfg`-gated), estas
+//! funções usam **só a superfície `pub` do `ai` sob `ai-pure`** (`numbered_verses`/
+//! `ask_context`/`ask`/`default_model`/`citation::rewrite_anchors`) → **corpo
+//! `cfg`-free** (compila igual no wasm e no nativo), pois **não** tocam
+//! store/`rusqlite`/`reqwest` (o grafo wasm segue **puro**). `ai_web_prepare` recebe os
+//! versículos **verbatim do store web** (o texto vem do subset F1.13; a fronteira não
+//! lê DB no wasm), numera o `cited_text` e **captura o `system`/`user` EXATOS** que o
+//! nativo enviaria (via um `CaptureProvider` local dirigido por `ai::ask`, porque
+//! `ask_user_prompt` é privado no core) — **zero drift** de prompt/citação nativo↔web.
+//! O **transporte** (`fetch` ao provedor + montagem/parse do corpo) fica no TS/browser
+//! (os `*_body`/`*_extract` do core são privados; ver ADR-0025), com a chave. A
+//! `interpretation` volta de `ai_web_finalize` **após** `rewrite_anchors`
+//! (anti-alucinação em Rust), separada do `cited_text` do store. `ask_anchored[_stream]`
+//! **nativos intactos** (sem regressão).
 
 uniffi::setup_scaffolding!();
 
@@ -1437,6 +1454,196 @@ pub fn ask_anchored_stream(
     }
 }
 
+/// Um **versículo de entrada** da fronteira web de IA ([`ai_web_prepare`]), na
+/// fronteira UniFFI.
+///
+/// O `text` vem **verbatim do store web** (subset `reading-sample.sqlite`, F1.13) —
+/// a fronteira web de IA **não** lê DB no wasm (o módulo `store`/`rusqlite` é
+/// `embedded`-only, ADR-0005). Anti-alucinação: o par `(number, text)` é a **fonte
+/// local** que o Rust (`ai-pure`) numera para o `cited_text`; o LLM **nunca** gera
+/// texto bíblico. Record **puro** (só `u16`/`String`), presente em todos os alvos.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AiVerseInput {
+    /// Número do versículo (ex.: `16`).
+    pub number: u16,
+    /// Texto do versículo, **verbatim** da tradução no store web.
+    pub text: String,
+}
+
+/// O **request preparado** de uma pergunta ancorada no web (saída de
+/// [`ai_web_prepare`]), na fronteira UniFFI.
+///
+/// Carrega **tudo que o transporte (`fetch`, no TS) precisa** para chamar o
+/// provedor, montado **em Rust `ai-pure`** — a MESMA impl do nativo, logo **zero
+/// drift**:
+/// - [`cited_text`](Self::cited_text): a passagem numerada, **verbatim do store**
+///   (via `ai::numbered_verses`) — **nunca** do LLM;
+/// - [`system`](Self::system)/[`user`](Self::user): os prompts **EXATOS** que o
+///   nativo enviaria, capturados pela rota pública `ai::ask` (ver
+///   [`ai_web_prepare`]); o texto bíblico entra no `user` só como **contexto**
+///   ancorado, separado do `cited_text` que a UI exibe;
+/// - [`provider`](Self::provider)/[`model`](Self::model): o provedor e o modelo
+///   resolvido (default do provedor se não informado).
+///
+/// Record **puro** ([`Reference`]/`String`), presente em todos os alvos.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AiWebRequest {
+    /// Referência canônica da passagem ancorada.
+    pub reference: Reference,
+    /// Passagem numerada, **verbatim do store** (via `ai::numbered_verses`).
+    pub cited_text: String,
+    /// System prompt EXATO do `ai-pure` (mesmo do nativo; anti-alucinação).
+    pub system: String,
+    /// User prompt EXATO do `ai-pure` (pergunta + contexto ancorado).
+    pub user: String,
+    /// Provedor a usar no transporte (ex.: `"gemini"`).
+    pub provider: String,
+    /// Modelo resolvido (default do provedor se `model` não informado).
+    pub model: String,
+}
+
+/// Provedor de **captura** interno (não exportado): implementa
+/// [`the_light_core::ai::LlmProvider`] **só** para capturar os prompts `system`/
+/// `user` EXATOS que `ai::ask` monta. O helper `ask_user_prompt` do core é
+/// **privado**, então a única rota pública que rende o par exato (com o mesmo
+/// `ask_system_prompt` + a mesma moldura de `user`) é chamar `ask` sobre um provedor
+/// que **não** faz rede: `complete` grava `(system, user)` e devolve vazio. Sem
+/// `unsafe`, sem I/O; `RefCell` porque `complete` recebe `&self`.
+struct CaptureProvider {
+    provider: String,
+    model: String,
+    captured: std::cell::RefCell<Option<(String, String)>>,
+}
+
+impl the_light_core::ai::LlmProvider for CaptureProvider {
+    fn name(&self) -> &str {
+        &self.provider
+    }
+    fn model(&self) -> &str {
+        &self.model
+    }
+    fn complete(&self, system: &str, user: &str) -> the_light_core::ai::Result<String> {
+        *self.captured.borrow_mut() = Some((system.to_string(), user.to_string()));
+        Ok(String::new())
+    }
+}
+
+/// **Prepara** uma pergunta ancorada para o transporte web (`fetch`), delegando a
+/// montagem de prompt/RAG/citação às partes **puras** do `ai` do `the-light-core`
+/// (feature `ai-pure`).
+///
+/// Pipeline (**cfg-free** — só a superfície `pub` do `ai-pure`, disponível no wasm E
+/// no nativo; **nenhum** store/`rusqlite`/`reqwest`, então o grafo wasm segue puro):
+/// 1. `reference::parse_reference(&reference)` canonicaliza (PT/EN → a mesma ref);
+/// 2. `lang.parse::<Lang>()` (default `Pt`);
+/// 3. `cited_text = ai::numbered_verses(verses)` — os `verses` vêm **verbatim do
+///    store web** (anti-alucinação; a fronteira não lê DB no wasm), numerados pela
+///    **mesma** fn do nativo (`numbered_passage` chama `numbered_verses`);
+/// 4. `context = ai::ask_context(format_reference(&ref, lang), cited_text, &[])`;
+/// 5. `model` = o informado (não-vazio) ou `ai::default_model(provider)`;
+/// 6. **system+user EXATOS** via um [`CaptureProvider`] dirigido por
+///    `ai::ask(&cap, &question, &context, lang)` — captura o par que o nativo
+///    enviaria (o `ask_user_prompt` do core é privado; `ask` é a rota pública).
+///
+/// Anti-alucinação **com zero drift**: `cited_text` do store; prompt/citação do
+/// MESMO Rust `ai-pure` no web e no nativo. O transporte (`fetch` + corpo/parse do
+/// provedor) fica no TS (ADR-0025). Sem rede aqui.
+#[uniffi::export]
+pub fn ai_web_prepare(
+    reference: String,
+    question: String,
+    provider_name: String,
+    model: Option<String>,
+    lang: String,
+    verses: Vec<AiVerseInput>,
+) -> Result<AiWebRequest, CoreError> {
+    // 1) Referência canônica (delegada ao core), como em `ask_anchored`.
+    let reference =
+        the_light_core::reference::parse_reference(&reference).map_err(|e| CoreError::Generic {
+            message: e.to_string(),
+        })?;
+
+    // 2) Idioma de exibição/resposta (`"pt"|"en"` + sinônimos); default Pt.
+    let lang = lang
+        .parse::<the_light_core::model::Lang>()
+        .unwrap_or(the_light_core::model::Lang::Pt);
+
+    // 3) cited_text: VERBATIM do store (verses), numerado pela MESMA fn do nativo.
+    let cited_text =
+        the_light_core::ai::numbered_verses(verses.iter().map(|v| (v.number, v.text.as_str())));
+
+    // 4) Bloco de contexto RAG — funções PURAS do core (rótulo canônico + numerado).
+    let label = the_light_core::reference::format_reference(&reference, lang);
+    let context = the_light_core::ai::ask_context(&label, &cited_text, &[]);
+
+    // 5) Modelo: o informado (não-vazio) ou o default do provedor (`ai-pure`).
+    let model = model
+        .filter(|m| !m.trim().is_empty())
+        .unwrap_or_else(|| the_light_core::ai::default_model(&provider_name).to_string());
+
+    // 6) system+user EXATOS via a rota pública `ask` (ask_user_prompt é privado).
+    let cap = CaptureProvider {
+        provider: provider_name.clone(),
+        model: model.clone(),
+        captured: std::cell::RefCell::new(None),
+    };
+    // `ask` chama `cap.complete(system, user)`, que grava os prompts e devolve "".
+    let _ = the_light_core::ai::ask(&cap, &question, &context, lang);
+    let (system, user) = cap
+        .captured
+        .into_inner()
+        .ok_or_else(|| CoreError::Generic {
+            message: "falha ao capturar o prompt ancorado (ai_web_prepare)".to_string(),
+        })?;
+
+    Ok(AiWebRequest {
+        reference: reference.into(),
+        cited_text,
+        system,
+        user,
+        provider: provider_name,
+        model,
+    })
+}
+
+/// **Finaliza** uma pergunta ancorada no web: aplica a **citação anti-alucinação em
+/// Rust** (mesma impl do nativo) sobre a `interpretation` do `fetch` e monta o
+/// [`AiAnswer`], mantendo o `cited_text` do **store** separado da interpretação do
+/// LLM.
+///
+/// Pipeline (**cfg-free** — só `ai-pure`): re-parseia `reference` (canônica) e aplica
+/// `citation::rewrite_anchors(&interpretation, &HashSet::new())` (limpeza de âncoras
+/// de citação inválidas — a etapa de citação em Rust; no `ask` simples o conjunto de
+/// âncoras válidas é vazio ⇒ remove âncoras espúrias, no-op sobre texto sem âncoras).
+/// O `cited_text` (store) e a `interpretation` (LLM) viajam **separados** no
+/// [`AiAnswer`] — o LLM **nunca** gera texto bíblico.
+#[uniffi::export]
+pub fn ai_web_finalize(
+    reference: String,
+    cited_text: String,
+    provider: String,
+    model: String,
+    interpretation: String,
+) -> Result<AiAnswer, CoreError> {
+    let reference =
+        the_light_core::reference::parse_reference(&reference).map_err(|e| CoreError::Generic {
+            message: e.to_string(),
+        })?;
+    // Citação anti-alucinação em Rust (mesma impl do nativo): remove âncoras
+    // `[V:…]`/`[W:…]` que não estejam no conjunto de válidas (vazio no `ask` simples).
+    let interpretation = the_light_core::ai::citation::rewrite_anchors(
+        &interpretation,
+        &std::collections::HashSet::new(),
+    );
+    Ok(AiAnswer {
+        reference: reference.into(),
+        cited_text,
+        interpretation,
+        provider,
+        model,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2720,6 +2927,103 @@ mod ai_tests {
         )
         .expect_err("provedor desconhecido deve falhar");
         assert!(matches!(err, CoreError::Generic { .. }));
+    }
+
+    // ── F2.7b: fronteira web de IA (ai_web_prepare/ai_web_finalize) ──────────────
+    // Prova, no HOST (nativo), que o caminho web monta o MESMO `cited_text` do store
+    // que o `ask_anchored` nativo (ZERO drift), que `system`/`user` vêm do `ai-pure`
+    // (mesmo prompt anti-alucinação), e que `finalize` separa `cited_text` (store) da
+    // `interpretation` (LLM). As funções são cfg-free (ai-pure), logo compilam iguais
+    // no wasm — este teste é o parity check nativo↔web.
+
+    #[test]
+    fn ai_web_prepare_matches_native_anchored_cited_text_zero_drift() {
+        // Caminho NATIVO (mock, store) — a referência de paridade.
+        let db = build_kjv_fixture();
+        let native = ask_anchored(
+            db.path(),
+            "kjv".to_string(),
+            "John 3:16".to_string(),
+            "What does this passage mean?".to_string(),
+            "mock".to_string(),
+            None,
+            None,
+            "en".to_string(),
+        )
+        .expect("ask_anchored nativo (mock)");
+
+        // Caminho WEB: os `verses` vêm do store (aqui, o versículo 16 verbatim).
+        let req = ai_web_prepare(
+            "John 3:16".to_string(),
+            "What does this passage mean?".to_string(),
+            "gemini".to_string(),
+            None,
+            "en".to_string(),
+            vec![AiVerseInput {
+                number: 16,
+                text: JOHN_3_16_KJV.to_string(),
+            }],
+        )
+        .expect("ai_web_prepare");
+
+        // ZERO drift: `cited_text` (store, numerado) idêntico nativo↔web.
+        assert_eq!(
+            req.cited_text, native.cited_text,
+            "cited_text web deve ser IDÊNTICO ao nativo (mesma fn ai-pure)"
+        );
+        assert!(req.cited_text.contains("16 For God so loved the world"));
+        assert!(req.cited_text.contains(JOHN_3_16_KJV));
+
+        // system = o MESMO prompt anti-alucinação do `ai-pure` (mesmo do nativo).
+        assert_eq!(
+            req.system,
+            the_light_core::ai::prompts::ask_system_prompt(the_light_core::model::Lang::En),
+            "system deve ser o ask_system_prompt do ai-pure (zero drift)"
+        );
+        assert!(req.system.contains("NÃO invente"));
+
+        // user embute a pergunta + o contexto ancorado (cited_text do store).
+        assert!(req.user.contains("What does this passage mean?"));
+        assert!(
+            req.user.contains(&req.cited_text),
+            "o user prompt ancora no cited_text do store"
+        );
+
+        // modelo default do provedor (gemini) via ai-pure.
+        assert_eq!(req.model, "gemini-2.5-flash");
+        assert_eq!(req.provider, "gemini");
+    }
+
+    #[test]
+    fn ai_web_finalize_separates_store_cited_text_from_llm_interpretation() {
+        let cited = the_light_core::ai::numbered_verses([(16u16, JOHN_3_16_KJV)]);
+        // A `interpretation` chega do transporte (`fetch`); aqui uma string do "LLM"
+        // com uma âncora Strong ESPÚRIA `[V:G9999]` (bem-formada, mas FORA do conjunto
+        // de válidas — vazio no `ask` simples → deve ser removida pelo Rust).
+        let ans = ai_web_finalize(
+            "John 3:16".to_string(),
+            cited.clone(),
+            "gemini".to_string(),
+            "gemini-2.5-flash".to_string(),
+            "Interpretação do modelo [V:G9999] sobre o amor de Deus.".to_string(),
+        )
+        .expect("ai_web_finalize");
+
+        // cited_text (store) preservado, separado da interpretation (LLM).
+        assert_eq!(ans.cited_text, cited);
+        assert!(ans.cited_text.contains(JOHN_3_16_KJV));
+        // rewrite_anchors (Rust) removeu a âncora espúria (conjunto válido vazio).
+        assert!(
+            !ans.interpretation.contains("[V:G9999]"),
+            "rewrite_anchors deve remover a âncora inválida: {}",
+            ans.interpretation
+        );
+        assert!(ans.interpretation.contains("sobre o amor de Deus"));
+        // O LLM NÃO gera texto bíblico: cited_text ≠ interpretation.
+        assert_ne!(ans.cited_text, ans.interpretation);
+        assert!(!ans.interpretation.contains("For God so loved"));
+        assert_eq!(ans.provider, "gemini");
+        assert_eq!(ans.model, "gemini-2.5-flash");
     }
 }
 

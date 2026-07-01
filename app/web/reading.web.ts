@@ -54,6 +54,7 @@ import {
 import { searchOnHandle } from './sqlite-search.web';
 import { crossRefsOnHandle } from './sqlite-xref.web';
 import { openReadingDbWeb } from './sqlite-reading-opfs.web';
+import { askAnchoredOnHandle, type AiFetch } from './ai-anchored.web';
 import {
   addHighlightFs,
   deleteNoteFs,
@@ -247,37 +248,84 @@ export async function listHighlights(_dataDir: string): Promise<Highlight[]> {
   return listHighlightsFs(dir);
 }
 
-// ── ESTUDO ASSISTIDO ANCORADO (ask) — STUB web (F2.7) ────────────────────────
-// A IA no web (streaming/ask sobre wasm) é a F2.7. Aqui mantemos a MESMA assinatura
-// do glue nativo (`reading.ts`) por paridade, mas lançamos um erro explícito: NÃO
-// ligamos IA ao wasm nesta tarefa (evita arrastar `ai`/rede ao grafo web e mantém o
-// contrato claro). O texto bíblico continua vindo do store (leitura web = F1.13+);
-// só o estudo assistido (LLM) está adiado.
-const AI_WEB_UNAVAILABLE = 'IA (estudo assistido) disponível no web na F2.7.';
+// ── ESTUDO ASSISTIDO ANCORADO (ask) — F2.7b (ADR-0025) ───────────────────────
+// DESTUBADO: paridade web de IA. O prompt/RAG/citação vêm do Rust `ai-pure` no wasm
+// (`aiWebPrepare`/`aiWebFinalize`, ZERO drift nativo↔web) e o transporte é `fetch` ao
+// provedor (MVP = Gemini), delegado ao pipeline puro `askAnchoredOnHandle`
+// (`ai-anchored.web.ts`). Aqui só abrimos o store web (subset F1.13, de onde sai o
+// `cited_text` VERBATIM) e passamos o `globalThis.fetch`. Anti-alucinação: o texto
+// bíblico vem SEMPRE do store; o LLM só interpreta. BYOK/offline-first: sem chave, o
+// app segue offline; a IA web é opt-in e só faz rede no `fetch` (a chave, session-only
+// no `keystore.web`, vai só no header — nunca logada).
 
+/** `fetch` de produção (browser). Envolvido para casar com `AiFetch` sem `bind`. */
+const defaultFetch: AiFetch = (input, init) => globalThis.fetch(input, init);
+
+/**
+ * Pergunta ancorada (sem streaming) no web: abre o store web (subset, F1.13) e delega
+ * ao pipeline `askAnchoredOnHandle` (wasm `ai-pure` + `fetch`). `_dbPath` é aceito por
+ * paridade de assinatura com o nativo; o store web abre o subset internamente. O
+ * `AiAnswer` traz o `citedText` (store, verbatim) SEPARADO da `interpretation` (LLM).
+ */
 export async function askAnchored(
   _dbPath: string,
-  _translation: string,
-  _reference: string,
-  _question: string,
-  _provider: string,
-  _key: string | undefined,
-  _model: string | undefined,
-  _lang: string,
+  translation: string,
+  reference: string,
+  question: string,
+  provider: string,
+  key: string | undefined,
+  model: string | undefined,
+  lang: string,
 ): Promise<AiAnswer> {
-  throw new Error(AI_WEB_UNAVAILABLE);
+  const handle = await openReadingDbWeb();
+  try {
+    return await askAnchoredOnHandle(
+      handle,
+      defaultFetch,
+      translation,
+      reference,
+      question,
+      provider,
+      key,
+      model,
+      lang,
+    );
+  } finally {
+    await handle.close();
+  }
 }
 
+/**
+ * Pergunta ancorada com "streaming" no web: NÃO-STREAMING nesta tarefa (F2.7b) — o
+ * transporte web via `fetch` é não-streaming por ora (SSE/`ReadableStream` fica como
+ * follow-up). Obtém a resposta completa por `askAnchored` e emite a `interpretation`
+ * inteira 1× via `onToken` (mesma UX incremental que o nativo tem com o mock). Os
+ * tokens são da INTERPRETAÇÃO (LLM), nunca do texto bíblico (que viaja separado, do
+ * store, em `citedText`).
+ */
 export async function askAnchoredStream(
-  _dbPath: string,
-  _translation: string,
-  _reference: string,
-  _question: string,
-  _provider: string,
-  _key: string | undefined,
-  _model: string | undefined,
-  _lang: string,
-  _onToken: (token: string) => void,
+  dbPath: string,
+  translation: string,
+  reference: string,
+  question: string,
+  provider: string,
+  key: string | undefined,
+  model: string | undefined,
+  lang: string,
+  onToken: (token: string) => void,
 ): Promise<AiAnswer> {
-  throw new Error(AI_WEB_UNAVAILABLE);
+  const answer = await askAnchored(
+    dbPath,
+    translation,
+    reference,
+    question,
+    provider,
+    key,
+    model,
+    lang,
+  );
+  if (answer.interpretation.length > 0) {
+    onToken(answer.interpretation);
+  }
+  return answer;
 }
