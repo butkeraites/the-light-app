@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-07-01 22:20 UTC · Estado do loop: **▶️ ATIVO (RETOMADO) — MARCO 2 APROVADO por sign-off humano: Fase 2 (IA BYOK ancorada) completa; **Fase 3 (estudo profundo: léxico Strong + pesquisa) LIBERADA**; `loop/HALT` removido. Queue vazia → próximo ciclo o planner DECOMPÕE a Fase 3 em `backlog/PHASE-3.md` e semeia a 1ª tarefa.** Corpus completo (~59 MB) e streaming web real permanecem backlog.
-Heartbeat: ver `HEARTBEAT` · HALT: **ausente (Marco 2 resolvido)** · **F2.8 APROVADO** (sign-off; Fase 2 completa) · **Fase 3 = estudo profundo** (o core já tem `ai::study`/`ai::lexicon`/`ai::research`, embedded; léxico Strong precisa de dados — investigar, molde F1.1). Regras: anti-alucinação (texto/citações do store; LLM só interpreta), BYOK, offline-first (pesquisa web = rede opt-in), the-light só via PR+ADR. `the-light` `c8ecb2f`. Próximo ADR livre = **ADR-0026**.
+Última atualização: 2026-07-01 22:50 UTC · Estado do loop: **▶️ ATIVO — F3.1 ACEITA (`1e3892e`; léxico STEP CC-BY no bible.sqlite: 447673 tokens / 22717 lexicon / 4 fontes). Queue vazia → próximo ciclo o planner semeia F3.2 (fronteira de léxico nativa → `ai::lexicon::verified_lexicon`, teste host).** Corpus completo (~59 MB) e streaming web real permanecem backlog.
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F3.1 elegível** (ready, gate:false, deps:[]) → próximo ciclo o executor a roda. **Investigação do core (`c8ecb2f`) — dimensiona a fase:** `ai::study`/`StudyResult`/`verified_lexicon`/`research`/`build_provider`/`to_academic_markdown` são **`embedded`-only (nativo)** → **estudo profundo nativo NÃO exige PR ao core**; `ask_session`/`refine_scope` são **puros (ai-pure → web já disponível)**; o **léxico usa o MESMO `bible.sqlite`** (tabelas `original_tokens`/`lexicon`/`scholarly_sources`, populadas por **`xtask import-scholarly`** — STEP Bible **CC-BY 4.0**, atribuição obrigatória, molde ADR-0016); **pesquisa web (`ai::research`) = rede opt-in** (wikipedia keyless / tavily BYOK) → **gate estratégico F3.9**; a **paridade web do estudo** pode exigir **PR ai-pure** (molde F2.7, F3.11 condicional). Regras: anti-alucinação (texto/glosas/citações do store; LLM só interpreta e é sinalizado se inventar Strong/fonte), BYOK, offline-first (estudo/pesquisa opt-in), the-light só via PR+ADR. `the-light` `c8ecb2f`. Próximo ADR livre = **ADR-0026**.
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -85,11 +85,40 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente (Marco 2 resolvido)** · **F2.8 AP
 | F2.7b | Paridade web de IA: `ai-pure` wasm (prompt/RAG/citação) + `fetch` ao provedor + keystore/política de chave web; prova headless MOCK | ✅ aceito | F2.7, F2.5 | passed (744868d) — IA web zero-drift; cited_text João 3:16 do store; chave session-only; ADR-0025 |
 | F2.8 | **Marco 2** (⛔ gate): IA BYOK ancorada com Claude/GPT/Gemini | ✅ **APROVADO** | F2.5, F2.6, F2.7, F2.7b | sign-off humano — **Fase 2 completa**; Fase 3 (estudo profundo) liberada; HALT removido |
 
+## Fase 3 — Estudo profundo (léxico Strong verificado · `study` ancorado · pesquisa opt-in)
+
+> Decomposta em `loop/backlog/PHASE-3.md` (F3.1–F3.13). **Estudo profundo OPCIONAL
+> e ADITIVO:** Fases 1–2 seguem intactas; o estudo só liga com a chave do usuário.
+> **Léxico é DADO local** no MESMO `bible.sqlite` (STEP Bible CC-BY 4.0 via `xtask
+> import-scholarly`, molde F1.1/F1.7). **Anti-alucinação:** texto/glosas/citações
+> do store; o LLM só interpreta e é sinalizado se inventar Strong/fonte. Padrão:
+> dados → fronteira nativa + teste host **MOCK** → UI nativa (MOCK) → **gate
+> estratégico F3.9** (pesquisa web opt-in + via de paridade web) → validação real
+> (F3.10, gate) → [PR ai-pure F3.11 condicional] → paridade web (F3.12) → **Marco 3
+> F3.13**. **Estudo nativo NÃO toca o core** (superfície `embedded` já pinada em
+> `c8ecb2f`); só a paridade web pode exigir PR. **F3.1 semeada**; as demais entram
+> conforme as deps forem aceitas.
+
+| ID | Tarefa | Estado | Depende de | Resultado |
+|----|--------|--------|------------|-----------|
+| F3.1 | Dados de léxico (xtask import-scholarly: TAHOT/TAGNT + TBESH/TBESG, STEP Bible CC-BY 4.0) no bible.sqlite | ✅ aceito | — | passed (1e3892e) — original_tokens 447673 / lexicon 22717 / 4 fontes cc-by; ADR-0026 |
+| F3.2 | Fronteira de léxico (core, nativo): `lexical_entries` → `ai::lexicon::verified_lexicon` | ⬜ backlog | F3.1 | — |
+| F3.3 | Fronteira de estudo profundo (core, nativo): `deep_study` → `ai::study::study` → StudyResult; MOCK | ⬜ backlog | F3.2 | — |
+| F3.4 | Fronteira de conversa/refinamento (pura, nativo+web): `ask_session`/`refine_scope`; MOCK | ⬜ backlog | F3.3 | — |
+| F3.5 | UI nativa: painel de estudo profundo (modos×lentes×profundidades + léxico inline + citações) + STEP CC-BY; MOCK | ⬜ backlog | F3.2, F3.3 | — |
+| F3.6 | UI nativa: conversa com follow-up (`ask_session`); MOCK | ⬜ backlog | F3.4, F3.5 | — |
+| F3.7 | UI nativa: modo comparação multi-IA (Claude/GPT/Gemini lado a lado); MOCK | ⬜ backlog | F3.5 | — |
+| F3.8 | Exportação acadêmica (SBL → Markdown + sidecar de citações) | ⬜ backlog | F3.3, F3.5 | — |
+| F3.9 | **GATE estratégico** (⛔): pesquisa web opt-in (backend/chave) + via de paridade web do estudo | ⬜ backlog | F3.3 | — |
+| F3.10 | **Validação real** (⛔): estudo profundo (+[pesquisa]) real com a chave do usuário | ⬜ backlog | F3.5 (+F3.9) | — |
+| F3.11 | **PR ao `the-light-core`** (condicional): deep-study puro em wasm (ai-pure) — só se F3.9 escolher a via PR | ⬜ backlog | F3.9, F3.10 | — |
+| F3.12 | Paridade web: estudo profundo + léxico + conversa + export | ⬜ backlog | F3.11, F3.5, F3.6, F3.8 | — |
+| F3.13 | **Marco 3** (⛔ gate): plataforma de estudo profundo completa | ⬜ backlog | F3.5, F3.6, F3.7, F3.8, F3.10, F3.12 | — |
+
 ## Fases seguintes
 
-F3 (estudo profundo: modos×lentes×profundidades, `ask_session`, comparação
-multi-IA, export SBL), F4 (refino) — ver `IMPLEMENTATION_PLAN.md`. Serão
-decompostas em `backlog/` conforme a Fase 2 fechar.
+F4 (refino: planos de leitura, i18n/acessibilidade, performance, sync opcional) —
+ver `IMPLEMENTATION_PLAN.md`. Será decomposta em `backlog/` conforme a Fase 3 fechar.
 
 ## Log de ciclos
 
