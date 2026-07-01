@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-07-01 22:00 UTC · Estado do loop: **⛔ HALT — MARCO 2 (F2.8) aguardando sign-off humano. Fase 2 (IA BYOK ancorada) FUNCIONALMENTE COMPLETA: F2.1–F2.7b aceitas — `ask` ancorado + streaming (nativo), Gemini no core (2 PRs sancionados mergeados: `133077a`, `c8ecb2f`), chave BYOK (Keychain nativo / session-only web), UI de `ask`, validação REAL (Gemini `gemini-2.5-flash`, `cited_text` João 3:16 do store), IA no web (zero drift). Relatório em `queue/F2.8-marco-2.task.md`; `loop/HALT` escrito.**
-Heartbeat: ver `HEARTBEAT` · HALT: **PRESENTE** (`loop/HALT` — gate Marco 2) · **F2.7b passed** (`744868d`; IA web zero-drift, ADR-0025) · **Sign-off decide:** (1) aprovar Fase 2; (2) próximo rumo — Fase 3 (estudo profundo: léxico/pesquisa) · streaming web real · corpus completo web (~59 MB) · outra prioridade. Retomar = aprovar → Driver registra sign-off, arquiva F2.8, remove `loop/HALT`, planner decompõe a próxima fase. `the-light` `c8ecb2f`.
+Última atualização: 2026-07-01 22:20 UTC · Estado do loop: **▶️ ATIVO (RETOMADO) — MARCO 2 APROVADO por sign-off humano: Fase 2 (IA BYOK ancorada) completa; **Fase 3 (estudo profundo: léxico Strong + pesquisa) LIBERADA**; `loop/HALT` removido. Queue vazia → próximo ciclo o planner DECOMPÕE a Fase 3 em `backlog/PHASE-3.md` e semeia a 1ª tarefa.** Corpus completo (~59 MB) e streaming web real permanecem backlog.
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente (Marco 2 resolvido)** · **F2.8 APROVADO** (sign-off; Fase 2 completa) · **Fase 3 = estudo profundo** (o core já tem `ai::study`/`ai::lexicon`/`ai::research`, embedded; léxico Strong precisa de dados — investigar, molde F1.1). Regras: anti-alucinação (texto/citações do store; LLM só interpreta), BYOK, offline-first (pesquisa web = rede opt-in), the-light só via PR+ADR. `the-light` `c8ecb2f`. Próximo ADR livre = **ADR-0026**.
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -83,7 +83,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **PRESENTE** (`loop/HALT` — gate Marco 2) 
 | F2.6 | **Validação real** (⛔): `ask` real com a chave do usuário (Claude/GPT/Gemini) | ✅ **VALIDADA** | F2.5 | sign-off humano — Gemini `gemini-2.5-flash` real; `cited_text` João 3:16 do store; anti-alucinação provada; HALT removido |
 | F2.7 | **PR ao `the-light-core`**: IA-pura-wasm (D2, feature `ai-pure`) + fix `default_model` gemini `2.0`→`2.5-flash` | ✅ aceito | F2.6 | **mergeado** (main→`c8ecb2f`); re-pinado (`ai-pure` na linha web); 41 testes fronteira; wasm puro; ADR-0024 |
 | F2.7b | Paridade web de IA: `ai-pure` wasm (prompt/RAG/citação) + `fetch` ao provedor + keystore/política de chave web; prova headless MOCK | ✅ aceito | F2.7, F2.5 | passed (744868d) — IA web zero-drift; cited_text João 3:16 do store; chave session-only; ADR-0025 |
-| F2.8 | **Marco 2** (⛔ gate): IA BYOK ancorada com Claude/GPT/Gemini | ⛔ **GATE → HALT** | F2.5, F2.6, F2.7, F2.7b | semeada (relatório de marco); `loop/HALT` escrito — aguardando sign-off humano |
+| F2.8 | **Marco 2** (⛔ gate): IA BYOK ancorada com Claude/GPT/Gemini | ✅ **APROVADO** | F2.5, F2.6, F2.7, F2.7b | sign-off humano — **Fase 2 completa**; Fase 3 (estudo profundo) liberada; HALT removido |
 
 ## Fases seguintes
 
