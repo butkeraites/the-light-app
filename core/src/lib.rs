@@ -807,6 +807,164 @@ pub fn cross_refs(
     }
 }
 
+/// Número máximo de entradas léxicas devolvidas quando `limit` é `None`.
+///
+/// Padrão **local** da fronteira (não há constante equivalente pública no core para
+/// esta função): 32 é folga confortável para um versículo/capítulo curto sem inflar a
+/// UI de léxico (F3.5). A UI/estudo pode pedir um `limit` explícito. Só entra no
+/// caminho nativo (o corpo que abre o store é `cfg(not(wasm32))`); gateado para não
+/// disparar `dead_code` no build web.
+#[cfg(not(target_arch = "wasm32"))]
+const DEFAULT_LEXICON_LIMIT: usize = 32;
+
+/// Uma **entrada léxica verificada** (número de Strong + lema/transliteração/glosa),
+/// na fronteira UniFFI.
+///
+/// Espelha `the_light_core::ai::LexicalEntry` (tipo **puro**/`ai-pure` do core, presente
+/// em **todos** os alvos, ADR-0024). Os campos vêm **verbatim do léxico local
+/// verificado** (STEP Bible / TBESH–TBESG, CC-BY, populado na F3.1) — a fronteira nunca
+/// gera nem infere dado léxico (anti-alucinação): apenas **entrega** o que o acervo
+/// contém. O Record é definido em **todos** os alvos para manter a forma da fronteira
+/// UniFFI idêntica entre nativo e web (a extração de metadata do `ubrn` ocorre no host).
+/// Construído **somente** via [`From`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct LexEntry {
+    /// Número de Strong **base** (ex.: `"H7225"`; o core já removeu o sufixo de
+    /// desambiguação `"H7225G"`→`"H7225"`). É a chave de citação `[V:...]`.
+    pub strongs: String,
+    /// Lema na língua original (ex.: `אֱלֹהִים`).
+    pub lemma: Option<String>,
+    /// Transliteração.
+    pub translit: Option<String>,
+    /// Glosa breve (do léxico: COALESCE `lexicon.gloss_pt` → `lexicon.gloss` →
+    /// `original_tokens.gloss`).
+    pub gloss: Option<String>,
+    /// Ocorrências do termo na passagem.
+    pub occurrences: u32,
+    /// Testamento (`"OT"` hebraico | `"NT"` grego).
+    pub testament: String,
+}
+
+/// Dados léxicos verificados de uma passagem + fontes (atribuição obrigatória CC-BY),
+/// na fronteira UniFFI.
+///
+/// Espelha `the_light_core::ai::VerifiedLexicon` (tipo **puro**/`ai-pure`). As
+/// [`sources`](Self::sources) são as **atribuições verbatim** das fontes usadas (lidas
+/// de `scholarly_sources.attribution`), que a **UI da F3.5 exibe obrigatoriamente**
+/// (CC-BY). Construído **somente** via [`From`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct VerifiedLexiconOut {
+    /// Entradas por Strong base, das mais frequentes para as menos (desempate estável
+    /// pelo Strong asc); truncadas em `limit`.
+    pub entries: Vec<LexEntry>,
+    /// Atribuições das fontes usadas (STEP Bible CC-BY) — a UI da F3.5 exibe.
+    pub sources: Vec<String>,
+}
+
+// **Gating (DIVERGÊNCIA vs. `CrossRef`/`Note`):** os tipos-fonte
+// `ai::LexicalEntry`/`ai::VerifiedLexicon` são **PUROS** (`ai-pure`, presentes também no
+// wasm — o app compila o core com `ai-pure` na linha web, ADR-0024), ao contrário de
+// `xref::CrossRef`/`userdata::*` (embedded-only). Por isso estes dois `From` **NÃO**
+// levam `#[cfg(not(target_arch = "wasm32"))]` (são como `From<model::SearchHit>`); só o
+// **corpo** de [`lexical_entries`] que abre o store SQLite é gateado.
+impl From<the_light_core::ai::LexicalEntry> for LexEntry {
+    fn from(e: the_light_core::ai::LexicalEntry) -> Self {
+        LexEntry {
+            strongs: e.strongs,
+            lemma: e.lemma,
+            translit: e.translit,
+            gloss: e.gloss,
+            occurrences: e.occurrences,
+            testament: e.testament,
+        }
+    }
+}
+
+impl From<the_light_core::ai::VerifiedLexicon> for VerifiedLexiconOut {
+    fn from(vl: the_light_core::ai::VerifiedLexicon) -> Self {
+        VerifiedLexiconOut {
+            entries: vl.entries.into_iter().map(LexEntry::from).collect(),
+            sources: vl.sources,
+        }
+    }
+}
+
+/// Recupera os **dados léxicos Strong verificados** de uma passagem do **store SQLite
+/// local**, delegando ao `the-light-core`.
+///
+/// Pipeline no **nativo** (tudo no core — uma fonte da verdade):
+/// `Store::open(db_path)` → `the_light_core::ai::lexicon::verified_lexicon(store.conn(),
+/// &Reference, &[], lang, limit)` → adapta a `VerifiedLexicon` do core para o Record
+/// [`VerifiedLexiconOut`]. **Nenhum** SQL/JOIN/agregação de léxico é reimplementado aqui
+/// (sem `SELECT … FROM original_tokens`, sem `LEFT JOIN lexicon`, sem agregação por
+/// Strong base): a query, o `COALESCE` da glosa, a agregação e a ordenação por
+/// frequência vivem no core (`ai/lexicon.rs`).
+///
+/// **`verified_lexicon` é INFALÍVEL** (não devolve `Result`): engole erros de SQLite
+/// internamente e devolve vazio. Logo o **único** ponto de erro da fronteira é
+/// `Store::open(&db_path)` (I/O local). Passa-se `verse_numbers = &[]`, deixando o core
+/// derivar os versículos do `reference` (`Single`→`[v]`; `WholeChapter`→capítulo todo).
+///
+/// **Sem parâmetro `translation`:** o léxico é **independente de tradução** (chaveado por
+/// `book_number/chapter[/verse]` em `original_tokens`), como a xref da F1.8 — recebe
+/// `book/chapter/verse` **numéricos**. O `lang` (`"pt"`/`"en"` + sinônimos, default `Pt`)
+/// é aceito pela assinatura real do core, mas **atualmente ignorado** por
+/// `verified_lexicon`; é passado por fidelidade à assinatura (zero drift futuro).
+///
+/// **Anti-alucinação:** glosas/lemas/Strong vêm **só** do léxico local verificado (STEP
+/// Bible / TBESH–TBESG, CC-BY, F3.1) — nenhum LLM envolvido nesta função (é lookup puro
+/// de banco). As [`sources`](VerifiedLexiconOut::sources) preservam a **atribuição CC-BY**
+/// para a exibição obrigatória da F3.5. Offline-first: nenhuma rede — só I/O local.
+///
+/// **Gating por alvo (ver ADR-0010):** mesmo molde de [`get_passage`]/[`search`]/
+/// [`cross_refs`] — a função é exportada em **todos** os alvos (forma da fronteira
+/// consistente; `ubrn` extrai a metadata no host), mas apenas o **corpo que toca
+/// store/rusqlite** é `cfg(not(target_arch = "wasm32"))`. No **web** um stub retorna
+/// [`CoreError`] (léxico web = F3.12), sem arrastar `rusqlite`/`store` para o grafo wasm.
+#[uniffi::export]
+pub fn lexical_entries(
+    db_path: String,
+    book: u8,
+    chapter: u16,
+    verse: Option<u16>,
+    lang: String,
+    limit: Option<u32>,
+) -> Result<VerifiedLexiconOut, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let store =
+            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })?;
+        // Léxico independente de tradução: Reference por book/chapter[/verse].
+        let reference = match verse {
+            Some(v) => the_light_core::model::Reference::single(book, chapter, v),
+            None => the_light_core::model::Reference::whole_chapter(book, chapter),
+        };
+        // lang aceito pela assinatura real, mas ignorado por verified_lexicon; default Pt.
+        let lang = lang
+            .parse::<the_light_core::model::Lang>()
+            .unwrap_or(the_light_core::model::Lang::Pt);
+        let limit = limit.map(|l| l as usize).unwrap_or(DEFAULT_LEXICON_LIMIT);
+        // Infalível (não Result): verse_numbers = &[] → o core deriva do reference.
+        let vl = the_light_core::ai::lexicon::verified_lexicon(
+            store.conn(),
+            &reference,
+            &[],
+            lang,
+            limit,
+        );
+        Ok(VerifiedLexiconOut::from(vl))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (db_path, book, chapter, verse, lang, limit);
+        Err(CoreError::Generic {
+            message: "léxico indisponível no alvo web (F3.12)".to_string(),
+        })
+    }
+}
+
 /// Uma **nota** do usuário associada a uma referência, na fronteira UniFFI.
 ///
 /// Espelha `the_light_core::userdata::notes::Note`: a [`reference`](Self::reference)
@@ -3325,5 +3483,217 @@ mod ai_stream_tests {
         )
         .expect_err("provedor desconhecido deve falhar");
         assert!(matches!(err, CoreError::Generic { .. }));
+    }
+}
+
+/// Testes de **léxico verificado** da F3.2 (`lexical_entries` delegando a
+/// `ai::lexicon::verified_lexicon`), **apenas no nativo** (host com a feature
+/// `embedded`, ADR-0005). Determinísticos e **offline**: constroem um fixture SQLite
+/// temporário (`Store::open` cria o schema v2 do core → tabelas de léxico existem) e
+/// populam `scholarly_sources`/`original_tokens`/`lexicon` **à mão** (espelhando o
+/// `seeded()` do core, `ai/lexicon.rs`), adaptado a **Gênesis 1:1**. Nenhum texto
+/// bíblico é gerado — os dados léxicos vêm **só** do acervo verificado
+/// (anti-alucinação). O `bible.sqlite` real é só bônus `if exists`.
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod lexicon_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// `bible.sqlite` (gerado-ignorado, ADR-0013): opcional — só para a asserção
+    /// **bônus** guardada por `exists()`. As primárias passam só com o fixture.
+    const BIBLE_DB: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/data/bible.sqlite");
+
+    /// Banco temporário do fixture: remove o arquivo (e sidecars WAL/SHM) no `Drop`.
+    struct TmpDb(PathBuf);
+
+    impl TmpDb {
+        fn path(&self) -> String {
+            self.0.to_string_lossy().into_owned()
+        }
+    }
+
+    impl Drop for TmpDb {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+            if let Some(name) = self.0.file_name().and_then(|n| n.to_str()) {
+                let dir = self.0.parent().map(PathBuf::from).unwrap_or_default();
+                let _ = std::fs::remove_file(dir.join(format!("{name}-wal")));
+                let _ = std::fs::remove_file(dir.join(format!("{name}-shm")));
+            }
+        }
+    }
+
+    /// Caminho temporário único (offline, sem deps externas).
+    fn unique_tmp_db() -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "the-light-app-f3_2-{}-{nanos}-{n}.sqlite",
+            std::process::id()
+        ))
+    }
+
+    /// Constrói o fixture de léxico: schema via migrações do core (`Store::open`) + DML
+    /// **espelhando o `seeded()` do core** (`ai/lexicon.rs`) para **Gênesis 1:1**
+    /// (book=1, chapter=1, verse=1) com 3 base-Strongs distintos: bereshit (`H7225G`),
+    /// bara (`H1254A`), elohim (`H0430G`). `scholarly_sources` com atribuição STEP Bible;
+    /// `lexicon` mapeando cada Strong à sua glosa. Colunas **exatas** do rev pinado;
+    /// nenhum schema escrito à mão.
+    fn build_lexicon_fixture() -> TmpDb {
+        let path = unique_tmp_db();
+        let _ = std::fs::remove_file(&path);
+
+        {
+            let store =
+                the_light_core::store::Store::open(&path).expect("abrir/migrar fixture de léxico");
+            let conn = store.conn();
+
+            // Fontes (atribuição CC-BY, verbatim): tokens usam 'tahot', léxico usa 'tbesh'.
+            for (id, name) in [("tahot", "TAHOT"), ("tbesh", "TBESH")] {
+                let sql = format!(
+                    "INSERT INTO scholarly_sources(id,name,license,embeddable,attribution,url,version) \
+                     VALUES ('{id}','{name}','cc-by',1,'STEP Bible (CC BY 4.0)','u','v')"
+                );
+                conn.execute(&sql, []).expect("popular scholarly_sources");
+            }
+
+            // Gênesis 1:1 (book=1, chapter=1, verse=1): (word_index, strongs, lemma).
+            // Lemas hebraicos **sem aspas simples** → seguros inline em DML (mesma técnica
+            // dos demais fixtures; nenhum schema é escrito à mão).
+            let toks = [
+                (1i64, "H7225G", "רֵאשִׁית"),
+                (2, "H1254A", "בָּרָא"),
+                (3, "H0430G", "אֱלֹהִים"),
+            ];
+            for (wi, st, lemma) in toks {
+                let sql = format!(
+                    "INSERT INTO original_tokens(testament,book_number,chapter,verse,word_index,\
+                     surface,lemma,strongs,strongs_raw,source_id) \
+                     VALUES ('OT',1,1,1,{wi},'{lemma}','{lemma}','{st}','{st}','tahot')"
+                );
+                conn.execute(&sql, []).expect("popular original_tokens");
+            }
+
+            // Léxico: cada Strong → glosa (H0430G → "God").
+            for (st, gloss) in [
+                ("H7225G", "beginning"),
+                ("H1254A", "to create"),
+                ("H0430G", "God"),
+            ] {
+                let sql = format!(
+                    "INSERT INTO lexicon(strongs,lemma,gloss,source_id) \
+                     VALUES ('{st}','x','{gloss}','tbesh')"
+                );
+                conn.execute(&sql, []).expect("popular lexicon");
+            }
+        } // `store`/`conn` fecham aqui (flush no arquivo).
+
+        TmpDb(path)
+    }
+
+    #[test]
+    fn lexical_entries_genesis_1_1_returns_base_strong_and_gloss() {
+        let db = build_lexicon_fixture();
+        let vl = lexical_entries(db.path(), 1, 1, Some(1), "pt".to_string(), None)
+            .expect("recuperar léxico de Gênesis 1:1");
+        assert!(
+            !vl.entries.is_empty(),
+            "esperado ≥1 entrada léxica em Gn 1:1"
+        );
+
+        // Strong BASE (H0430G → H0430, sem o sufixo de desambiguação) é a chave [V:...].
+        let elohim = vl
+            .entries
+            .iter()
+            .find(|e| e.strongs == "H0430")
+            .expect("entrada de Strong base H0430 (elohim) presente");
+        assert_eq!(
+            elohim.gloss.as_deref(),
+            Some("God"),
+            "glosa verificada = God"
+        );
+        assert!(
+            elohim.lemma.is_some(),
+            "lema presente (do acervo verificado)"
+        );
+        assert_eq!(elohim.testament, "OT", "hebraico → testamento OT");
+        // Atribuição CC-BY preservada para a exibição obrigatória da F3.5.
+        assert!(
+            vl.sources.iter().any(|s| s.contains("STEP Bible")),
+            "sources deve trazer a atribuição STEP Bible: {:?}",
+            vl.sources
+        );
+    }
+
+    #[test]
+    fn lexical_entries_uncovered_passage_is_empty_without_panic() {
+        let db = build_lexicon_fixture();
+        // Mateus 1:1 (book=40) não tem tokens no fixture → vazio (não Err, não panic).
+        let vl = lexical_entries(db.path(), 40, 1, Some(1), "pt".to_string(), None)
+            .expect("passagem sem cobertura não deve panicar");
+        assert!(vl.entries.is_empty(), "sem tokens → entries vazio");
+        assert!(vl.sources.is_empty(), "sem tokens → sources vazio");
+    }
+
+    #[test]
+    fn lexical_entries_invalid_store_path_is_error() {
+        // `Store::open` FALHA quando `db_path` é um **diretório existente** (não um
+        // arquivo inexistente, que criaria um banco vazio). O único ponto de erro da
+        // fronteira (verified_lexicon é infalível) é mapeado para CoreError.
+        let dir = std::env::temp_dir();
+        let err = lexical_entries(
+            dir.to_string_lossy().into_owned(),
+            1,
+            1,
+            Some(1),
+            "pt".to_string(),
+            None,
+        )
+        .expect_err("db_path = diretório deve falhar no Store::open");
+        assert!(matches!(err, CoreError::Generic { .. }));
+    }
+
+    #[test]
+    fn lexical_entries_respects_limit() {
+        let db = build_lexicon_fixture();
+        // Gn 1:1 tem 3 base-Strongs distintos; limit=Some(1) → exatamente 1 entrada.
+        let vl = lexical_entries(db.path(), 1, 1, Some(1), "pt".to_string(), Some(1))
+            .expect("recuperar léxico com limit=1");
+        assert_eq!(
+            vl.entries.len(),
+            1,
+            "limit=1 deve devolver exatamente 1 entrada"
+        );
+    }
+
+    #[test]
+    fn bonus_full_bible_db_lexicon_when_present() {
+        // BÔNUS, NÃO-REQUISITO: só roda se o `bible.sqlite` (gerado-ignorado) existir.
+        // As primárias acima passam só com o fixture, offline. Gênesis 1:1 tem Strongs
+        // reais (H0430 → God) no acervo da F3.1.
+        if !std::path::Path::new(BIBLE_DB).exists() {
+            return;
+        }
+        let vl = lexical_entries(BIBLE_DB.to_string(), 1, 1, Some(1), "pt".to_string(), None)
+            .expect("recuperar léxico de Gênesis 1:1 no bible.sqlite");
+        assert!(
+            !vl.entries.is_empty(),
+            "corpus real deve ter léxico em Gn 1:1"
+        );
+        let elohim = vl
+            .entries
+            .iter()
+            .find(|e| e.strongs == "H0430")
+            .expect("H0430 (elohim) presente no corpus real");
+        assert!(
+            elohim.gloss.as_deref().is_some_and(|g| g.contains("God")),
+            "glosa real de H0430 contém 'God': {:?}",
+            elohim.gloss
+        );
     }
 }
