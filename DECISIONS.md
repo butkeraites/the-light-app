@@ -2040,3 +2040,158 @@ paridade com o nativo. `tsc --noEmit` 0 + `expo export --platform web` 0.
 - Offline-first/BYOK: sem chave/sessão, o app segue 100% offline; a IA web é **opt-in** e a
   **única** rede em runtime é o `fetch` ao provedor, com a chave session-only (nunca em git/log).
 - Depende de ADR-0024 (`ai-pure`), ADR-0023 (D2 transporte / D3 chave), ADR-0011 (infra TS no web).
+
+## ADR-0026 — Dados de léxico (DADOS): `original_tokens`/`lexicon`/`scholarly_sources` populadas pelo `xtask import-scholarly` canônico (STEP Bible / STEPBible-Data, CC BY 4.0) + atribuição obrigatória + pipeline alinhado ao rev `c8ecb2f` + armazenamento gerar-ignorado
+
+- **Data:** 2026-07-01 · **Status:** aceito · **Tarefa:** F3.1 · **Depende:** ADR-0002, ADR-0013, ADR-0016
+
+### Contexto
+A F3.1 abre a **Fase 3** (estudo profundo) populando as tabelas de **léxico** do
+`assets/data/bible.sqlite` (gerado pela F1.1, ADR-0013; xrefs pela F1.7, ADR-0016):
+**`original_tokens`** (tokens de língua original OT+NT + número de Strong por
+palavra), **`lexicon`** (glosas breves TBESH/TBESG por Strong) e
+**`scholarly_sources`** (atribuição das fontes). Como na F1.1/F1.7, a lógica de
+download/parse/insert vive **só** no `the-light` (aqui **no core** `scholarly.rs`,
+com um wrapper fino no member `xtask`): o subcomando **dedicado**
+`import-scholarly`, confirmado na fonte do rev pinado `c8ecb2f`
+(`xtask/src/main.rs`: `Some("import-scholarly") => scholarly_import::run(&args[1..])`;
+lógica em `crates/the-light-core/src/scholarly.rs`). Por isso o plano manda **rodar
+o importador canônico**, não reimplementá-lo (uma fonte da verdade;
+anti-alucinação). Estas tabelas fazem parte do **schema v2** do core (criadas por
+`Store::open`) e ficam **vazias** até esta importação — sem elas,
+`ai::lexicon::verified_lexicon` devolve **vazio** e o estudo declara "sem base
+léxica" (honesto, nunca inventa).
+
+**Licenciamento (correção importante):** o dado do core é **STEP Bible /
+STEPBible-Data — CC BY 4.0** (Tyndale House, Cambridge), **não** domínio público
+puro. A **numeração de Strong** é PD, mas os **tokens e glosas amalgamados**
+(TAHOT/TAGNT/TBESH/TBESG) são **CC-BY** → **atribuição obrigatória**. Só embarcamos
+**dados livres** (PD/CC0/CC-BY); a **denylist do core** (`scholarly.rs`:
+`sblgnt`/`morphgnt`/`louwnida`/`bdag`/`halot`) recusa fontes não-livres por código
+(defesa em profundidade).
+
+### Decisão
+
+1. **Popular `original_tokens`/`lexicon`/`scholarly_sources` rodando `xtask
+   import-scholarly` do rev pinado `c8ecb2f` — sem tocar o `the-light`.** O
+   `scripts/gen-bible-db.sh` (molde da F1.1/F1.7) foi **estendido**: **após** o
+   `import` (verses+FTS) e o `import-xref` (xrefs), roda o **`import-scholarly`** no
+   **mesmo** `--db assets/data/bible.sqlite` e um `--seed-dir` **dedicado**
+   (`.cache/seed/scholarly`), num **pipeline único** (evita o footgun de rodar
+   `import-scholarly` num `--db` inexistente):
+   - `CARGO_TARGET_DIR=.cache/xtask-target cargo run --quiet --locked
+     --manifest-path <checkout c8ecb2f>/xtask/Cargo.toml -- import-scholarly
+     --db assets/data/bible.sqlite --seed-dir .cache/seed/scholarly [$EXTRA]`.
+   - Mesmo isolamento da ADR-0013/0016: o `xtask` roda do **checkout do cargo**
+     (clone do GitHub gerenciado pelo cargo, independente do repo local protegido
+     `/Users/butkeraites/Documents/the-light`), com **`CARGO_TARGET_DIR` fora** do
+     checkout e **`--locked`** → **nenhum** artefato/lock escrito no source do
+     `the-light`. **Verificado:** `the-light` em `c8ecb2f`, working tree **limpo**,
+     **sem** `target/` no checkout, antes e depois.
+   - **Flags reais confirmadas na fonte** (`scholarly_import.rs::run`, parser
+     próprio): `--version <ids>` (lista por vírgula; **default = todos** os SPECS =
+     `scholarly::default_datasets()` = `tahot,tagnt,tbesh,tbesg`), `--db <path>`,
+     `--seed-dir <dir>`, `--force`, `--offline`. O script **não** passa `--version`
+     (importa os **quatro** conjuntos) e repassa só `--offline`/`--force` (ambos
+     válidos). Qualquer flag desconhecida → o xtask aborta.
+
+2. **Decisão de rev: alinhar o `gen-bible-db.sh` a `c8ecb2f`** (rev pinado pelo
+   app em `core/Cargo.toml`, ADR-0002). O script antes rodava o xtask do rev
+   `8f66004`; agora roda os **três** importadores (`import`, `import-xref`,
+   `import-scholarly`) do **mesmo** rev `c8ecb2f` → um pipeline **único** e coeso,
+   sem descasamento `8f66004`↔`c8ecb2f`. Seguro porque `import.rs` e
+   `xref_import.rs` são **byte-idênticos** entre `8f66004` e `c8ecb2f` (verificado
+   por `diff`); `c8ecb2f` só **acrescenta** o `import-scholarly` (feature do PR de
+   estudo/IA). `Store::open` aplica as migrações v2 idempotentemente, criando as
+   tabelas de léxico se faltarem.
+
+3. **Fonte (CC-BY) — URLs FIXADAS no core `scholarly.rs`, não parametrizáveis pelo
+   app.** Base `STEP_RAW =
+   https://raw.githubusercontent.com/STEPBible/STEPBible-Data/master`; homepage
+   `STEP_URL = https://github.com/STEPBible/STEPBible-Data`; `version =
+   "STEPBible-Data master"`. Quatro conjuntos (todos CC-BY, um parser TSV STEP):
+   **TAHOT** (Hebrew OT, 4 arquivos) e **TAGNT** (Greek NT) → `original_tokens`;
+   **TBESH** (léxico breve hebraico) e **TBESG** (léxico breve grego) → `lexicon`.
+   O core grava/lê os TSV no `<seed-dir>` e baixa por rede **só** se ausentes e
+   **sem** `--offline`. **Volume grande** (dezenas de MB de TSV brutos).
+   - **Anti-alucinação / licenciamento:** os tokens/glosas vêm **sempre** do
+     importador canônico sobre essa fonte CC-BY; **nenhum** dado hardcoded/inventado
+     no app; **nenhuma** fonte não-livre (a denylist do core recusa
+     `sblgnt`/`morphgnt`/`louwnida`/`bdag`/`halot`).
+
+4. **Atribuição CC-BY obrigatória (string verbatim, gravada no banco).** A licença
+   CC-BY exige crédito. A **string canônica** (`scholarly::ATTRIBUTION`), gravada em
+   `scholarly_sources.attribution` para **cada** conjunto e impressa ao final do
+   `import-scholarly`, é **verbatim**:
+   **`Credit it to 'STEP Bible' linked to www.STEPBible.org (data based on work at
+   Tyndale House, Cambridge; CC BY 4.0)`**. A tabela `scholarly_sources` tem coluna
+   `attribution` (diferente de `cross_references`, ADR-0016) → a atribuição fica
+   **no próprio banco**; a **exibição visível na UI** (léxico inline + crédito) é
+   responsabilidade da **F3.5**. License enforcement do core: só
+   `public-domain`/`cc0`/`cc-by*` são aceitos (as quatro fontes gravam `license =
+   cc-by`, `embeddable = 1`).
+
+5. **Idempotência.** No core, `import` faz **DELETE+reinsert por conjunto**
+   (`original_tokens`/`lexicon` por `source_id`) e **INSERT OR REPLACE** em
+   `scholarly_sources` → reimportar **não duplica**. **Verificado** rodando o
+   script **2×**: contagens **estáveis** — `original_tokens = 447673`, `lexicon =
+   22717`, `scholarly_sources = 4`; verses (`62203`) e cross_references (`344799`)
+   **intactos**.
+
+6. **Armazenamento: continua gerar-ignorado (ADR-0013 mantém-se).** O léxico só
+   **popula** tabelas que já existiam (vazias) no `bible.sqlite`. O banco cresceu de
+   ~62 MB (verses+xref) para **126.451.712 bytes** (~121 MB) com ~447,7k tokens +
+   ~22,7k entradas de léxico + índices. O `bible.sqlite` segue **artefato de build
+   IGNORADO** e o `seed-dir` (incl. `.cache/seed/scholarly/` com os TSV STEP)
+   **sempre ignorado** — `.gitignore` já cobre (`/assets/data/bible.sqlite*` +
+   `/.cache/`): **nenhuma** mudança de `.gitignore` foi necessária (verificado via
+   `git check-ignore`). **Não** se versiona o binário.
+
+### Verificação (lendo do banco, não hardcode)
+- **Guarda de drift no core:** `scholarly.rs` fixa pisos por conjunto (`tahot =>
+  300_000`, `tagnt => 100_000`, `tbesh|tbesg => 5_000`) — importar abaixo **aborta**
+  (`"apenas N … (piso F); fonte incompleta?"`). Tratados como **guardas** (≳ N).
+- **Contagens observadas:** `original_tokens = 447673` (tahot 305577 + tagnt 142096,
+  ≳ 400.000), `lexicon = 22717` (tbesh 11682 + tbesg 11035, ≳ 20.000),
+  `scholarly_sources = 4` (tahot/tagnt/tbesh/tbesg, `license = cc-by`,
+  `embeddable = 1`, com a `attribution` STEP verbatim).
+- **Sanidade Gênesis 1:1:** `book_number=1 AND chapter=1 AND verse=1 AND strongs <>
+  ''` → **7** tokens com Strong (ex.: `H7225G`, `H1254A`, `H0430G` = אֱלֹהִים).
+- **Lookup de Strong conhecido (`lexicon`):** `H0430G` → lemma `אֱלֹהִים`, gloss
+  `God` (`source_id = tbesh`); `G2316` → lemma `θεός`, gloss `God` (`source_id =
+  tbesg`).
+
+### Alternativas rejeitadas
+- **Banco separado de léxico:** ❌ o léxico usa o **MESMO** `bible.sqlite`
+  (`original_tokens`/`lexicon`/`scholarly_sources` são schema v2 do core, lidas por
+  `ai::lexicon::verified_lexicon`); um DB à parte fragmentaria o corpus.
+- **Manter o script no rev `8f66004` e chamar o `import-scholarly` de `c8ecb2f`
+  separado:** ❌ dois revs no mesmo pipeline; alinhar tudo a `c8ecb2f` (rev do app)
+  é mais coeso e seguro (import/xref idênticos entre os revs).
+- **Reimplementar o parser TSV STEP no app:** ❌ viola "uma fonte da verdade"/
+  anti-alucinação — o core é o único que conhece o formato STEP + a guarda de drift
+  + a denylist de licença; mudar o core seria **PR + ADR** (ação humana).
+- **Apontar para uma fonte não-livre (SBLGNT/BDAG/HALOT/…):** ❌ recusado por código
+  (denylist do core) e por princípio (só dados livres PD/CC0/CC-BY).
+
+### Consequências
+- `./scripts/gen-bible-db.sh` (estendido) (re)gera o banco **completo** (verses +
+  FTS + xrefs + **léxico**) de forma **reprodutível** e **idempotente**, rodando o
+  `xtask import` + `import-xref` + `import-scholarly` do rev pinado `c8ecb2f`
+  **sem tocar** o `the-light`.
+- **Offline-first preservado:** a **única** rede é em **dev/build** (download dos
+  TSV STEP ~dezenas de MB para o seed-dir, **só na 1ª vez**; offline OK a partir da
+  2ª, com os TSV em cache). O app em **runtime não faz rede**. Nenhum segredo em
+  git/log.
+- **`the-light` intocado** (ADR-0002): rev `c8ecb2f`, working tree limpo; o `xtask`
+  roda do checkout do cargo com target/lock fora do source.
+- **Versionado nesta tarefa:** `scripts/gen-bible-db.sh` (rev `c8ecb2f` + passo
+  `import-scholarly`), `DECISIONS.md` (este ADR). **Gerado/IGNORADO:**
+  `assets/data/bible.sqlite` (agora com léxico), `.cache/seed/scholarly/*.txt`
+  (TSV STEP). **`.gitignore` inalterado** (já cobre ambos).
+- **Escopo:** F3.1 entrega **só os DADOS** (`original_tokens`/`lexicon`/
+  `scholarly_sources` no `bible.sqlite`). A **fronteira** de léxico
+  (`lexical_entries` → `ai::lexicon::verified_lexicon`) é **F3.2**; o **estudo
+  profundo** (`deep_study`/`study`) é **F3.3**; a **UI** com léxico inline +
+  **atribuição STEP CC-BY visível** + propagação ao subset `reading-sample.sqlite`
+  (bundling) é **F3.5**. Não antecipados aqui.

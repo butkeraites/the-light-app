@@ -1,8 +1,9 @@
 #!/usr/bin/env sh
 # gen-bible-db.sh — (re)gera assets/data/bible.sqlite (corpus COMPLETO: KJV + Almeida 1911
-# + referências cruzadas OpenBible/TSK) de forma REPRODUTÍVEL e IDEMPOTENTE, rodando os
-# IMPORTADORES CANÔNICOS (`xtask import` + `xtask import-xref`) do `the-light` no rev
-# PINADO 8f66004 (ADR-0002) — SEM modificar/forkar o `the-light`.
+# + referências cruzadas OpenBible/TSK + dados de LÉXICO STEPBible) de forma REPRODUTÍVEL
+# e IDEMPOTENTE, rodando os IMPORTADORES CANÔNICOS (`xtask import` + `xtask import-xref` +
+# `xtask import-scholarly`) do `the-light` no rev PINADO c8ecb2f (ADR-0002) — SEM
+# modificar/forkar o `the-light`.
 #
 # Anti-alucinação: o texto bíblico vem SEMPRE do importador sobre fontes de DOMÍNIO
 # PÚBLICO registradas no `SPECS` do xtask (kjv = scrollmapper KJV.json; alm1911 =
@@ -10,12 +11,20 @@
 # As referências cruzadas vêm SEMPRE do `import-xref` sobre a fonte CC-BY fixada no
 # xtask (OpenBible.info / TSK; XREF_URL = mirror raw do scrollmapper) — NUNCA xrefs
 # inventados/hardcoded. CC-BY exige atribuição (ver ADR-0016).
+# Os DADOS DE LÉXICO (tokens de língua original + glosas breves + números de Strong)
+# vêm SEMPRE do `import-scholarly` sobre a fonte CC-BY fixada no core `scholarly.rs`
+# (STEP Bible / STEPBible-Data: TAHOT/TAGNT/TBESH/TBESG; STEP_RAW = raw github do
+# STEPBible-Data) — NUNCA léxico inventado/hardcoded, NUNCA fonte não-livre (a denylist
+# do core recusa sblgnt/morphgnt/louwnida/bdag/halot). CC-BY exige atribuição, gravada
+# na tabela `scholarly_sources.attribution` e registrada em ADR-0026 (só dados livres).
 # Idempotência: `import_translation` apaga+reinsere as linhas de cada versão;
-# `import-xref` faz DELETE+reinsert da tabela `cross_references` (reimportar não duplica).
+# `import-xref` faz DELETE+reinsert da tabela `cross_references`; `import-scholarly` faz
+# DELETE+reinsert por conjunto (`original_tokens`/`lexicon` por `source_id`) e
+# INSERT OR REPLACE em `scholarly_sources` (reimportar não duplica).
 #
 # Offline-first é regra de RUNTIME: a única rede é em DEV/BUILD (download dos datasets
-# de domínio público + do TSV de xrefs ~8,3 MB para o seed-dir). O app em runtime NÃO
-# faz rede. Nenhum segredo.
+# de domínio público + do TSV de xrefs ~8,3 MB + dos TSV STEP do léxico ~dezenas de MB
+# para o seed-dir). O app em runtime NÃO faz rede. Nenhum segredo.
 #
 # Como NÃO toca o `the-light` (ADR-0013): roda o member `xtask` do CHECKOUT PINADO do
 # cargo (clone do GitHub gerenciado pelo cargo, independente do repo local protegido),
@@ -26,18 +35,22 @@
 # e IGNORADO no git (.gitignore); o seed-dir (datasets brutos) é SEMPRE ignorado.
 #
 # Uso:
-#   ./scripts/gen-bible-db.sh            # baixa (se preciso) e importa kjv + alm1911 + xrefs
-#   ./scripts/gen-bible-db.sh --force    # re-baixa os datasets/xrefs mesmo se já em cache
+#   ./scripts/gen-bible-db.sh            # baixa (se preciso) e importa kjv + alm1911 + xrefs + léxico
+#   ./scripts/gen-bible-db.sh --force    # re-baixa os datasets/xrefs/léxico mesmo se já em cache
 #   ./scripts/gen-bible-db.sh --offline  # falha em vez de baixar (usa só o cache do seed)
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/assets/data/bible.sqlite"
-SEED="$ROOT/.cache/seed"            # datasets brutos JSON baixados — SEMPRE ignorado
-TARGET="$ROOT/.cache/xtask-target"  # CARGO_TARGET_DIR fora do checkout — ignorado
+SEED="$ROOT/.cache/seed"                   # datasets brutos JSON baixados — SEMPRE ignorado
+SEED_SCHOLARLY="$ROOT/.cache/seed/scholarly" # TSV STEPBible brutos (léxico) — SEMPRE ignorado
+TARGET="$ROOT/.cache/xtask-target"          # CARGO_TARGET_DIR fora do checkout — ignorado
 
-# rev PINADO do the-light (mesmo consumido por core/Cargo.toml — ADR-0002).
-REV="8f66004"
+# rev PINADO do the-light (mesmo consumido por core/Cargo.toml — ADR-0002). Alinhado a
+# c8ecb2f (rev do app) p/ um pipeline único: verses + xref + léxico no MESMO rev pinado.
+# `import`/`import-xref` são byte-idênticos a 8f66004; c8ecb2f acrescenta
+# `import-scholarly` (dados de léxico STEP). Ver ADR-0026.
+REV="c8ecb2f"
 XTASK_MANIFEST="$HOME/.cargo/git/checkouts/the-light-9eb8809a6d68281a/$REV/xtask/Cargo.toml"
 
 # Repasse seletivo de flags conhecidas do `xtask import` (não aceita arbitrário).
@@ -59,7 +72,7 @@ if [ ! -f "$XTASK_MANIFEST" ]; then
   exit 1
 fi
 
-mkdir -p "$ROOT/assets/data" "$SEED" "$TARGET"
+mkdir -p "$ROOT/assets/data" "$SEED" "$SEED_SCHOLARLY" "$TARGET"
 
 # Roda o importador CANÔNICO do rev pinado. CARGO_TARGET_DIR fora do checkout +
 # --locked → nenhum artefato/lock é escrito no source do the-light.
@@ -81,5 +94,21 @@ CARGO_TARGET_DIR="$TARGET" cargo run --quiet --locked \
 CARGO_TARGET_DIR="$TARGET" cargo run --quiet --locked \
   --manifest-path "$XTASK_MANIFEST" -- \
   import-xref --db "$OUT" --seed-dir "$SEED" $EXTRA
+
+# Pipeline ÚNICO (3ª etapa): APÓS verses+FTS+xrefs, popula os DADOS DE LÉXICO no MESMO
+# --db com o subcomando DEDICADO `import-scholarly` do MESMO rev pinado. Mesmo padrão de
+# isolamento (checkout do cargo + CARGO_TARGET_DIR fora + --locked → the-light intocado).
+# Fonte CC-BY fixada no core `scholarly.rs` (STEP Bible / STEPBible-Data): SEM --version
+# importa os QUATRO conjuntos default = tahot,tagnt,tbesh,tbesg → popula `original_tokens`
+# (tokens OT+NT + Strong), `lexicon` (glosas breves TBESH/TBESG) e `scholarly_sources`
+# (atribuição CC-BY verbatim). Baixa os TSV STEP (~dezenas de MB) p/ o seed-dir na 1ª vez
+# e os reusa depois (offline OK a partir da 2ª vez). Guarda de drift no core: aborta se
+# abaixo dos pisos (tahot≥300k, tagnt≥100k, tbesh|tbesg≥5k; "fonte incompleta?").
+# `import` (no core) faz DELETE+reinsert por conjunto → idempotente (reimportar mantém as
+# contagens). Seed-dir DEDICADO ($SEED_SCHOLARLY) p/ não misturar com os JSON de verses.
+# shellcheck disable=SC2086
+CARGO_TARGET_DIR="$TARGET" cargo run --quiet --locked \
+  --manifest-path "$XTASK_MANIFEST" -- \
+  import-scholarly --db "$OUT" --seed-dir "$SEED_SCHOLARLY" $EXTRA
 
 echo "OK: $OUT"
