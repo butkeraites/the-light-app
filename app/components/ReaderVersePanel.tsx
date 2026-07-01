@@ -74,6 +74,7 @@ export function ReaderVersePanel({
   xrefError,
   bookNameOf,
   onSelectXref,
+  onAsk,
   onChanged,
   onClose,
 }: {
@@ -93,6 +94,8 @@ export function ReaderVersePanel({
   /** Nome do livro (p/ rótulos de xref e do export). */
   bookNameOf: (book: number) => string;
   onSelectXref: (ref: XrefReference) => void;
+  /** Abre o estudo assistido (IA) ancorado nesta passagem (F2.5). Opcional. */
+  onAsk?: () => void;
   /** Avisa a tela após criar/editar/remover nota ou highlight (re-lista indicadores). */
   onChanged: () => void;
   onClose: () => void;
@@ -278,6 +281,19 @@ export function ReaderVersePanel({
 
           {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
 
+          {/* ── ESTUDO ASSISTIDO (IA) — F2.5 ─────────────────────────────── */}
+          {onAsk ? (
+            <Pressable
+              style={[styles.btn, styles.btnAsk]}
+              onPress={onAsk}
+              testID="verse-ask"
+              accessibilityRole="button"
+              accessibilityLabel="Perguntar à IA sobre esta passagem"
+            >
+              <Text style={styles.btnText}>Perguntar (IA)</Text>
+            </Pressable>
+          ) : null}
+
           {/* ── EXPORTAR ─────────────────────────────────────────────────── */}
           <Pressable
             style={[styles.btn, styles.btnExport]}
@@ -378,6 +394,7 @@ function makeStyles(colors: ThemeColors) {
     btnPrimary: { backgroundColor: colors.chipActiveBg },
     btnGhost: { borderWidth: 1, borderColor: colors.border },
     btnExport: { borderWidth: 1, borderColor: colors.border, alignSelf: 'flex-start', marginTop: 8 },
+    btnAsk: { backgroundColor: colors.chipActiveBg, alignSelf: 'flex-start', marginTop: 12 },
     btnDisabled: { backgroundColor: colors.divider, opacity: 0.6 },
     btnText: { fontSize: 14, fontWeight: '600', color: colors.chipActiveText },
     btnGhostText: { color: colors.accent },

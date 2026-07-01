@@ -17,6 +17,7 @@ import { ReaderChapterView } from '../../../components/ReaderChapterView';
 import { ReaderParallelView } from '../../../components/ReaderParallelView';
 import { ReaderVersionPicker } from '../../../components/ReaderVersionPicker';
 import { ReaderVersePanel } from '../../../components/ReaderVersePanel';
+import { ReaderAskPanel } from '../../../components/ReaderAskPanel';
 import { ensureReadingDb } from '../../../lib/db';
 import { ensureUserDataDir } from '../../../lib/userdata';
 import { resolveHighlightColor } from '../../../lib/highlightColors';
@@ -62,6 +63,13 @@ export default function ChapterScreen() {
   const [parallel, setParallel] = useState(false);
   const [secondTranslation, setSecondTranslation] = useState<string | null>(null);
   const [secondaryPassage, setSecondaryPassage] = useState<Passage | null>(null);
+
+  // F2.5: caminho do banco só-leitura (resolvido uma vez) p/ o estudo assistido (IA)
+  // ancorado — o `ReaderAskPanel` recebe o `dbPath` p/ ler o `cited_text` do store.
+  const [dbPath, setDbPath] = useState<string | null>(null);
+  // F2.5: versículo alvo do painel de "Perguntar" (IA). Separado de `selectedVerse`
+  // para que a referência não se perca ao fechar o painel por-versículo.
+  const [askVerse, setAskVerse] = useState<number | null>(null);
 
   // F1.9: versículo selecionado + painel de referências cruzadas (xref). Os dados
   // vêm SEMPRE da fronteira `cross_refs` (F1.8) — sem SQL/ordenação/filtro em TS.
@@ -186,6 +194,24 @@ export default function ChapterScreen() {
       alive = false;
     };
   }, [selectedVerse, bookNumber, chapterNumber]);
+
+  // F2.5: resolve o caminho do banco só-leitura uma vez (p/ o estudo assistido de IA
+  // ancorar o `cited_text` no store). A leitura já resolve o mesmo caminho nos seus
+  // efeitos; aqui guardamos p/ passar ao `ReaderAskPanel`.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const path = await ensureReadingDb();
+        if (alive) setDbPath(path);
+      } catch {
+        // Sem banco → o estudo assistido fica indisponível; a leitura não regride.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // F1.11: resolve o diretório de userdata gravável uma vez (separado do banco
   // só-leitura). Sem ele, a leitura segue normal e as notas/highlights ficam off.
@@ -353,8 +379,32 @@ export default function ChapterScreen() {
         xrefError={xrefError}
         bookNameOf={bookNamePt}
         onSelectXref={openXref}
+        onAsk={() => {
+          // F2.5: abre o estudo assistido ancorado na MESMA passagem; fecha o painel
+          // por-versículo preservando a referência no `askVerse`.
+          setAskVerse(selectedVerse);
+          setSelectedVerse(null);
+        }}
         onChanged={() => void refreshUserData()}
         onClose={() => setSelectedVerse(null)}
+      />
+
+      {/* F2.5: estudo assistido (IA) ancorado na passagem. O texto CITADO (verbatim
+          do store) vem do retorno da fronteira `ask_anchored_stream` (F2.1/F2.3a) e é
+          exibido SEPARADO da interpretação (LLM) — anti-alucinação visível. A chave
+          BYOK é lida sob demanda pelo painel (mock não usa chave). */}
+      <ReaderAskPanel
+        visible={askVerse != null}
+        sourceLabel={
+          askVerse != null ? `${bookNamePt(bookNumber)} ${chapterNumber}:${askVerse}` : ''
+        }
+        reference={
+          askVerse != null ? `${bookNameEn(bookNumber)} ${chapterNumber}:${askVerse}` : ''
+        }
+        dbPath={dbPath}
+        translation={translation}
+        lang="pt"
+        onClose={() => setAskVerse(null)}
       />
     </View>
   );

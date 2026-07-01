@@ -23,6 +23,8 @@ import {
   addHighlight as addHighlightNative,
   removeHighlight as removeHighlightNative,
   listHighlights as listHighlightsNative,
+  askAnchored as askAnchoredNative,
+  askAnchoredStream as askAnchoredStreamNative,
 } from './native-generated/src/index';
 import type {
   Book,
@@ -32,9 +34,11 @@ import type {
   CrossRef,
   Note,
   Highlight,
+  AiAnswer,
+  AiTokenCallback,
 } from './native-generated/bindings/the_light_app_core';
 
-export type { Book, Passage, Translation, SearchHit, CrossRef, Note, Highlight };
+export type { Book, Passage, Translation, SearchHit, CrossRef, Note, Highlight, AiAnswer };
 
 /** 66 livros canônicos (PURO — `reference::BOOKS`, independe do banco). */
 export function listBooks(): Book[] {
@@ -166,4 +170,67 @@ export async function removeHighlight(dataDir: string, reference: string): Promi
 /** Lista todos os HIGHLIGHTS do usuário. */
 export async function listHighlights(dataDir: string): Promise<Highlight[]> {
   return listHighlightsNative(dataDir);
+}
+
+// ── ESTUDO ASSISTIDO ANCORADO (ask) — F2.5, fronteira F2.1/F2.3a ──────────────
+// Glue NATIVO da fronteira de IA (`ask_anchored`/`ask_anchored_stream`): delega às
+// funções geradas → JSI → a camada `ai` do the-light-core. NÃO reimplementa
+// prompt/RAG/citação/streaming em TS — TODO o pipeline (referência canônica →
+// passagem VERBATIM do store → contexto ancorado → provedor BYOK → interpretação)
+// vive no core (uma fonte da verdade). O `AiAnswer` retornado SEPARA `citedText`
+// (texto bíblico, verbatim do store — anti-alucinação) da `interpretation` (saída
+// do LLM/mock); o texto do versículo NUNCA vem do modelo.
+//
+// BYOK/offline-first: a `key` é ARGUMENTO (lida sob demanda do keystore pela UI) e
+// NUNCA é logada aqui; com `provider="mock"` não há chave nem rede (prova headless).
+// A paridade web de IA é a F2.7 (`reading.web.ts` = stub). Síncrono no JSI;
+// embrulhado em Promise p/ assinatura uniforme com o web.
+
+/**
+ * Pergunta ancorada (sem streaming): resposta completa de uma vez. `key`/`model`
+ * `undefined` no mock (o core usa o default). Delega ao binding gerado `askAnchored`.
+ */
+export async function askAnchored(
+  dbPath: string,
+  translation: string,
+  reference: string,
+  question: string,
+  provider: string,
+  key: string | undefined,
+  model: string | undefined,
+  lang: string,
+): Promise<AiAnswer> {
+  return askAnchoredNative(dbPath, translation, reference, question, provider, key, model, lang);
+}
+
+/**
+ * Pergunta ancorada com STREAMING: constrói o objeto `AiTokenCallback` (`{ onToken }`)
+ * que a fronteira invoca a CADA incremento da interpretação (o mock emite a resposta
+ * inteira 1×; provedores reais fazem SSE na F2.6), e devolve o `AiAnswer` final. Os
+ * tokens são da INTERPRETAÇÃO (LLM), nunca do texto bíblico (que viaja separado, do
+ * store, em `citedText`). Delega ao binding gerado `askAnchoredStream`.
+ */
+export async function askAnchoredStream(
+  dbPath: string,
+  translation: string,
+  reference: string,
+  question: string,
+  provider: string,
+  key: string | undefined,
+  model: string | undefined,
+  lang: string,
+  onToken: (token: string) => void,
+): Promise<AiAnswer> {
+  const callback: AiTokenCallback = { onToken };
+  return askAnchoredStreamNative(
+    dbPath,
+    translation,
+    reference,
+    question,
+    provider,
+    key,
+    model,
+    lang,
+    callback,
+  );
 }

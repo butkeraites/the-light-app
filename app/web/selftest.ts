@@ -25,6 +25,11 @@ import { runXrefSelfTest } from './xref-selftest';
 // nativo/web por extensão — no web, `notes-selftest.web.ts` é um SKIP (notas web =
 // F1.16), mantendo o bundle web sem `expo-file-system`/userdata.
 import { runNotesSelfTest } from './notes-selftest';
+// F2.5: prova de ESTUDO ASSISTIDO ANCORADO (ask + streaming) no device (marcador
+// TLA_ASK, provider="mock", sem chave/rede). Par nativo/web por extensão — no web,
+// `ask-selftest.web.ts` é um SKIP (IA web = F2.7), mantendo o bundle web sem a camada
+// `ai`/o banco bundled.
+import { runAskSelfTest } from './ask-selftest';
 
 // Marcador (prefixo grep-ável). console.error garante o nível alto no log
 // unificado; console.log o complementa. O script assere o texto exato.
@@ -75,5 +80,9 @@ export async function runReferenceSelfTest(): Promise<void> {
   // F1.11: prova de NOTAS/HIGHLIGHTS + PERSISTÊNCIA (put/get/list + 2ª leitura
   // independente do disco) via a fronteira userdata. Emite TLA_NOTES.
   await runNotesSelfTest();
+  // F2.5: prova de ESTUDO ASSISTIDO ANCORADO (pergunta→streaming→AiAnswer) via a
+  // fronteira `ask_anchored_stream` com o provedor "mock" (offline, sem chave). Emite
+  // TLA_ASK (cited_text verbatim do store SEPARADO da interpretação do mock).
+  await runAskSelfTest();
   console.log(`${MARK} DONE`);
 }

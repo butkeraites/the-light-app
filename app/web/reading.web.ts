@@ -42,6 +42,7 @@ import type {
   CrossRef,
   Note,
   Highlight,
+  AiAnswer,
 } from './generated/the_light_app_core';
 import {
   composeChapterPassage,
@@ -64,7 +65,7 @@ import {
 } from './userdata-fs.web';
 import { openUserDataWeb } from './userdata-opfs.web';
 
-export type { Book, Passage, Translation, SearchHit, CrossRef, Note, Highlight };
+export type { Book, Passage, Translation, SearchHit, CrossRef, Note, Highlight, AiAnswer };
 
 /**
  * 66 livros canônicos (PURO — `reference::BOOKS`), do RUST (wasm). SÍNCRONO, como
@@ -244,4 +245,39 @@ export async function removeHighlight(_dataDir: string, reference: string): Prom
 export async function listHighlights(_dataDir: string): Promise<Highlight[]> {
   const dir = await openUserDataWeb();
   return listHighlightsFs(dir);
+}
+
+// ── ESTUDO ASSISTIDO ANCORADO (ask) — STUB web (F2.7) ────────────────────────
+// A IA no web (streaming/ask sobre wasm) é a F2.7. Aqui mantemos a MESMA assinatura
+// do glue nativo (`reading.ts`) por paridade, mas lançamos um erro explícito: NÃO
+// ligamos IA ao wasm nesta tarefa (evita arrastar `ai`/rede ao grafo web e mantém o
+// contrato claro). O texto bíblico continua vindo do store (leitura web = F1.13+);
+// só o estudo assistido (LLM) está adiado.
+const AI_WEB_UNAVAILABLE = 'IA (estudo assistido) disponível no web na F2.7.';
+
+export async function askAnchored(
+  _dbPath: string,
+  _translation: string,
+  _reference: string,
+  _question: string,
+  _provider: string,
+  _key: string | undefined,
+  _model: string | undefined,
+  _lang: string,
+): Promise<AiAnswer> {
+  throw new Error(AI_WEB_UNAVAILABLE);
+}
+
+export async function askAnchoredStream(
+  _dbPath: string,
+  _translation: string,
+  _reference: string,
+  _question: string,
+  _provider: string,
+  _key: string | undefined,
+  _model: string | undefined,
+  _lang: string,
+  _onToken: (token: string) => void,
+): Promise<AiAnswer> {
+  throw new Error(AI_WEB_UNAVAILABLE);
 }
