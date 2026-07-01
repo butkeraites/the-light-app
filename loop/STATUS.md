@@ -4,7 +4,7 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-07-01 09:40 UTC · Estado do loop: **▶️ ATIVO — Fase 2 (IA BYOK + Gemini) DECOMPOSTA em `backlog/PHASE-2.md` (F2.1–F2.8; 3 paradas: gate estratégico F2.2, bloqueante-chave F2.6, Marco 2 F2.8). 1ª tarefa `F2.1` SEMEADA na `queue/` (ready, gate:false, deps:[]) — pergunta ancorada na fronteira + MOCK, testável por host SEM chave/rede. Próximo ciclo o executor a implementa.** Corpus completo (~59 MB) permanece backlog transversal.
+Última atualização: 2026-07-01 13:55 UTC · Estado do loop: **⛔ AGUARDANDO GATE — F2.1 aceita (`357abca`). A próxima elegível é o GATE estratégico `F2.2` (gate:true, deps:[F2.1] aceita): arquitetura da IA da Fase 2 — D1 onde vive o Gemini · D2 IA no web · D3 chave web · D4 streaming. O Planner redigiu o BRIEF DE DECISÃO em `loop/queue/F2.2-gate-arquitetura-ia.task.md`; o Driver aplica a REGRA DE GATE e escreve `loop/HALT` p/ sign-off humano. Decidido → ADR-0023 + re-escopo de F2.3/F2.4/F2.7.** Corpus completo (~59 MB) permanece backlog transversal.
 Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **INVESTIGAÇÃO DO CORE (8f66004):** o `the-light-core` **JÁ TEM** módulo `ai` COMPLETO (`LlmProvider`/`MockLlmProvider`/`build_provider(name,key,model)`/`ask`/`ask_context`/`numbered_passage`/`citation`) porém **`#[cfg(feature="embedded")]`** → **só nativo** (web/wasm não tem IA, como store/xref — ADR-0005); **Gemini NÃO existe** (`PROVIDERS=["anthropic","openai","ollama"]`) → adicioná-lo é decisão da F2.2 (PR ao core vs. impl local na fronteira). **Fase 2 = IA opt-in aditiva:** Fase 1 segue 100% offline sem IA; texto do versículo **sempre do store** (o LLM só interpreta); chave do usuário **nunca em git/log**; rede só para a IA com a chave. `the-light` intocado (`8f66004`). Diretriz do Driver: seguir até um **ponto bloqueante** (gate F2.2, blocked por chave F2.6, falha persistente, ou conflito com regra não negociável). Próximo ADR livre = **ADR-0023**.
 
 ## Fase 0 — Prova da ponte Rust → Expo
@@ -69,7 +69,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **INVESTIGAÇÃO DO CORE (8f6
 | ID | Tarefa | Estado | Depende de | Resultado |
 |----|--------|--------|------------|-----------|
 | F2.1 | Pergunta ancorada (`ask`) na fronteira (nativo) + MOCK + anti-alucinação | ✅ aceito | — | passed (357abca) — ask_anchored→ai::ask; cited_text do store, interpretation do mock; 37 testes; web puro |
-| F2.2 | **GATE estratégico** (⛔): arquitetura da IA (Gemini · web · chave web · streaming) | ⬜ backlog | F2.1 | ADR-0023; decide onde vive Gemini + IA no web |
+| F2.2 | **GATE estratégico** (⛔): arquitetura da IA (Gemini · web · chave web · streaming) | 🟡 ready ⛔ gate | F2.1 | BRIEF em `queue/`; HALT p/ sign-off → ADR-0023 (D1 Gemini · D2 IA web · D3 chave web · D4 streaming) |
 | F2.3 | Provedor Gemini (per F2.2: impl local na fronteira vs PR ao core) | ⬜ backlog | F2.2 | prova por MOCK (corpo/parse puros, sem rede) |
 | F2.4 | Gestão segura de chaves (BYOK) nativa — `expo-secure-store` | ⬜ backlog | F2.2 | Keychain/Keystore; chave nunca logada |
 | F2.5 | UI nativa: `ask` ancorado (provedor/modelo + custo + citado/interpretação) | ⬜ backlog | F2.1, F2.3, F2.4 | prova por MOCK no device (`TLA_ASK`) |
