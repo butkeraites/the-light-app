@@ -1,0 +1,41 @@
+# ⛔ HALT — aguardando sign-off humano do MARCO 2 (F2.8)
+
+Escrito pelo Driver em 2026-07-01. Motivo: **marco** (tarefa `gate: true`) —
+encerramento da Fase 2 precisa de **aprovação humana**, não de execução autônoma.
+
+## O que travou
+**A Fase 2 (IA BYOK ancorada) está FUNCIONALMENTE COMPLETA e verde.** Todas as tarefas
+(F2.1–F2.7b) foram implementadas, revisadas de forma independente e aceitas. A próxima é o
+**Marco 2 (F2.8)**, que o PROTOCOL manda **PARAR** para sign-off.
+
+Relatório completo: `loop/queue/F2.8-marco-2.task.md`.
+
+## Resumo (IA BYOK, opcional e aditiva, anti-alucinação, nativo + web)
+- **`ask` ancorado** na fronteira + streaming (callback UniFFI): F2.1/F2.3a.
+- **Gemini + streaming** no core (PR sancionado → `133077a`): F2.3.
+- **Chave BYOK nativa** (Keychain via expo-secure-store): F2.4.
+- **UI nativa de `ask`** (streaming + citado/interpretação): F2.5.
+- **Validação REAL** com a sua chave (Gemini `gemini-2.5-flash`): F2.6 — `cited_text` =
+  João 3:16 do store + interpretação real do Gemini.
+- **IA no web** (`ai-pure` wasm p/ prompt/citação + `fetch`; chave session-only; PR
+  sancionado → `c8ecb2f`): F2.7/F2.7b — **zero drift** nativo↔web.
+
+## Regras não negociáveis — mantidas
+- BYOK / chave nunca em git/log (Keychain nativo; session-only web). **Login-de-conta OAuth
+  REJEITADO** por pesquisa (banido/indisponível nos 3 provedores; ADR-0023) → só API key.
+- Anti-alucinação: `cited_text` sempre do store; o LLM só interpreta; `citation` = mesma
+  impl Rust nativo↔web (zero drift).
+- Offline-first (IA opt-in; Fase 1 segue offline; rede só no fetch com a chave).
+- `the-light` só via PR+ADR (2 PRs sancionados, mergeados por você + re-pin; nunca forkado;
+  wasm puro). Qualidade por tarefa verde + review independente.
+
+## O que o sign-off decide
+1. Aprovar a Fase 2 (IA BYOK ancorada, multiplataforma)?
+2. Próximo rumo: **Fase 3** (estudo profundo: léxico Strong/pesquisa — o core já tem
+   `ai::study`/`lexicon`/`research`) · **streaming web real** · **corpus completo web
+   (~59 MB)** · outra prioridade?
+
+## Como retomar
+Aprovar → o Driver registra o sign-off, arquiva a F2.8, **remove este `loop/HALT`** e o
+`planner` decompõe a próxima fase/prioridade escolhida. Enquanto não houver sign-off, o loop
+permanece PARADO. Nada foi improvisado.
