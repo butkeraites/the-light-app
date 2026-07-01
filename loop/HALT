@@ -1,0 +1,40 @@
+# ⛔ HALT — F2.6: validação REAL do `ask` precisa da SUA chave BYOK (segredo + rede)
+
+Escrito pelo Driver em 2026-07-01. Motivo: **tarefa que precisa de segredo + rede opt-in**
+(`gate: true`, `needs_secret: true`). A chave da IA é um **segredo** — NUNCA pode entrar no
+chat, no git nem em log. Por isso a validação é **sua**, com a chave numa **env var** do
+seu terminal; o loop recebe só o **resultado**.
+
+## O que já está pronto
+Toda a cadeia de IA nativa está implementada e provada por MOCK:
+- Fronteira `ask_anchored`/`ask_anchored_stream` (F2.1/F2.3a); GeminiProvider no core (F2.3, `133077a`).
+- UI nativa de `ask` com streaming + anti-alucinação visível (F2.5; `TLA_ASK` mock verde).
+- Keystore BYOK nativo (F2.4).
+- **Harness de host** `core/examples/ask_real.rs` — compila offline, fmt/clippy limpos,
+  **não imprime a chave**.
+
+## O que você faz (a chave fica só na env var — nunca no chat/git/log)
+No repo `/Users/butkeraites/Documents/the-light-app`, no seu terminal (ou `! <cmd>`):
+
+```
+AI_PROVIDER=gemini AI_API_KEY="<sua-chave>" \
+  cargo run --manifest-path core/Cargo.toml --example ask_real
+```
+(ou `AI_PROVIDER=anthropic`/`openai` com a chave do provedor; opcional
+`AI_MODEL=gemini-2.0-flash`, `AI_QUESTION="..."`.)
+
+Confirme:
+1. Vem uma **interpretação REAL** do provedor (não a do mock).
+2. O **CITED_TEXT** é **João 3:16 verbatim do STORE** (anti-alucinação).
+3. Nenhum erro; a chave não apareceu no output.
+
+## Como retomar
+Me reporte: **qual provedor + "funcionou"** (e, se quiser, o texto da interpretação) —
+**sem colar a chave**. Aí eu marco F2.6 aceita e sigo para **F2.7** (paridade web de IA,
+que começa pelo PR D2/wasm ao core) → **F2.8 (Marco 2)**.
+
+Se der erro (auth/quota/modelo/billing), me passe a **mensagem de erro** (o harness não
+imprime a chave) que eu ajusto num ciclo focado ou proponho provedor alternativo.
+
+Regras intactas: chave nunca em git/log; anti-alucinação; offline-first (IA opt-in);
+`the-light` só via PR+ADR. Nada foi improvisado.
