@@ -1852,3 +1852,68 @@ A F1.16 dá **paridade web de NOTAS/MARCAÇÕES (userdata) + EXPORT**, fechando 
 - **Offline-first:** OPFS local num `data_dir` web próprio (gravável, separado do subset só-leitura); zero rede em runtime; sem SharedArrayBuffer/COOP-COEP (APIs OPFS de arquivo inteiro na main thread). `expo export --platform web` sai 0; `tsc --noEmit` limpo.
 - **Sem regressão:** leitura/busca/xref web (`reading.web.test.mjs`/`search.web.test.mjs`/`xref.web.test.mjs` verdes) e caminho NATIVO (`core/src/lib.rs`/`app/web/reading.ts`/`app/lib/userdata.ts`/selftests nativos intactos; the-light em `8f66004`, working tree limpo); `core/` não modificado.
 - **ÚLTIMA paridade web da Fase 1:** com leitura/busca/xref/userdata no web, a F1.17 (Marco 1, `gate: true`) fica elegível → o loop PARA (HALT) para sign-off humano (leitura offline completa multiplataforma).
+
+## ADR-0023 — Gate F2.2: arquitetura da IA — Gemini/IA-web via PR ao core, BYOK **API key** (login-de-conta REJEITADO por pesquisa), streaming
+
+- **Data:** 2026-07-01 · **Status:** aceito (sign-off humano no gate F2.2) · **Tarefa:** F2.2 (gate estratégico) · **Depende:** ADR-0005 (precedente PR sancionado ao the-light p/ feature-gating), ADR-0011 (infra em TS no web), F2.1 (`ask_anchored` + mock) · **Habilita:** F2.3–F2.8
+
+### Contexto
+A F2.1 provou `ask_anchored` na fronteira delegando ao módulo `ai` do `the-light-core`
+(provider **mock**, anti-alucinação: `cited_text` do store vs `interpretation` do LLM).
+O core tem `LlmProvider` (público), `build_provider(name, key, model)`, providers
+`anthropic`/`openai`/`ollama` — mas **não Gemini** — e todo o módulo `ai` é
+`#[cfg(feature="embedded")]` (nativo-only; `reqwest::blocking` + `research::WebSource`
+não compilam em wasm). O gate F2.2 decidiu 4 pontos de arquitetura.
+
+### Decisões
+- **D1 — Onde vive o Gemini = PR ao `the-light-core`.** Adicionar `GeminiProvider:
+  LlmProvider` + entradas em `PROVIDERS`/`default_model`/`estimate_cost_usd`, via
+  **PR + ADR sancionados** (precedente ADR-0005). Fonte única (CLI/TUI também ganham).
+  Consequência de processo: mudança no the-light é ação outward — implementada em
+  branch, **push+merge é do humano**, seguida de **re-pin** do rev (molde F0.6).
+- **D2 — IA no web = PR ao core (partes puras no wasm).** Desacoplar `ai::study`/
+  `ai::citation` de `super::research::WebSource` (que puxa `reqwest`) para que a
+  montagem de prompt/RAG/citação compile em `wasm32`; a chamada HTTP ao provedor no
+  web é feita via `fetch` (infra, precedente ADR-0011), mas o **anti-alucinação
+  (prompt+citação) fica numa ÚNICA impl Rust** compartilhada nativo/web (sem drift).
+- **D3 — Autenticação = BYOK **API key** indolor (login-de-conta REJEITADO).**
+  Fluxo guiado: colar a key 1×, guardada em **Keychain/Keystore** via
+  `expo-secure-store` (nativo; F2.4), nunca re-inserida, nunca em git/log; deep-link
+  p/ a página de key de cada provedor. **Login-de-conta (OAuth) foi investigado e
+  REJEITADO** — ver "Pesquisa" abaixo.
+- **D4 — Streaming (tokens incrementais).** A fronteira expõe a resposta da IA em
+  streaming (callback/observer sobre UniFFI/JSI) — melhor UX; o `AiAnswer`
+  não-streaming da F2.1 permanece como caminho simples/base.
+
+### Pesquisa que fundamentou D3 (rejeição do login-de-conta) — 2026
+Login com a conta do usuário para **inferência** não é oferecido por nenhum dos três e
+é **ativamente banido** em dois (com risco de banir a conta do próprio usuário):
+- **OpenAI "Sign in with ChatGPT":** OAuth **só de identidade**; não libera uso de
+  modelo na assinatura; em abr/2026 só no Codex. API exige **key** (faturamento à parte).
+- **Anthropic (Claude):** **banido** (enforcement server-side desde 9/jan/2026);
+  tokens OAuth de planos de consumidor só valem no Claude Code/Claude.ai — usar em app
+  de terceiros **viola os Termos**. Oficial = **API key** (console.anthropic.com).
+- **Google (Gemini):** **banido** (fev/2026, detecção 25/mar/2026); contas reais
+  (incl. Ultra) perderam acesso. "Sign in with Google" = **só identidade**. Oficial =
+  **API key** (ou Vertex AI pago pelo desenvolvedor).
+→ Construir login-de-conta arriscaria **banir a conta do usuário** e violaria ToS.
+BYOK **API key** é o único caminho oficial/seguro p/ Claude+GPT+Gemini.
+
+### Alternativas rejeitadas (D3)
+- **Login-de-conta (OAuth p/ inferência):** ❌ indisponível/banido (acima).
+- **Backend gerenciado (o app chama a IA):** ❌ quebra offline-first/BYOK, custo de
+  servidor + privacidade; seria um pivô de produto com gate/ADR próprio.
+- **Ollama-only:** registrado como opção futura (zero-key/offline; pesado em celular)
+  — não bloqueia o BYOK-key de nuvem.
+
+### Consequências / próximos passos
+- **the-light muda (D1+D2) só via PR+ADR:** implementação em branch no repo `the-light`
+  (autorizado), **push+merge pelo humano**, **re-pin** do rev — é um ponto de handoff
+  (bloqueante) quando a tarefa da fronteira depender do core novo.
+- **Re-escopo:** F2.3 = GeminiProvider no core (PR, D1) · F2.4 = chave nativa
+  `expo-secure-store` (D3; app-side, não-bloqueante) · a fronteira ganha **streaming**
+  (D4) · F2.7 = IA web via o core wasm-safe (D2) + `fetch`. Prova sempre por **MOCK**
+  no CI; a IA real com a chave do usuário é F2.6 (bloqueante).
+- **Anti-alucinação preservada em todas as opções:** texto do versículo sempre do
+  store local; o LLM só interpreta; `cited_text` (store) separado de `interpretation`.
+- **`loop/HALT` removido** (motivo do gate resolvido); loop retomado.
