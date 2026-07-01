@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-07-01 04:20 UTC · Estado do loop: **▶️ ATIVO (RETOMADO) — MARCO 1 APROVADO por sign-off humano: Fase 1 completa nos 3 alvos; Fase 2 (IA BYOK + Gemini) LIBERADA; `loop/HALT` removido. Queue vazia → próximo ciclo o planner DECOMPÕE a Fase 2 em `backlog/PHASE-2.md` e semeia a 1ª tarefa.** Corpus completo (~59 MB) permanece backlog transversal.
-Heartbeat: ver `HEARTBEAT` · HALT: **ausente (Marco 1 resolvido)** · **F1.17 APROVADO** (sign-off humano; Fase 1 completa) · **Fase 2 = IA BYOK + Gemini** (estudo assistido; offline-first e anti-alucinação preservados — o texto vem do store, o LLM só interpreta; chave do usuário, nunca em git/log). `the-light` intocado (`8f66004`). Diretriz do Driver: seguir até um **ponto bloqueante** (blocked por decisão/chave/ferramenta, falha persistente, ou conflito com regra não negociável).
+Última atualização: 2026-07-01 09:40 UTC · Estado do loop: **▶️ ATIVO — Fase 2 (IA BYOK + Gemini) DECOMPOSTA em `backlog/PHASE-2.md` (F2.1–F2.8; 3 paradas: gate estratégico F2.2, bloqueante-chave F2.6, Marco 2 F2.8). 1ª tarefa `F2.1` SEMEADA na `queue/` (ready, gate:false, deps:[]) — pergunta ancorada na fronteira + MOCK, testável por host SEM chave/rede. Próximo ciclo o executor a implementa.** Corpus completo (~59 MB) permanece backlog transversal.
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **INVESTIGAÇÃO DO CORE (8f66004):** o `the-light-core` **JÁ TEM** módulo `ai` COMPLETO (`LlmProvider`/`MockLlmProvider`/`build_provider(name,key,model)`/`ask`/`ask_context`/`numbered_passage`/`citation`) porém **`#[cfg(feature="embedded")]`** → **só nativo** (web/wasm não tem IA, como store/xref — ADR-0005); **Gemini NÃO existe** (`PROVIDERS=["anthropic","openai","ollama"]`) → adicioná-lo é decisão da F2.2 (PR ao core vs. impl local na fronteira). **Fase 2 = IA opt-in aditiva:** Fase 1 segue 100% offline sem IA; texto do versículo **sempre do store** (o LLM só interpreta); chave do usuário **nunca em git/log**; rede só para a IA com a chave. `the-light` intocado (`8f66004`). Diretriz do Driver: seguir até um **ponto bloqueante** (gate F2.2, blocked por chave F2.6, falha persistente, ou conflito com regra não negociável). Próximo ADR livre = **ADR-0023**.
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -54,10 +54,34 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente (Marco 1 resolvido)** · **F1.17 A
 | F1.16 | Paridade web: notas/marcações + export | ✅ aceito | F1.12, F1.11 | passed (7557f0e) — notas/highlights web em OPFS; WEB_NOTES persisted=true; export idêntico; ADR-0022 |
 | F1.17 | **Marco 1** (⛔ gate): leitura offline completa, multiplataforma | ✅ **APROVADO** | F1.4, F1.6, F1.9, F1.11, F1.13–F1.16 | sign-off humano — **Fase 1 completa nos 3 alvos**; Fase 2 liberada; HALT removido |
 
+## Fase 2 — Camada de IA BYOK (Claude · GPT · Gemini · `ask` ancorado)
+
+> Decomposta em `loop/backlog/PHASE-2.md`. **IA OPCIONAL e ADITIVA:** a Fase 1
+> segue 100% offline sem IA; a IA só liga com a **chave do usuário** (nunca em
+> git/log). **Anti-alucinação:** o texto do versículo vem **sempre do store
+> local** (verbatim); o LLM só interpreta. Padrão (herdado da Fase 1): fronteira
+> nativa + teste de host com **MOCK** → gate estratégico F2.2 → chave+UI nativa →
+> validação real (chave, bloqueante) → paridade web (per decisão) → Marco 2.
+> Só **F2.1** está semeada; as demais entram conforme as deps forem aceitas (F2.3+
+> dependem da decisão da F2.2). **Investigação do core:** `ai` existe mas é
+> `embedded`-only (só nativo); **Gemini não existe** (a criar — onde vive = F2.2).
+
+| ID | Tarefa | Estado | Depende de | Resultado |
+|----|--------|--------|------------|-----------|
+| F2.1 | Pergunta ancorada (`ask`) na fronteira (nativo) + MOCK + anti-alucinação | ✅ aceito | — | passed (357abca) — ask_anchored→ai::ask; cited_text do store, interpretation do mock; 37 testes; web puro |
+| F2.2 | **GATE estratégico** (⛔): arquitetura da IA (Gemini · web · chave web · streaming) | ⬜ backlog | F2.1 | ADR-0023; decide onde vive Gemini + IA no web |
+| F2.3 | Provedor Gemini (per F2.2: impl local na fronteira vs PR ao core) | ⬜ backlog | F2.2 | prova por MOCK (corpo/parse puros, sem rede) |
+| F2.4 | Gestão segura de chaves (BYOK) nativa — `expo-secure-store` | ⬜ backlog | F2.2 | Keychain/Keystore; chave nunca logada |
+| F2.5 | UI nativa: `ask` ancorado (provedor/modelo + custo + citado/interpretação) | ⬜ backlog | F2.1, F2.3, F2.4 | prova por MOCK no device (`TLA_ASK`) |
+| F2.6 | **Validação real** (⛔): `ask` real com a chave do usuário (Claude/GPT/Gemini) | ⬜ backlog | F2.5 | BLOQUEANTE (chave real/segredo) → HALT |
+| F2.7 | Paridade web de IA (per F2.2 — possivelmente adiada) | ⬜ backlog | F2.2, F2.5 | conforme a decisão da F2.2 |
+| F2.8 | **Marco 2** (⛔ gate): IA BYOK ancorada com Claude/GPT/Gemini | ⬜ backlog | F2.5, F2.6, F2.7 | HALT p/ sign-off humano |
+
 ## Fases seguintes
 
-F2 (IA BYOK + Gemini), F3 (estudo profundo), F4 (refino) — ver
-`IMPLEMENTATION_PLAN.md`. Serão decompostas em `backlog/` conforme a Fase 1 fechar.
+F3 (estudo profundo: modos×lentes×profundidades, `ask_session`, comparação
+multi-IA, export SBL), F4 (refino) — ver `IMPLEMENTATION_PLAN.md`. Serão
+decompostas em `backlog/` conforme a Fase 2 fechar.
 
 ## Log de ciclos
 
