@@ -102,7 +102,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **F3.2 elegível** (ready, ga
 | ID | Tarefa | Estado | Depende de | Resultado |
 |----|--------|--------|------------|-----------|
 | F3.1 | Dados de léxico (xtask import-scholarly: TAHOT/TAGNT + TBESH/TBESG, STEP Bible CC-BY 4.0) no bible.sqlite | ✅ aceito | — | passed (1e3892e) — original_tokens 447673 / lexicon 22717 / 4 fontes cc-by; ADR-0026 |
-| F3.2 | Fronteira de léxico (core, nativo): `lexical_entries` → `ai::lexicon::verified_lexicon` | 🟡 ready | F3.1 | — |
+| F3.2 | Fronteira de léxico (core, nativo): `lexical_entries` → `ai::lexicon::verified_lexicon` | ✅ aceito | F3.1 | passed (7f469d4) — Gn 1:1 H0430/God; 48 testes; web puro |
 | F3.3 | Fronteira de estudo profundo (core, nativo): `deep_study` → `ai::study::study` → StudyResult; MOCK | ⬜ backlog | F3.2 | — |
 | F3.4 | Fronteira de conversa/refinamento (pura, nativo+web): `ask_session`/`refine_scope`; MOCK | ⬜ backlog | F3.3 | — |
 | F3.5 | UI nativa: painel de estudo profundo (modos×lentes×profundidades + léxico inline + citações) + STEP CC-BY; MOCK | ⬜ backlog | F3.2, F3.3 | — |
