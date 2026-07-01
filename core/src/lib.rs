@@ -1288,6 +1288,155 @@ pub fn ask_anchored(
     }
 }
 
+/// Callback de **streaming de tokens** da interpretação (D4), na fronteira UniFFI.
+///
+/// Interface de callback exportada via `#[uniffi::export(callback_interface)]`: a UI
+/// (Expo/nativo) fornece uma implementação **do lado foreign**, e o Rust a invoca a
+/// cada incremento de texto durante [`ask_anchored_stream`]. A assinatura
+/// (`token: String`) é compatível com UniFFI/JSI (o `ubrn` gera o wrapper).
+///
+/// **Anti-alucinação:** os tokens transmitidos são **da interpretação do modelo**
+/// (a saída do LLM/mock), **nunca** do texto bíblico — este vem do store e viaja
+/// separado, verbatim, em [`AiAnswer::cited_text`]. `Send + Sync` porque a
+/// implementação foreign atravessa a fronteira e pode ser chamada de outra thread.
+#[uniffi::export(callback_interface)]
+pub trait AiTokenCallback: Send + Sync {
+    /// Recebe **um incremento** (token/chunk) da interpretação. Com o default de
+    /// streaming do core, é chamado **uma vez** com a resposta inteira; provedores
+    /// de rede reais (F2.6) o chamam múltiplas vezes (SSE).
+    fn on_token(&self, token: String);
+}
+
+/// **Pergunta ancorada com streaming** (`ask` + D4), delegando à camada de IA do
+/// `the-light-core` (RAG leve, BYOK) e transmitindo a interpretação por
+/// [`AiTokenCallback`].
+///
+/// Monta o **mesmo contexto ancorado** de [`ask_anchored`] (passagem **verbatim do
+/// store** via `EmbeddedSource::passage` → `ai::numbered_passage` → `ai::ask_context`)
+/// e então chama `LlmProvider::complete_stream(system, user, on_token)` do core em vez
+/// de `ai::ask`. O **default do core** de `complete_stream` é **não-quebrante**: chama
+/// `complete` e emite a resposta inteira **uma única vez** pelo callback, devolvendo
+/// também a `String` completa — que vira a [`AiAnswer::interpretation`]. Provedores de
+/// rede reais (F2.6) sobrescrevem com streaming real (SSE) **sem mudar** esta fronteira.
+///
+/// **Mapeamento system/user (decisão registrada):** o core **não** expõe um
+/// `ask_stream` nem um construtor público do prompt de `ai::ask` (o `system` fixo de
+/// `ask` é interno). Para **não reimplementar** a lógica do core (regra "uma fonte da
+/// verdade"), esta fronteira **compõe apenas peças públicas**: `system` = o **bloco de
+/// contexto ancorado** (`ask_context`, derivado do store) e `user` = a `question`. Com
+/// o **mock** isso rende **exatamente** a mesma resposta canônica que `ai::ask`
+/// (invariante ao texto bíblico) — a paridade fina de prompt com provedores de rede é
+/// F2.6. Nenhum texto bíblico é gerado: o `cited_text` é do store; o LLM só interpreta.
+///
+/// **Roteamento de provedor (F2.3):** `provider_name` é repassado a
+/// `ai::build_provider`, que agora conhece `"gemini"` (além de `mock`/`openai`/
+/// `anthropic`/`ollama`). BYOK: a `key` é argumento; `"mock"` não faz rede nem exige
+/// chave; `"gemini"`/etc. **sem** chave → [`CoreError`] (NoKey) **sem rede**.
+///
+/// **Gating por alvo (ver ADR-0010):** exportada em todos os alvos, mas o corpo que
+/// toca `ai`/store é `cfg(not(target_arch = "wasm32"))`; no **web**, stub que retorna
+/// [`CoreError`] (streaming web = F2.7), sem arrastar `ai`/`reqwest`/`rusqlite` para o
+/// grafo wasm. O callback foreign é consumido no stub (args descartados).
+#[uniffi::export]
+#[allow(clippy::too_many_arguments)]
+pub fn ask_anchored_stream(
+    db_path: String,
+    translation: String,
+    reference: String,
+    question: String,
+    provider_name: String,
+    key: Option<String>,
+    model: Option<String>,
+    lang: String,
+    on_token: Box<dyn AiTokenCallback>,
+) -> Result<AiAnswer, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        // Trait em escopo para `.passage(...)` em `EmbeddedSource` (como em
+        // `ask_anchored`). Os métodos de `dyn LlmProvider` (`complete_stream`/`name`/
+        // `model`) dispensam import (são do trait object).
+        use the_light_core::source::BibleSource;
+
+        // 1) Referência canônica (delegada ao core).
+        let reference = the_light_core::reference::parse_reference(&reference).map_err(|e| {
+            CoreError::Generic {
+                message: e.to_string(),
+            }
+        })?;
+
+        // 2) Idioma de exibição/resposta (`"pt"|"en"` + sinônimos); default Pt.
+        let lang = lang
+            .parse::<the_light_core::model::Lang>()
+            .unwrap_or(the_light_core::model::Lang::Pt);
+
+        // 3) Passagem VERBATIM do store, pela MESMA rota da F1.2/F2.1 (anti-alucinação).
+        let store =
+            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })?;
+        let source = the_light_core::source::EmbeddedSource::new(&store);
+        let translation_id = the_light_core::model::TranslationId::new(translation);
+        let passage =
+            source
+                .passage(&reference, &translation_id)
+                .map_err(|e| CoreError::Generic {
+                    message: e.to_string(),
+                })?;
+
+        // 4) Texto numerado (store) + bloco de contexto RAG — funções PURAS do core.
+        let cited_text = the_light_core::ai::numbered_passage(&passage);
+        let label = the_light_core::reference::format_reference(&reference, lang);
+        let context = the_light_core::ai::ask_context(&label, &cited_text, &[]);
+
+        // 5) Provedor (BYOK): "gemini"/etc. sem chave → NoKey (sem rede); "mock" ok.
+        let provider =
+            the_light_core::ai::build_provider(&provider_name, key, model).map_err(|e| {
+                CoreError::Generic {
+                    message: e.to_string(),
+                }
+            })?;
+
+        // 6) Streaming: system = contexto ancorado (store); user = pergunta. O callback
+        //    transmite tokens da INTERPRETAÇÃO (não do texto bíblico). O default do core
+        //    emite a resposta inteira 1× e devolve a String completa.
+        let mut sink = |tok: &str| on_token.on_token(tok.to_string());
+        let interpretation = provider
+            .complete_stream(&context, &question, &mut sink)
+            .map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })?;
+
+        // 7) Contrato anti-alucinação: cited_text (store) separado da interpretation.
+        Ok(AiAnswer {
+            reference: reference.into(),
+            cited_text,
+            interpretation,
+            provider: provider.name().to_string(),
+            model: provider.model().to_string(),
+        })
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        // Stub web: o módulo `ai` do core é `embedded`-only (nativo). Streaming no web é
+        // a F2.7; até lá, falha explícita — sem tocar `ai`/store/`rusqlite`/`reqwest`
+        // (mantém o grafo wasm puro). O callback foreign é consumido aqui.
+        let _ = (
+            db_path,
+            translation,
+            reference,
+            question,
+            provider_name,
+            key,
+            model,
+            lang,
+            on_token,
+        );
+        Err(CoreError::Generic {
+            message: "streaming de ai não disponível no alvo web (F2.7)".to_string(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2568,6 +2717,307 @@ mod ai_tests {
             None,
             None,
             "en".to_string(),
+        )
+        .expect_err("provedor desconhecido deve falhar");
+        assert!(matches!(err, CoreError::Generic { .. }));
+    }
+}
+
+/// Testes do **streaming ancorado** da F2.3a (`ask_anchored_stream` + roteamento de
+/// `"gemini"`), **apenas no nativo** (host com a feature `embedded`, ADR-0005). São
+/// **offline**, **determinísticos** e **sem chave/rede**: usam o provedor **MOCK** do
+/// core (cujo `complete_stream` cai no **default não-quebrante** → emite a resposta
+/// inteira **1×** pelo callback) sobre um fixture KJV de domínio público. Provam a
+/// **anti-alucinação** do streaming — o `cited_text` é **verbatim do store** (segue o
+/// fixture), enquanto os **tokens** transmitidos são a **interpretação do modelo**
+/// (invariante ao texto bíblico) — e o **roteamento de `"gemini"`** pelo caminho
+/// **no-key** (→ [`CoreError`], **sem rede**).
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod ai_stream_tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    // ── Textos KJV **verbatim** (domínio público), usados SÓ no fixture/assert;
+    //    nenhum texto bíblico é gerado em produção (anti-alucinação). ──────────────
+    /// João 3:16 — King James Version.
+    const JOHN_3_16_KJV: &str = "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.";
+    /// João 3:17 — King James Version (segundo versículo, p/ provar que o `cited_text`
+    /// acompanha o STORE e os tokens do mock não).
+    const JOHN_3_17_KJV: &str = "For God sent not his Son into the world to condemn the world; but that the world through him might be saved.";
+
+    /// Banco temporário do fixture: remove o arquivo (e sidecars WAL/SHM) no `Drop`.
+    struct TmpDb(PathBuf);
+
+    impl TmpDb {
+        fn path(&self) -> String {
+            self.0.to_string_lossy().into_owned()
+        }
+    }
+
+    impl Drop for TmpDb {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+            if let Some(name) = self.0.file_name().and_then(|n| n.to_str()) {
+                let dir = self.0.parent().map(PathBuf::from).unwrap_or_default();
+                let _ = std::fs::remove_file(dir.join(format!("{name}-wal")));
+                let _ = std::fs::remove_file(dir.join(format!("{name}-shm")));
+            }
+        }
+    }
+
+    /// Caminho temporário único (offline, sem deps externas).
+    fn unique_tmp_db() -> PathBuf {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "the-light-app-f2_3a-{}-{nanos}-{n}.sqlite",
+            std::process::id()
+        ))
+    }
+
+    /// Constrói o fixture KJV: schema via migrações do core (`Store::open`) + DML de
+    /// domínio público (João 3:16 e 3:17). Sem aspas simples nas `const`s → seguras
+    /// inline; nenhum schema é escrito à mão.
+    fn build_kjv_fixture() -> TmpDb {
+        let path = unique_tmp_db();
+        let _ = std::fs::remove_file(&path);
+
+        {
+            let store =
+                the_light_core::store::Store::open(&path).expect("abrir/migrar fixture KJV");
+            let conn = store.conn();
+
+            conn.execute(
+                "INSERT INTO translations(id,abbrev,name,language,license,embeddable) \
+                 VALUES ('kjv','KJV','King James Version','en','public-domain',1)",
+                [],
+            )
+            .expect("inserir tradução kjv");
+
+            for (chapter, verse, text) in [(3u16, 16u16, JOHN_3_16_KJV), (3, 17, JOHN_3_17_KJV)] {
+                let sql = format!(
+                    "INSERT INTO verses(translation_id,book_number,chapter,verse,text) \
+                     VALUES ('kjv',43,{chapter},{verse},'{text}')"
+                );
+                conn.execute(&sql, []).expect("inserir versículo João");
+            }
+        } // `store`/`conn` fecham aqui (flush no arquivo).
+
+        TmpDb(path)
+    }
+
+    /// Resposta fixa do `MockLlmProvider` do core, obtida **do próprio core** (sem
+    /// hardcode): como o `system` não contém o marcador de refinamento, `complete`
+    /// devolve a resposta canônica — exatamente o que o default de `complete_stream`
+    /// emite/retorna com o mock. Prova que os tokens são do **modelo**, não do store.
+    fn mock_fixed_response() -> String {
+        use the_light_core::ai::LlmProvider;
+        the_light_core::ai::MockLlmProvider::default()
+            .complete("sistema de teste sem marcador de refinamento", "pergunta")
+            .expect("mock complete não deve falhar (sem rede)")
+    }
+
+    /// Callback de teste que **acumula** os tokens e **conta** as chamadas. O estado é
+    /// compartilhado por `Arc` (a instância é movida para dentro do `Box` da fronteira;
+    /// lemos o acumulado **após** a chamada retornar).
+    struct Collector {
+        tokens: Arc<Mutex<Vec<String>>>,
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl AiTokenCallback for Collector {
+        fn on_token(&self, token: String) {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            self.tokens.lock().expect("lock tokens").push(token);
+        }
+    }
+
+    #[test]
+    fn stream_cites_store_verbatim_and_streams_mock_interpretation() {
+        let db = build_kjv_fixture();
+
+        let tokens = Arc::new(Mutex::new(Vec::<String>::new()));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let cb = Collector {
+            tokens: Arc::clone(&tokens),
+            calls: Arc::clone(&calls),
+        };
+
+        let answer = ask_anchored_stream(
+            db.path(),
+            "kjv".to_string(),
+            "John 3:16".to_string(),
+            "What does this passage mean?".to_string(),
+            "mock".to_string(),
+            None, // BYOK: sem chave (mock não faz rede)
+            None,
+            "en".to_string(),
+            Box::new(cb),
+        )
+        .expect("ask_anchored_stream com o mock deve retornar Ok");
+
+        // ── O callback foi chamado (≥1×) e o acumulado == interpretation == mock. ──
+        assert!(
+            calls.load(Ordering::Relaxed) >= 1,
+            "o callback de streaming deve ser chamado ao menos 1x"
+        );
+        let accumulated = tokens.lock().expect("lock tokens").concat();
+        assert_eq!(
+            accumulated, answer.interpretation,
+            "os tokens acumulados devem compor a interpretation devolvida"
+        );
+        assert_eq!(
+            accumulated,
+            mock_fixed_response(),
+            "o acumulado deve ser a resposta fixa do MockLlmProvider"
+        );
+
+        // ── Anti-alucinação: cited_text é VERBATIM do store, numerado. ────────────
+        assert!(
+            answer.cited_text.contains("16 For God so loved the world"),
+            "cited_text deve ser o versículo numerado verbatim do store: {}",
+            answer.cited_text
+        );
+        assert!(
+            answer.cited_text.contains(JOHN_3_16_KJV),
+            "cited_text deve conter o texto KJV integral verbatim do store: {}",
+            answer.cited_text
+        );
+
+        // ── Os TOKENS são da INTERPRETAÇÃO (modelo), NÃO texto bíblico. ───────────
+        assert!(
+            !accumulated.contains("For God so loved"),
+            "os tokens do mock NÃO reproduzem/geram texto bíblico: {accumulated}"
+        );
+        assert_ne!(
+            answer.cited_text, answer.interpretation,
+            "cited_text (store) e interpretation (modelo/tokens) são coisas distintas"
+        );
+
+        // ── Provedor/modelo e referência canônica. ───────────────────────────────
+        assert_eq!(answer.provider, "mock", "provider deve ser 'mock'");
+        assert_eq!(answer.model, "mock-1", "modelo do mock do core");
+        assert_eq!(answer.reference.book, 43, "João é o livro 43");
+        assert_eq!(answer.reference.chapter, 3, "capítulo 3");
+        assert_eq!(
+            answer.reference.verses,
+            VerseRange::Single { verse: 16 },
+            "versículo único 16"
+        );
+    }
+
+    #[test]
+    fn stream_cited_text_tracks_store_while_tokens_are_invariant() {
+        // Prova anti-fake: com O MESMO fixture/mock, o streaming de dois versículos
+        // distintos muda o `cited_text` (segue o STORE) mas NÃO os tokens/interpretação
+        // (vêm do modelo, não do texto bíblico).
+        let db = build_kjv_fixture();
+
+        let run = |reference: &str| -> (String, String) {
+            let tokens = Arc::new(Mutex::new(Vec::<String>::new()));
+            let cb = Collector {
+                tokens: Arc::clone(&tokens),
+                calls: Arc::new(AtomicUsize::new(0)),
+            };
+            let answer = ask_anchored_stream(
+                db.path(),
+                "kjv".to_string(),
+                reference.to_string(),
+                "Explique.".to_string(),
+                "mock".to_string(),
+                None,
+                None,
+                "en".to_string(),
+                Box::new(cb),
+            )
+            .expect("ask_anchored_stream deve retornar Ok");
+            let accumulated = tokens.lock().expect("lock tokens").concat();
+            (answer.cited_text, accumulated)
+        };
+
+        let (cited16, tokens16) = run("John 3:16");
+        let (cited17, tokens17) = run("John 3:17");
+
+        // cited_text acompanha o store (textos verbatim diferentes por versículo).
+        assert!(cited16.contains(JOHN_3_16_KJV));
+        assert!(cited17.contains(JOHN_3_17_KJV));
+        assert_ne!(cited16, cited17, "cited_text muda com o versículo do store");
+
+        // tokens/interpretação são os MESMOS (do modelo) — invariantes ao texto bíblico.
+        assert_eq!(
+            tokens16, tokens17,
+            "os tokens do mock não dependem do texto bíblico"
+        );
+        assert_eq!(tokens16, mock_fixed_response());
+    }
+
+    #[test]
+    fn gemini_without_key_routes_to_core_error_without_network() {
+        // Roteamento F2.3: `"gemini"` SEM chave → CoreError (NoKey), provando que o
+        // roteamento alcança o arm gemini de `build_provider` SEM rede (nenhuma chamada
+        // HTTP: o erro é síncrono, antes de qualquer request). Via `ask_anchored` (F2.1)
+        // — que passa `provider_name` ao MESMO `build_provider`.
+        let db = build_kjv_fixture();
+        let err = ask_anchored(
+            db.path(),
+            "kjv".to_string(),
+            "John 3:16".to_string(),
+            "?".to_string(),
+            "gemini".to_string(),
+            None, // sem chave: NoKey (sem rede)
+            None,
+            "en".to_string(),
+        )
+        .expect_err("gemini sem chave deve falhar com CoreError");
+        assert!(matches!(err, CoreError::Generic { .. }));
+        assert!(
+            err.to_string().contains("gemini"),
+            "a mensagem de erro prova que o roteamento alcançou o arm gemini: {err}"
+        );
+
+        // O mesmo vale pelo caminho de streaming (mesmo `build_provider`).
+        let cb = Collector {
+            tokens: Arc::new(Mutex::new(Vec::new())),
+            calls: Arc::new(AtomicUsize::new(0)),
+        };
+        let err = ask_anchored_stream(
+            db.path(),
+            "kjv".to_string(),
+            "John 3:16".to_string(),
+            "?".to_string(),
+            "gemini".to_string(),
+            None,
+            None,
+            "en".to_string(),
+            Box::new(cb),
+        )
+        .expect_err("gemini sem chave (stream) deve falhar com CoreError");
+        assert!(matches!(err, CoreError::Generic { .. }));
+    }
+
+    #[test]
+    fn stream_unknown_provider_maps_to_core_error() {
+        let db = build_kjv_fixture();
+        let cb = Collector {
+            tokens: Arc::new(Mutex::new(Vec::new())),
+            calls: Arc::new(AtomicUsize::new(0)),
+        };
+        let err = ask_anchored_stream(
+            db.path(),
+            "kjv".to_string(),
+            "John 3:16".to_string(),
+            "?".to_string(),
+            "provedor-inexistente".to_string(),
+            None,
+            None,
+            "en".to_string(),
+            Box::new(cb),
         )
         .expect_err("provedor desconhecido deve falhar");
         assert!(matches!(err, CoreError::Generic { .. }));
