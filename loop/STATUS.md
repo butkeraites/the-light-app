@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-07-01 04:00 UTC · Estado do loop: **⛔ HALT — MARCO 1 (F1.17) aguardando sign-off humano. Fase 1 FUNCIONALMENTE COMPLETA: todas as 16 tarefas (F1.1–F1.16) aceitas e verdes nos 3 alvos (iOS+Android+Web) — leitura, busca FTS5, xref CC-BY, notas/export. Relatório em `queue/F1.17-marco-1.task.md`; `loop/HALT` escrito.**
-Heartbeat: ver `HEARTBEAT` · HALT: **PRESENTE** (`loop/HALT` — gate Marco 1) · **F1.16 passed** (`7557f0e`; ADR-0022; notas web OPFS) · **Sign-off decide:** (1) aprovar Fase 1; (2) liberar Fase 2 (IA BYOK + Gemini); (3) prioridade do backlog transversal "corpus completo no web (~59 MB)". Retomar = aprovar → Driver registra sign-off, arquiva F1.17, remove `loop/HALT`, planner decompõe a Fase 2. `the-light` intocado (`8f66004`).
+Última atualização: 2026-07-01 04:20 UTC · Estado do loop: **▶️ ATIVO (RETOMADO) — MARCO 1 APROVADO por sign-off humano: Fase 1 completa nos 3 alvos; Fase 2 (IA BYOK + Gemini) LIBERADA; `loop/HALT` removido. Queue vazia → próximo ciclo o planner DECOMPÕE a Fase 2 em `backlog/PHASE-2.md` e semeia a 1ª tarefa.** Corpus completo (~59 MB) permanece backlog transversal.
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente (Marco 1 resolvido)** · **F1.17 APROVADO** (sign-off humano; Fase 1 completa) · **Fase 2 = IA BYOK + Gemini** (estudo assistido; offline-first e anti-alucinação preservados — o texto vem do store, o LLM só interpreta; chave do usuário, nunca em git/log). `the-light` intocado (`8f66004`). Diretriz do Driver: seguir até um **ponto bloqueante** (blocked por decisão/chave/ferramenta, falha persistente, ou conflito com regra não negociável).
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -52,7 +52,7 @@ Heartbeat: ver `HEARTBEAT` · HALT: **PRESENTE** (`loop/HALT` — gate Marco 1) 
 | F1.14 | Paridade web: busca FTS5 | ✅ aceito | F1.12, F1.6 | passed (b2f1d8f) — busca web FTS5 real; João 3:16 localizado; FTS5 vendorizado; ADR-0020 |
 | F1.15 | Paridade web: referências cruzadas + atribuição | ✅ aceito | F1.12, F1.9 | passed (1fe14e6) — xref web real; João 3:15 1º (439); CC-BY no bundle; ADR-0021 |
 | F1.16 | Paridade web: notas/marcações + export | ✅ aceito | F1.12, F1.11 | passed (7557f0e) — notas/highlights web em OPFS; WEB_NOTES persisted=true; export idêntico; ADR-0022 |
-| F1.17 | **Marco 1** (⛔ gate): leitura offline completa, multiplataforma | ⛔ **GATE → HALT** | F1.4, F1.6, F1.9, F1.11, F1.13–F1.16 | semeada (relatório de marco); `loop/HALT` escrito — aguardando sign-off humano |
+| F1.17 | **Marco 1** (⛔ gate): leitura offline completa, multiplataforma | ✅ **APROVADO** | F1.4, F1.6, F1.9, F1.11, F1.13–F1.16 | sign-off humano — **Fase 1 completa nos 3 alvos**; Fase 2 liberada; HALT removido |
 
 ## Fases seguintes
 
