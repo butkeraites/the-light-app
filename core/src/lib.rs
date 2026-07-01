@@ -115,6 +115,29 @@
 //! `interpretation` volta de `ai_web_finalize` **após** `rewrite_anchors`
 //! (anti-alucinação em Rust), separada do `cited_text` do store. `ask_anchored[_stream]`
 //! **nativos intactos** (sem regressão).
+//!
+//! F3.3 expõe o **estudo profundo** (modo × lente × profundidade): [`deep_study`],
+//! que **delega** a `the_light_core::ai::study::study(&provider, &StudyRequest)` (rev
+//! pinado `c8ecb2f`). A fronteira **monta** o `StudyRequest` com **fatos do store
+//! local** — a [`Passage`] verbatim (mesma rota da F1.2, `EmbeddedSource::passage`), o
+//! **léxico verificado** (rota da F3.2, `ai::lexicon::verified_lexicon`) e os **rótulos
+//! de xref** (`xref::passage_labels`) — e o `study` do core separa o `passage_text`
+//! (numerado, do **banco**, verbatim) da `interpretation` (do **modelo**). Prova
+//! determinística por **MOCK** (`build_provider("mock", None, None)`) — **sem chave** e
+//! **sem rede** (o `MockLlmProvider` devolve resposta fixa). **Nenhum** prompt/RAG/SQL/
+//! aparato de citação é reimplementado aqui — tudo vive no `ai::study` do core (regra
+//! "uma fonte da verdade"). O Record [`StudyResultOut`] **separa** `passage_text` de
+//! `interpretation` (anti-alucinação materializada no contrato, SPEC §6.2); `citations`
+//! e léxico vêm de **fontes locais verificadas** (nunca do modelo) e os `warnings`
+//! sinalizam Strong/`[W:n]` inventados. **Gating (como [`ask_anchored`]):** exportada em
+//! **todos** os alvos, mas o corpo que toca `ai::study`/store é
+//! `cfg(not(target_arch = "wasm32"))` + **stub web** — os tipos-fonte `StudyRequest`/
+//! `StudyResult`/`study` são `embedded`-only, então o `From<StudyResult>` é gateado (como
+//! `From<xref::CrossRef>`), enquanto os enums ([`StudyMode`]/[`StudyLens`]/[`StudyDepth`])
+//! e os Records puros ([`StudySection`]/[`StudyCitation`]) são `ai-pure` → `From` cfg-free
+//! (como [`LexEntry`] da F3.2); o grafo wasm segue **puro** (sem `reqwest`/`rusqlite`). A
+//! chave real/rede é a F2.10/F3.10, a pesquisa web é a F3.9 (→ `web_sources: vec![]`), a
+//! UI é a F3.5 e a paridade web é a F3.12.
 
 uniffi::setup_scaffolding!();
 
@@ -961,6 +984,446 @@ pub fn lexical_entries(
         let _ = (db_path, book, chapter, verse, lang, limit);
         Err(CoreError::Generic {
             message: "léxico indisponível no alvo web (F3.12)".to_string(),
+        })
+    }
+}
+
+/// **Modo** de estudo (molda estrutura/tom da saída), na fronteira UniFFI.
+///
+/// Espelha `the_light_core::ai::StudyMode` (enum **puro**/`ai-pure`, presente em todos
+/// os alvos, ADR-0024). Enum **sem dados** (como [`Testament`]); os [`From`] em ambos os
+/// sentidos são **cfg-free** (o tipo-fonte existe também no wasm). Usado para **montar**
+/// o `StudyRequest` (fronteira → core) e para **espelhar** o `StudyResult` (core →
+/// fronteira). A semântica (`wants_lexical`/`emits_apparatus`/prompt) vive no core.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum StudyMode {
+    /// Acadêmico/exegético: rigoroso, com aparato (notas + bibliografia).
+    Academic,
+    /// Devocional: reflexão e aplicação pessoal.
+    Devotional,
+    /// Introdutório: primeiro contato, linguagem acessível.
+    Introductory,
+    /// Pregação/ensino: esboço homilético.
+    Sermon,
+}
+
+impl From<StudyMode> for the_light_core::ai::StudyMode {
+    fn from(m: StudyMode) -> Self {
+        use the_light_core::ai::StudyMode as Core;
+        match m {
+            StudyMode::Academic => Core::Academic,
+            StudyMode::Devotional => Core::Devotional,
+            StudyMode::Introductory => Core::Introductory,
+            StudyMode::Sermon => Core::Sermon,
+        }
+    }
+}
+
+impl From<the_light_core::ai::StudyMode> for StudyMode {
+    fn from(m: the_light_core::ai::StudyMode) -> Self {
+        use the_light_core::ai::StudyMode as Core;
+        match m {
+            Core::Academic => StudyMode::Academic,
+            Core::Devotional => StudyMode::Devotional,
+            Core::Introductory => StudyMode::Introductory,
+            Core::Sermon => StudyMode::Sermon,
+        }
+    }
+}
+
+/// **Lente** denominacional (voz hermenêutica) do estudo, na fronteira UniFFI.
+///
+/// Espelha `the_light_core::ai::Denomination` (enum **puro**/`ai-pure`). Nome distinto
+/// (`StudyLens`) para deixar o papel explícito na API da fronteira; os [`From`] mapeiam
+/// 1:1 para/de `Denomination` (cfg-free). A voz teológica de cada lente vive no core.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum StudyLens {
+    /// Batista.
+    Baptist,
+    /// Presbiteriana / Reformada.
+    Presbyterian,
+    /// Luterana.
+    Lutheran,
+    /// Pentecostal.
+    Pentecostal,
+    /// Católica Romana.
+    Catholic,
+    /// Ortodoxa.
+    Orthodox,
+}
+
+impl From<StudyLens> for the_light_core::ai::Denomination {
+    fn from(l: StudyLens) -> Self {
+        use the_light_core::ai::Denomination as Core;
+        match l {
+            StudyLens::Baptist => Core::Baptist,
+            StudyLens::Presbyterian => Core::Presbyterian,
+            StudyLens::Lutheran => Core::Lutheran,
+            StudyLens::Pentecostal => Core::Pentecostal,
+            StudyLens::Catholic => Core::Catholic,
+            StudyLens::Orthodox => Core::Orthodox,
+        }
+    }
+}
+
+impl From<the_light_core::ai::Denomination> for StudyLens {
+    fn from(d: the_light_core::ai::Denomination) -> Self {
+        use the_light_core::ai::Denomination as Core;
+        match d {
+            Core::Baptist => StudyLens::Baptist,
+            Core::Presbyterian => StudyLens::Presbyterian,
+            Core::Lutheran => StudyLens::Lutheran,
+            Core::Pentecostal => StudyLens::Pentecostal,
+            Core::Catholic => StudyLens::Catholic,
+            Core::Orthodox => StudyLens::Orthodox,
+        }
+    }
+}
+
+/// **Profundidade** do estudo, na fronteira UniFFI.
+///
+/// Espelha `the_light_core::ai::StudyDepth` (enum **puro**/`ai-pure`). [`From`] cfg-free
+/// em ambos os sentidos.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum StudyDepth {
+    /// Visão geral.
+    Overview,
+    /// Exegético (contexto histórico-literário, estrutura).
+    Exegetical,
+    /// Estudo de palavras (grego/hebraico).
+    WordStudy,
+}
+
+impl From<StudyDepth> for the_light_core::ai::StudyDepth {
+    fn from(d: StudyDepth) -> Self {
+        use the_light_core::ai::StudyDepth as Core;
+        match d {
+            StudyDepth::Overview => Core::Overview,
+            StudyDepth::Exegetical => Core::Exegetical,
+            StudyDepth::WordStudy => Core::WordStudy,
+        }
+    }
+}
+
+impl From<the_light_core::ai::StudyDepth> for StudyDepth {
+    fn from(d: the_light_core::ai::StudyDepth) -> Self {
+        use the_light_core::ai::StudyDepth as Core;
+        match d {
+            Core::Overview => StudyDepth::Overview,
+            Core::Exegetical => StudyDepth::Exegetical,
+            Core::WordStudy => StudyDepth::WordStudy,
+        }
+    }
+}
+
+/// Uma **seção** estruturada da interpretação (cabeçalho `## ` + corpo), na fronteira
+/// UniFFI.
+///
+/// Espelha `the_light_core::ai::StudySection` (tipo **puro**/`ai-pure`, presente em todos
+/// os alvos). O fatiamento por `## ` é feito **pelo core** (`split_sections`) — a
+/// fronteira só **adapta** o tipo. Vazio quando o modelo não usou cabeçalhos.
+/// [`From`] **cfg-free** (como [`LexEntry`]).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct StudySection {
+    /// Cabeçalho da seção (sem o `## `).
+    pub heading: String,
+    /// Corpo da seção (texto entre este cabeçalho e o próximo).
+    pub body: String,
+}
+
+impl From<the_light_core::ai::StudySection> for StudySection {
+    fn from(s: the_light_core::ai::StudySection) -> Self {
+        StudySection {
+            heading: s.heading,
+            body: s.body,
+        }
+    }
+}
+
+/// Uma **citação** verificável do aparato acadêmico (léxico/fonte/web), na fronteira
+/// UniFFI.
+///
+/// Espelha `the_light_core::ai::Citation` (tipo **puro**/`ai-pure`). Invariante
+/// anti-alucinação do core: **o LLM nunca produz uma `Citation`** — elas são construídas
+/// **do banco** (léxico verificado) ou de URLs realmente buscadas. O [`kind`](Self::kind)
+/// é a **representação canônica** do `CitationKind` do core (via `Debug` do enum: o
+/// identificador da variante, ex.: `"Lexicon"`) — não um rótulo inventado pela fronteira.
+/// [`From`] **cfg-free** (como [`LexEntry`]).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct StudyCitation {
+    /// Tipo da citação (variante canônica do core: `Scripture`/`Lexicon`/`Source`/`Web`).
+    pub kind: String,
+    /// Chave estável, **idêntica à âncora** que o modelo cita (ex.: `"H7225"`, `"W:1"`).
+    pub key: String,
+    /// Autor (quando aplicável).
+    pub author: Option<String>,
+    /// Título da obra.
+    pub title: Option<String>,
+    /// Locus (ex.: verbete/página).
+    pub locus: Option<String>,
+    /// Editora.
+    pub publisher: Option<String>,
+    /// Ano.
+    pub year: Option<String>,
+    /// URL da fonte (fontes web).
+    pub url: Option<String>,
+    /// Rótulo de licença para exibição (ex.: `"CC BY 4.0"`).
+    pub license: Option<String>,
+    /// Atribuição verbatim exigida pela fonte (CC-BY).
+    pub attribution: Option<String>,
+    /// Data de acesso (fontes web).
+    pub accessed: Option<String>,
+    /// Trecho verbatim citado (fontes web).
+    pub quote: Option<String>,
+}
+
+impl From<the_light_core::ai::Citation> for StudyCitation {
+    fn from(c: the_light_core::ai::Citation) -> Self {
+        StudyCitation {
+            // Representação canônica do core (`CitationKind`): o identificador da
+            // variante via `Debug`; a fronteira não inventa rótulo (anti-alucinação).
+            kind: format!("{:?}", c.kind),
+            key: c.key,
+            author: c.author,
+            title: c.title,
+            locus: c.locus,
+            publisher: c.publisher,
+            year: c.year,
+            url: c.url,
+            license: c.license,
+            attribution: c.attribution,
+            accessed: c.accessed,
+            quote: c.quote,
+        }
+    }
+}
+
+/// O resultado de um **estudo profundo** (`study`), na fronteira UniFFI.
+///
+/// **Separa explicitamente** o que vem do **banco local** do que vem do **modelo** — a
+/// anti-alucinação materializada no contrato (SPEC §6.2):
+/// - [`passage_text`](Self::passage_text): a passagem **numerada, verbatim do store
+///   local**, **nunca** produzida/editada pelo LLM;
+/// - [`interpretation`](Self::interpretation): a saída do **modelo** (aqui o
+///   `MockLlmProvider`), que apenas **interpreta** o texto citado;
+/// - [`citations`](Self::citations): construídas **do banco/URLs** (nunca pelo modelo);
+/// - [`warnings`](Self::warnings): avisos de verificação do core (Strong/`[W:n]` citados
+///   fora do acervo).
+///
+/// Espelha `the_light_core::ai::study::StudyResult`. **Gating (como [`CrossRef`]):** o
+/// tipo-fonte `StudyResult` é `embedded`-only → o [`From`] a partir dele é
+/// `#[cfg(not(target_arch = "wasm32"))]`; o Record em si só referencia tipos **puros**
+/// ([`Reference`]/`String`/[`StudyMode`]/[`StudyLens`]/[`StudyDepth`]/[`StudySection`]/
+/// [`StudyCitation`]) e existe em **todos** os alvos. Construído **somente** via [`From`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct StudyResultOut {
+    /// Referência canônica estudada (book/chapter/verses).
+    pub reference: Reference,
+    /// Referência formatada (ex.: `"John 3.16"`), via `reference::format_reference`.
+    pub reference_label: String,
+    /// Modo usado (ecoa a entrada).
+    pub mode: StudyMode,
+    /// Lente usada (ecoa a entrada).
+    pub lens: StudyLens,
+    /// Profundidade usada (ecoa a entrada).
+    pub depth: StudyDepth,
+    /// Idioma da resposta (`"pt"`/`"en"`), via `Lang::code()`.
+    pub language: String,
+    /// Passagem **numerada, verbatim do store local**. Anti-alucinação: **nunca** do LLM.
+    pub passage_text: String,
+    /// Interpretação produzida pelo **modelo** (texto do LLM, não bíblico). Separada do
+    /// [`passage_text`](Self::passage_text).
+    pub interpretation: String,
+    /// Interpretação fatiada por seção (`## `). Vazio quando o modelo não usou cabeçalhos.
+    pub sections: Vec<StudySection>,
+    /// Avisos de verificação (ex.: Strong citado fora do acervo). Vazio quando nada foi
+    /// sinalizado.
+    pub warnings: Vec<String>,
+    /// Citações verificáveis (léxico + fontes), construídas **do banco** — nunca pelo
+    /// modelo. Vazio fora do modo acadêmico / sem léxico/web semeados.
+    pub citations: Vec<StudyCitation>,
+    /// Nome do provedor usado (ex.: `"mock"`), via `LlmProvider::name()`.
+    pub provider: String,
+    /// Modelo usado (ex.: `"mock-1"`), via `LlmProvider::model()`.
+    pub model: String,
+}
+
+// O tipo-fonte `study::StudyResult` é `embedded`-only (superfície pesada do `ai`); este
+// `From` fica fora do grafo wasm (como `From<xref::CrossRef>`). O Record acima é puro e
+// vale p/ todos os alvos; aqui mapeamos só no nativo (enums/seções/citações via os `From`
+// puros; `reference` via o `From` de `model::Reference`; `language` via `Lang::code()`).
+#[cfg(not(target_arch = "wasm32"))]
+impl From<the_light_core::ai::study::StudyResult> for StudyResultOut {
+    fn from(r: the_light_core::ai::study::StudyResult) -> Self {
+        StudyResultOut {
+            reference: r.reference.into(),
+            reference_label: r.reference_label,
+            mode: r.mode.into(),
+            lens: r.lens.into(),
+            depth: r.depth.into(),
+            language: r.language.code().to_string(),
+            passage_text: r.passage_text,
+            interpretation: r.interpretation,
+            sections: r.sections.into_iter().map(StudySection::from).collect(),
+            warnings: r.warnings,
+            citations: r.citations.into_iter().map(StudyCitation::from).collect(),
+            provider: r.provider,
+            model: r.model,
+        }
+    }
+}
+
+/// Produz um **estudo profundo** de uma passagem (modo × lente × profundidade),
+/// delegando à camada de IA do `the-light-core` (RAG leve com fatos do store; BYOK).
+///
+/// Pipeline no **nativo** (tudo no core — uma fonte da verdade): a fronteira **monta** o
+/// `StudyRequest` a partir dos **fatos do store local** e delega a
+/// `ai::study::study(&provider, &req)`, que separa `passage_text` (banco) de
+/// `interpretation` (modelo):
+/// 1. `lang` → `Lang` (default `Pt`, sem panicar); `reference` = `Reference::single`
+///    (quando há `verse`) ou `Reference::whole_chapter`; `reference_label` via
+///    `reference::format_reference`;
+/// 2. `Store::open(db_path)` → a [`Passage`] **verbatim do store** pela **mesma** rota da
+///    F1.2 (`EmbeddedSource::passage`, anti-alucinação);
+/// 3. léxico verificado via `ai::lexicon::verified_lexicon` (rota da F3.2, **infalível**)
+///    e rótulos de xref via `xref::passage_labels` (RAG leve, melhor esforço);
+/// 4. `ai::build_provider(&provider_name, key, model)` — a **chave é argumento** (BYOK);
+///    `"mock"` **não** faz rede nem exige chave;
+/// 5. `ai::study::study(provider, &req)` → o `StudyResult` (o **modelo** só interpreta:
+///    `provider.complete(system, user)`), adaptado para [`StudyResultOut`].
+///
+/// **Nenhum** prompt/RAG/SQL/aparato de citação é reimplementado aqui — tudo vive em
+/// `ai::study`/`ai::lexicon`/`xref`/store. Anti-alucinação: o `passage_text` e as
+/// `citations`/léxico vêm **sempre do banco local verificado** (verbatim); o LLM/mock só
+/// **interpreta**. `web_sources` fica **vazio** (offline; a pesquisa web é a F3.9);
+/// `brief` é `None` (foco temático é fora de escopo aqui — sempre uma passagem concreta).
+///
+/// **BYOK / offline-first:** com `provider_name = "mock"` e `key = None` (esta tarefa)
+/// não há rede nem chave; nenhuma chave é logada. A chave real do usuário e a rede opt-in
+/// vêm depois (F2.10/F3.10); a UI é a F3.5.
+///
+/// **Gating por alvo (ver ADR-0010):** exportada em todos os alvos, mas o corpo que toca
+/// `ai::study`/store é `cfg(not(target_arch = "wasm32"))`; no **web**, stub que retorna
+/// [`CoreError`] (estudo web = F3.12), sem arrastar `ai::study`/`reqwest`/`rusqlite` para
+/// o grafo wasm.
+#[uniffi::export]
+#[allow(clippy::too_many_arguments)]
+pub fn deep_study(
+    db_path: String,
+    translation: String,
+    book: u8,
+    chapter: u16,
+    verse: Option<u16>,
+    mode: StudyMode,
+    lens: StudyLens,
+    depth: StudyDepth,
+    lang: String,
+    provider_name: String,
+    key: Option<String>,
+    model: Option<String>,
+) -> Result<StudyResultOut, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        // Trait em escopo para chamar `.passage(...)` em `EmbeddedSource` (como em
+        // `ask_anchored`). `name()/model()` do `dyn LlmProvider` dispensam import.
+        use the_light_core::source::BibleSource;
+
+        // 1) Idioma de exibição/resposta (`"pt"|"en"` + sinônimos); default Pt.
+        let lang = lang
+            .parse::<the_light_core::model::Lang>()
+            .unwrap_or(the_light_core::model::Lang::Pt);
+
+        // 2) Referência (single ou capítulo inteiro) + rótulo formatado (core).
+        let reference = match verse {
+            Some(v) => the_light_core::model::Reference::single(book, chapter, v),
+            None => the_light_core::model::Reference::whole_chapter(book, chapter),
+        };
+        let reference_label = the_light_core::reference::format_reference(&reference, lang);
+
+        // 3) Passagem VERBATIM do store, pela MESMA rota da F1.2 (anti-alucinação).
+        let store =
+            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })?;
+        let source = the_light_core::source::EmbeddedSource::new(&store);
+        let translation_id = the_light_core::model::TranslationId::new(translation);
+        let passage =
+            source
+                .passage(&reference, &translation_id)
+                .map_err(|e| CoreError::Generic {
+                    message: e.to_string(),
+                })?;
+
+        // 4) Fatos locais para o RAG: léxico verificado (infalível, rota F3.2) + rótulos
+        //    de xref (melhor esforço). Nenhum SQL/agregação é reimplementado aqui.
+        let verified_lexicon = the_light_core::ai::lexicon::verified_lexicon(
+            store.conn(),
+            &reference,
+            &[],
+            lang,
+            DEFAULT_LEXICON_LIMIT,
+        );
+        let cross_references = the_light_core::xref::passage_labels(
+            store.conn(),
+            &reference,
+            &[],
+            lang,
+            the_light_core::xref::DEFAULT_LIMIT,
+        );
+
+        // 5) Provedor (BYOK: a chave é argumento; "mock" = sem rede/chave).
+        let provider =
+            the_light_core::ai::build_provider(&provider_name, key, model).map_err(|e| {
+                CoreError::Generic {
+                    message: e.to_string(),
+                }
+            })?;
+
+        // 6) Monta o StudyRequest (fatos do store) e DELEGA ao core — o `study` separa
+        //    o `passage_text` (banco) da `interpretation` (modelo). Offline: sem web.
+        let request = the_light_core::ai::study::StudyRequest {
+            reference,
+            reference_label,
+            mode: mode.into(),
+            lens: lens.into(),
+            depth: depth.into(),
+            language: lang,
+            passage: Some(&passage),
+            cross_references,
+            verified_lexicon,
+            web_sources: Vec::new(),
+            brief: None,
+        };
+        let result =
+            the_light_core::ai::study::study(provider.as_ref(), &request).map_err(|e| {
+                CoreError::Generic {
+                    message: e.to_string(),
+                }
+            })?;
+
+        Ok(StudyResultOut::from(result))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        // Stub web: a superfície pesada do `ai` (`study`/`StudyRequest`/`StudyResult`) e o
+        // store são `embedded`-only (nativo). O estudo web é a F3.12; até lá, falha
+        // explícita — sem tocar `ai::study`/store/`rusqlite`/`reqwest` (grafo wasm puro).
+        let _ = (
+            db_path,
+            translation,
+            book,
+            chapter,
+            verse,
+            mode,
+            lens,
+            depth,
+            lang,
+            provider_name,
+            key,
+            model,
+        );
+        Err(CoreError::Generic {
+            message: "estudo profundo indisponível no alvo web (F3.12)".to_string(),
         })
     }
 }
@@ -3695,5 +4158,317 @@ mod lexicon_tests {
             "glosa real de H0430 contém 'God': {:?}",
             elohim.gloss
         );
+    }
+}
+
+/// Testes do **estudo profundo** da F3.3 (`deep_study` delegando a `ai::study::study`),
+/// **apenas no nativo** (host com a feature `embedded`, ADR-0005 — onde a superfície
+/// pesada do `ai` existe). As asserções são **offline**, **determinísticas** e **sem
+/// chave**: usam o **provedor MOCK** do core (`build_provider("mock", None, None)` →
+/// resposta fixa, nenhuma chamada HTTP) sobre um fixture KJV de domínio público
+/// construído num arquivo temporário (schema = migrações do core via `Store::open`; DML
+/// de domínio público — como nas F1.2/F2.1). A prova central é **anti-alucinação**: o
+/// `passage_text` é o texto **verbatim do store** (muda com o fixture), enquanto a
+/// `interpretation` é a saída do **modelo** (invariante ao texto bíblico).
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod study_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    // ── Textos KJV **verbatim** (domínio público), usados SÓ no fixture/assert;
+    //    nenhum texto bíblico é gerado em produção (anti-alucinação). ──────────────
+    /// João 3:16 — King James Version.
+    const JOHN_3_16_KJV: &str = "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.";
+    /// João 3:17 — King James Version (segundo versículo, p/ provar que o
+    /// `passage_text` acompanha o STORE e a `interpretation` não).
+    const JOHN_3_17_KJV: &str = "For God sent not his Son into the world to condemn the world; but that the world through him might be saved.";
+
+    /// Banco temporário do fixture: remove o arquivo (e sidecars WAL/SHM) no `Drop`.
+    struct TmpDb(PathBuf);
+
+    impl TmpDb {
+        fn path(&self) -> String {
+            self.0.to_string_lossy().into_owned()
+        }
+    }
+
+    impl Drop for TmpDb {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+            if let Some(name) = self.0.file_name().and_then(|n| n.to_str()) {
+                let dir = self.0.parent().map(PathBuf::from).unwrap_or_default();
+                let _ = std::fs::remove_file(dir.join(format!("{name}-wal")));
+                let _ = std::fs::remove_file(dir.join(format!("{name}-shm")));
+            }
+        }
+    }
+
+    /// Caminho temporário único (offline, sem deps externas).
+    fn unique_tmp_db() -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "the-light-app-f3_3-{}-{nanos}-{n}.sqlite",
+            std::process::id()
+        ))
+    }
+
+    /// Constrói o fixture KJV: schema via migrações do core (`Store::open`) + DML de
+    /// domínio público (João 3:16 e 3:17). Sem aspas simples nas `const`s → seguras
+    /// inline; nenhum schema é escrito à mão. A conexão fecha antes do uso pela
+    /// fronteira.
+    fn build_kjv_fixture() -> TmpDb {
+        let path = unique_tmp_db();
+        let _ = std::fs::remove_file(&path);
+
+        {
+            let store =
+                the_light_core::store::Store::open(&path).expect("abrir/migrar fixture KJV");
+            let conn = store.conn();
+
+            conn.execute(
+                "INSERT INTO translations(id,abbrev,name,language,license,embeddable) \
+                 VALUES ('kjv','KJV','King James Version','en','public-domain',1)",
+                [],
+            )
+            .expect("inserir tradução kjv");
+
+            for (chapter, verse, text) in [(3u16, 16u16, JOHN_3_16_KJV), (3, 17, JOHN_3_17_KJV)] {
+                let sql = format!(
+                    "INSERT INTO verses(translation_id,book_number,chapter,verse,text) \
+                     VALUES ('kjv',43,{chapter},{verse},'{text}')"
+                );
+                conn.execute(&sql, []).expect("inserir versículo João");
+            }
+        } // `store`/`conn` fecham aqui (flush no arquivo).
+
+        TmpDb(path)
+    }
+
+    /// Resposta fixa do `MockLlmProvider` do core, obtida **do próprio core** (sem
+    /// hardcode): como o `system` do estudo não contém o marcador `PERGUNTA:`,
+    /// `complete` devolve a resposta canônica — **exatamente** o que `study` retorna com
+    /// o mock, independentemente do texto bíblico. Prova que a `interpretation` é do
+    /// **modelo**, não do store.
+    fn mock_fixed_response() -> String {
+        use the_light_core::ai::LlmProvider;
+        the_light_core::ai::MockLlmProvider::default()
+            .complete("sistema de teste sem marcador de refinamento", "usuario")
+            .expect("mock complete não deve falhar (sem rede)")
+    }
+
+    #[test]
+    fn deep_study_cites_store_verbatim_and_interprets_via_mock() {
+        let db = build_kjv_fixture();
+
+        let result = deep_study(
+            db.path(),
+            "kjv".to_string(),
+            43,
+            3,
+            Some(16),
+            StudyMode::Academic,
+            StudyLens::Presbyterian,
+            StudyDepth::Exegetical,
+            "en".to_string(),
+            "mock".to_string(),
+            None, // BYOK: sem chave (mock não faz rede)
+            None,
+        )
+        .expect("deep_study com o mock deve retornar Ok");
+
+        // ── Anti-alucinação: passage_text é VERBATIM do store, numerado. ──────────
+        assert!(
+            result
+                .passage_text
+                .contains("16 For God so loved the world"),
+            "passage_text deve ser o versículo numerado verbatim do store: {}",
+            result.passage_text
+        );
+        assert!(
+            result.passage_text.contains(JOHN_3_16_KJV),
+            "passage_text deve conter o texto KJV integral verbatim do store: {}",
+            result.passage_text
+        );
+
+        // ── interpretation é a saída do MODELO (mock), NÃO o texto bíblico. ───────
+        assert_eq!(
+            result.interpretation,
+            mock_fixed_response(),
+            "interpretation deve ser a resposta fixa do MockLlmProvider"
+        );
+        assert!(
+            !result.interpretation.contains("For God so loved"),
+            "o LLM/mock NÃO reproduz/gera texto bíblico na interpretation: {}",
+            result.interpretation
+        );
+        assert_ne!(
+            result.passage_text, result.interpretation,
+            "passage_text (store) e interpretation (modelo) são coisas distintas"
+        );
+
+        // ── Provedor/modelo, referência canônica e eco de modo/lente/profundidade. ─
+        assert_eq!(result.provider, "mock", "provider deve ser 'mock'");
+        assert_eq!(result.model, "mock-1", "modelo do mock do core");
+        assert_eq!(result.reference.book, 43, "João é o livro 43");
+        assert_eq!(result.reference.chapter, 3, "capítulo 3");
+        assert_eq!(
+            result.reference.verses,
+            VerseRange::Single { verse: 16 },
+            "versículo único 16"
+        );
+        assert_eq!(result.mode, StudyMode::Academic, "modo ecoa a entrada");
+        assert_eq!(result.lens, StudyLens::Presbyterian, "lente ecoa a entrada");
+        assert_eq!(
+            result.depth,
+            StudyDepth::Exegetical,
+            "profundidade ecoa a entrada"
+        );
+
+        // ── Campos tipados presentes; com a resposta fixa do mock (sem `## ` e sem
+        //    `[V:…]`) e sem léxico/web semeados: sections/warnings/citations vazios. ─
+        assert!(
+            result.sections.is_empty(),
+            "resposta fixa do mock (sem `## `) → sections vazio: {:?}",
+            result.sections
+        );
+        assert!(
+            result.warnings.is_empty(),
+            "sem Strong/[W:n] inventado → warnings vazio: {:?}",
+            result.warnings
+        );
+        assert!(
+            result.citations.is_empty(),
+            "Academic sem léxico/web semeados → citations vazio: {:?}",
+            result.citations
+        );
+    }
+
+    #[test]
+    fn passage_text_tracks_store_while_interpretation_is_invariant() {
+        // Prova anti-fake (molde F2.1): com O MESMO fixture/mock, estudar dois
+        // versículos distintos muda o `passage_text` (segue o STORE) mas NÃO a
+        // `interpretation` (vem do modelo, não do texto bíblico).
+        let db = build_kjv_fixture();
+
+        let run = |verse: u16| -> StudyResultOut {
+            deep_study(
+                db.path(),
+                "kjv".to_string(),
+                43,
+                3,
+                Some(verse),
+                StudyMode::Devotional,
+                StudyLens::Baptist,
+                StudyDepth::Overview,
+                "en".to_string(),
+                "mock".to_string(),
+                None,
+                None,
+            )
+            .expect("deep_study deve retornar Ok")
+        };
+
+        let s16 = run(16);
+        let s17 = run(17);
+
+        // passage_text acompanha o store (textos verbatim diferentes por versículo).
+        assert!(s16.passage_text.contains(JOHN_3_16_KJV));
+        assert!(s17.passage_text.contains(JOHN_3_17_KJV));
+        assert_ne!(
+            s16.passage_text, s17.passage_text,
+            "passage_text muda com o versículo do store"
+        );
+
+        // interpretation é a MESMA (a do modelo) — invariante ao texto bíblico.
+        assert_eq!(
+            s16.interpretation, s17.interpretation,
+            "a interpretação do mock não depende do texto bíblico"
+        );
+        assert_eq!(s16.interpretation, mock_fixed_response());
+    }
+
+    #[test]
+    fn deep_study_error_paths_do_not_panic() {
+        let db = build_kjv_fixture();
+
+        // Provedor desconhecido → CoreError (via `build_provider`), sem panic.
+        let err = deep_study(
+            db.path(),
+            "kjv".to_string(),
+            43,
+            3,
+            Some(16),
+            StudyMode::Academic,
+            StudyLens::Presbyterian,
+            StudyDepth::Exegetical,
+            "en".to_string(),
+            "nope".to_string(),
+            None,
+            None,
+        )
+        .expect_err("provedor desconhecido deve falhar");
+        assert!(matches!(err, CoreError::Generic { .. }));
+
+        // `db_path` = diretório existente → CoreError (via `Store::open`), sem panic.
+        let dir = std::env::temp_dir().to_string_lossy().into_owned();
+        let err = deep_study(
+            dir,
+            "kjv".to_string(),
+            43,
+            3,
+            Some(16),
+            StudyMode::Academic,
+            StudyLens::Presbyterian,
+            StudyDepth::Exegetical,
+            "en".to_string(),
+            "mock".to_string(),
+            None,
+            None,
+        )
+        .expect_err("db_path = diretório deve falhar no Store::open");
+        assert!(matches!(err, CoreError::Generic { .. }));
+    }
+
+    #[test]
+    fn bonus_full_bible_db_deep_study_when_present() {
+        // BÔNUS, NÃO-REQUISITO: só roda se o `bible.sqlite` (gerado-ignorado) existir.
+        // As primárias acima passam só com o fixture, offline. Prova a separação
+        // passage_text (store) / interpretation (mock) no corpus real.
+        const BIBLE_DB: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/data/bible.sqlite");
+        if !std::path::Path::new(BIBLE_DB).exists() {
+            return;
+        }
+        let result = deep_study(
+            BIBLE_DB.to_string(),
+            "kjv".to_string(),
+            43,
+            3,
+            Some(16),
+            StudyMode::Academic,
+            StudyLens::Presbyterian,
+            StudyDepth::Exegetical,
+            "en".to_string(),
+            "mock".to_string(),
+            None,
+            None,
+        )
+        .expect("deep_study de João 3:16 no bible.sqlite");
+        assert!(
+            result.passage_text.contains("For God so loved"),
+            "corpus real deve citar João 3:16 verbatim: {}",
+            result.passage_text
+        );
+        assert_eq!(
+            result.interpretation,
+            mock_fixed_response(),
+            "interpretation do mock invariante ao corpus"
+        );
+        assert!(!result.interpretation.contains("For God so loved"));
     }
 }
