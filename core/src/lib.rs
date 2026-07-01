@@ -77,6 +77,27 @@
 //! `embedded`-only → os Records [`Note`]/[`Highlight`] são puros (todos os alvos), mas
 //! os `From` e o corpo das funções são `cfg(not(wasm32))` + stub web (paridade web =
 //! F1.16). A **UI/persistência no device/export é a F1.11** (fora de escopo aqui).
+//!
+//! F2.1 abre a **Fase 2 (IA BYOK)** expondo a **pergunta ancorada**:
+//! [`ask_anchored`], que **delega** à camada de IA do core
+//! (`the_light_core::ai::{build_provider, numbered_passage, ask_context, ask}`) e
+//! prova a espinha ponta a ponta com o **provedor MOCK** do core (via
+//! `build_provider("mock", None, None)`) — **sem chave** (`key = None`) e **sem
+//! rede** (o `MockLlmProvider` devolve uma resposta fixa). O texto do versículo é
+//! lido do **store local** pela **mesma** rota da F1.2 (`EmbeddedSource::passage`),
+//! numerado por `ai::numbered_passage` — a fronteira **nunca** deixa o LLM
+//! gerar/editar texto bíblico. O Record de retorno [`AiAnswer`] **separa** o
+//! `cited_text` (verbatim do store) da `interpretation` (do modelo) — a
+//! anti-alucinação materializada no contrato (SPEC §6.2). **Gating (como
+//! [`get_passage`]):** a função é exportada em **todos** os alvos, mas o corpo que
+//! toca `ai`/store é `cfg(not(target_arch = "wasm32"))` + **stub web** — o módulo
+//! `ai` do core é `#[cfg(feature = "embedded")]` (só nativo, ADR-0005), então o
+//! grafo wasm permanece **puro** (sem `reqwest`/`rusqlite`; paridade web de IA =
+//! F2.7). O Record [`AiAnswer`] só referencia tipos **puros** ([`Reference`]/
+//! `String`) e é montado **na mão** (não há um único tipo-fonte do core a
+//! converter — `ai::ask` devolve só a `String` da interpretação), logo **não** há
+//! `From<ai::…>` a gatear. A chave real (BYOK), o armazenamento seguro e a UI vêm
+//! depois (F2.3–F2.6), após o **gate estratégico F2.2**.
 
 uniffi::setup_scaffolding!();
 
@@ -1105,6 +1126,164 @@ pub fn list_highlights(data_dir: String) -> Result<Vec<Highlight>, CoreError> {
         let _ = data_dir;
         Err(CoreError::Generic {
             message: "store local indisponível no alvo web (F0.10: wa-sqlite+OPFS)".to_string(),
+        })
+    }
+}
+
+/// A resposta de uma **pergunta ancorada** (`ask`), na fronteira UniFFI.
+///
+/// **Separa explicitamente** o que vem do **store local** do que vem do **modelo**
+/// — a anti-alucinação materializada no contrato (SPEC §6.2):
+/// - [`cited_text`](Self::cited_text): a passagem **numerada, verbatim do store
+///   local** (via `ai::numbered_passage`), **nunca** produzida/editada pelo LLM;
+/// - [`interpretation`](Self::interpretation): a saída do **modelo** (aqui o
+///   `MockLlmProvider`), que apenas **interpreta** o texto citado;
+/// - [`reference`](Self::reference): a referência **canônica** (`parse_reference`);
+/// - [`provider`](Self::provider)/[`model`](Self::model): identificação do
+///   provedor/modelo usado (ex.: `"mock"` / `"mock-1"`).
+///
+/// Record **puro** (só [`Reference`]/`String`), definido em **todos** os alvos.
+/// É montado **na mão** por [`ask_anchored`] (não há um único tipo-fonte do core a
+/// converter: `ai::ask` devolve só a `String` da interpretação) — por isso **não**
+/// há um `From<ai::…>` a gatear como em [`CrossRef`]/[`Note`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AiAnswer {
+    /// Referência canônica da passagem ancorada (book/chapter/verses).
+    pub reference: Reference,
+    /// Passagem **numerada, verbatim do store local** (uma linha por versículo,
+    /// `"{n} {texto}"`). Anti-alucinação: **nunca** vem do LLM.
+    pub cited_text: String,
+    /// Interpretação produzida pelo **modelo** (aqui o mock) — texto do LLM, não
+    /// bíblico. Separado do [`cited_text`](Self::cited_text).
+    pub interpretation: String,
+    /// Nome do provedor usado (ex.: `"mock"`), via `LlmProvider::name()`.
+    pub provider: String,
+    /// Modelo usado (ex.: `"mock-1"`), via `LlmProvider::model()`.
+    pub model: String,
+}
+
+/// **Pergunta ancorada** (`ask`) sobre uma passagem, delegando à camada de IA do
+/// `the-light-core` (RAG leve, BYOK).
+///
+/// Pipeline no **nativo** (tudo no core — uma fonte da verdade):
+/// 1. `reference::parse_reference(&reference)` canonicaliza a referência (PT/EN →
+///    a mesma `Reference`), como em [`get_passage`];
+/// 2. lê a `Passage` **verbatim do store** pela **mesma** rota da F1.2
+///    (`Store::open` → `EmbeddedSource::passage(&ref, &TranslationId)`);
+/// 3. `ai::numbered_passage(&passage)` → texto **numerado** (o `cited_text`);
+/// 4. `ai::ask_context(&label, &numbered, &[])` monta o bloco RAG (rótulo da
+///    referência via `reference::format_reference`; `related` vazio ⇒ `"(nenhuma)"`;
+///    xrefs no contexto ficam p/ depois);
+/// 5. `ai::build_provider(&provider_name, key, model)` — a **chave é argumento**
+///    (BYOK); `"mock"` **não** faz rede nem exige chave;
+/// 6. `ai::ask(provider, &question, &context, lang)` → **só a interpretação** (a
+///    `String` do modelo);
+/// 7. compõe [`AiAnswer`] separando `cited_text` (store) de `interpretation`
+///    (modelo), com `provider`/`model` do `LlmProvider`.
+///
+/// **Nenhum** prompt/RAG/SQL é reimplementado aqui — tudo vive em `ai::study`/
+/// store. Anti-alucinação: o texto do versículo vem **sempre do store** (verbatim);
+/// o LLM só interpreta, recebendo o texto numerado como **contexto**. `lang`
+/// aceita `"pt"|"en"` (e sinônimos, via `Lang::from_str`); valor não reconhecido →
+/// **Pt** (default sensato p/ o app PT-first) — sem panicar.
+///
+/// **BYOK / offline-first:** com `provider_name = "mock"` e `key = None` (esta
+/// tarefa) não há rede nem chave; nenhuma chave é logada. A chave real do usuário
+/// (Gemini/etc.) e a rede opt-in são F2.6.
+///
+/// **Gating por alvo (ver ADR-0010):** exportada em todos os alvos, mas o corpo que
+/// toca `ai`/store é `cfg(not(target_arch = "wasm32"))`; no **web**, stub que
+/// retorna [`CoreError`] (paridade web de IA = F2.7), sem arrastar `ai`/`reqwest`/
+/// `rusqlite` para o grafo wasm.
+#[uniffi::export]
+#[allow(clippy::too_many_arguments)]
+pub fn ask_anchored(
+    db_path: String,
+    translation: String,
+    reference: String,
+    question: String,
+    provider_name: String,
+    key: Option<String>,
+    model: Option<String>,
+    lang: String,
+) -> Result<AiAnswer, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        // Trait em escopo para chamar `.passage(...)` em `EmbeddedSource` (como em
+        // `get_passage`). `name()/model()` do `dyn LlmProvider` dispensam import.
+        use the_light_core::source::BibleSource;
+
+        // 1) Referência canônica (delegada ao core), como em `get_passage`.
+        let reference = the_light_core::reference::parse_reference(&reference).map_err(|e| {
+            CoreError::Generic {
+                message: e.to_string(),
+            }
+        })?;
+
+        // 2) Idioma de exibição/resposta (`"pt"|"en"` + sinônimos); default Pt.
+        let lang = lang
+            .parse::<the_light_core::model::Lang>()
+            .unwrap_or(the_light_core::model::Lang::Pt);
+
+        // 3) Passagem VERBATIM do store, pela MESMA rota da F1.2 (anti-alucinação).
+        let store =
+            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })?;
+        let source = the_light_core::source::EmbeddedSource::new(&store);
+        let translation_id = the_light_core::model::TranslationId::new(translation);
+        let passage =
+            source
+                .passage(&reference, &translation_id)
+                .map_err(|e| CoreError::Generic {
+                    message: e.to_string(),
+                })?;
+
+        // 4) Texto numerado (store) + bloco de contexto RAG — funções PURAS do core.
+        let cited_text = the_light_core::ai::numbered_passage(&passage);
+        let label = the_light_core::reference::format_reference(&reference, lang);
+        let context = the_light_core::ai::ask_context(&label, &cited_text, &[]);
+
+        // 5) Provedor (BYOK: a chave é argumento; "mock" = sem rede/chave).
+        let provider =
+            the_light_core::ai::build_provider(&provider_name, key, model).map_err(|e| {
+                CoreError::Generic {
+                    message: e.to_string(),
+                }
+            })?;
+
+        // 6) Interpretação = SÓ a saída do modelo (o LLM nunca gera texto bíblico).
+        let interpretation = the_light_core::ai::ask(provider.as_ref(), &question, &context, lang)
+            .map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })?;
+
+        // 7) Contrato anti-alucinação: cited_text (store) separado da interpretation.
+        Ok(AiAnswer {
+            reference: reference.into(),
+            cited_text,
+            interpretation,
+            provider: provider.name().to_string(),
+            model: provider.model().to_string(),
+        })
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        // Stub web: o módulo `ai` do core é `embedded`-only (nativo). A paridade web
+        // de IA é a F2.7; até lá, falha explícita — sem tocar `ai`/store/`rusqlite`/
+        // `reqwest` (mantém o grafo wasm puro).
+        let _ = (
+            db_path,
+            translation,
+            reference,
+            question,
+            provider_name,
+            key,
+            model,
+            lang,
+        );
+        Err(CoreError::Generic {
+            message: "ai não disponível no alvo web (F2.7)".to_string(),
         })
     }
 }
@@ -2140,5 +2319,257 @@ mod userdata_tests {
             !dir.0.join("notes").exists(),
             "ref inválida não cria notes/ (parse falha antes do I/O)"
         );
+    }
+}
+
+/// Testes da **pergunta ancorada** da F2.1 (`ask_anchored`), **apenas no nativo**
+/// (host com a feature `embedded`, ADR-0005 — onde o módulo `ai` do core existe).
+/// As asserções são **offline**, **determinísticas** e **sem chave**: usam o
+/// **provedor MOCK** do core (`build_provider("mock", None, None)` → resposta fixa,
+/// nenhuma chamada HTTP) sobre um fixture KJV de domínio público construído num
+/// arquivo temporário (schema = migrações do core via `Store::open`; DML de
+/// domínio público — como nas F1.2/F1.5). A prova central é **anti-alucinação**: o
+/// `cited_text` é o texto **verbatim do store** (muda com o fixture), enquanto a
+/// `interpretation` é a saída do **modelo** (invariante ao texto bíblico).
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod ai_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    // ── Textos KJV **verbatim** (domínio público), usados SÓ no fixture/assert;
+    //    nenhum texto bíblico é gerado em produção (anti-alucinação). ──────────────
+    /// João 3:16 — King James Version.
+    const JOHN_3_16_KJV: &str = "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.";
+    /// João 3:17 — King James Version (segundo versículo, p/ provar que o
+    /// `cited_text` acompanha o STORE e a `interpretation` não).
+    const JOHN_3_17_KJV: &str = "For God sent not his Son into the world to condemn the world; but that the world through him might be saved.";
+
+    /// Banco temporário do fixture: remove o arquivo (e sidecars WAL/SHM) no `Drop`.
+    struct TmpDb(PathBuf);
+
+    impl TmpDb {
+        fn path(&self) -> String {
+            self.0.to_string_lossy().into_owned()
+        }
+    }
+
+    impl Drop for TmpDb {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+            if let Some(name) = self.0.file_name().and_then(|n| n.to_str()) {
+                let dir = self.0.parent().map(PathBuf::from).unwrap_or_default();
+                let _ = std::fs::remove_file(dir.join(format!("{name}-wal")));
+                let _ = std::fs::remove_file(dir.join(format!("{name}-shm")));
+            }
+        }
+    }
+
+    /// Caminho temporário único (offline, sem deps externas).
+    fn unique_tmp_db() -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "the-light-app-f2_1-{}-{nanos}-{n}.sqlite",
+            std::process::id()
+        ))
+    }
+
+    /// Constrói o fixture KJV: schema via migrações do core (`Store::open`) + DML de
+    /// domínio público (João 3:16 e 3:17). Sem aspas simples nas `const`s → seguras
+    /// inline; nenhum schema é escrito à mão. A conexão fecha antes do uso pela
+    /// fronteira.
+    fn build_kjv_fixture() -> TmpDb {
+        let path = unique_tmp_db();
+        let _ = std::fs::remove_file(&path);
+
+        {
+            let store =
+                the_light_core::store::Store::open(&path).expect("abrir/migrar fixture KJV");
+            let conn = store.conn();
+
+            conn.execute(
+                "INSERT INTO translations(id,abbrev,name,language,license,embeddable) \
+                 VALUES ('kjv','KJV','King James Version','en','public-domain',1)",
+                [],
+            )
+            .expect("inserir tradução kjv");
+
+            for (chapter, verse, text) in [(3u16, 16u16, JOHN_3_16_KJV), (3, 17, JOHN_3_17_KJV)] {
+                let sql = format!(
+                    "INSERT INTO verses(translation_id,book_number,chapter,verse,text) \
+                     VALUES ('kjv',43,{chapter},{verse},'{text}')"
+                );
+                conn.execute(&sql, []).expect("inserir versículo João");
+            }
+        } // `store`/`conn` fecham aqui (flush no arquivo).
+
+        TmpDb(path)
+    }
+
+    /// Resposta fixa do `MockLlmProvider` do core, obtida **do próprio core** (sem
+    /// hardcode): como o `system` não contém o marcador `PERGUNTA:`, `complete`
+    /// devolve a resposta canônica — **exatamente** o que `ai::ask` retorna com o
+    /// mock, independentemente do texto bíblico. Prova que a `interpretation` é do
+    /// **modelo**, não do store.
+    fn mock_fixed_response() -> String {
+        use the_light_core::ai::LlmProvider;
+        the_light_core::ai::MockLlmProvider::default()
+            .complete("sistema de teste sem marcador de refinamento", "pergunta")
+            .expect("mock complete não deve falhar (sem rede)")
+    }
+
+    #[test]
+    fn ask_anchored_cites_store_verbatim_and_interprets_via_mock() {
+        let db = build_kjv_fixture();
+
+        let answer = ask_anchored(
+            db.path(),
+            "kjv".to_string(),
+            "John 3:16".to_string(),
+            "What does this passage mean?".to_string(),
+            "mock".to_string(),
+            None, // BYOK: sem chave (mock não faz rede)
+            None,
+            "en".to_string(),
+        )
+        .expect("ask_anchored com o mock deve retornar Ok");
+
+        // ── Anti-alucinação: cited_text é VERBATIM do store, numerado. ────────────
+        assert!(
+            answer.cited_text.contains("16 For God so loved the world"),
+            "cited_text deve ser o versículo numerado verbatim do store: {}",
+            answer.cited_text
+        );
+        assert!(
+            answer.cited_text.contains(JOHN_3_16_KJV),
+            "cited_text deve conter o texto KJV integral verbatim do store: {}",
+            answer.cited_text
+        );
+
+        // ── interpretation é a saída do MODELO (mock), NÃO o texto bíblico. ───────
+        assert_eq!(
+            answer.interpretation,
+            mock_fixed_response(),
+            "interpretation deve ser a resposta fixa do MockLlmProvider"
+        );
+        assert!(
+            !answer.interpretation.contains("For God so loved"),
+            "o LLM/mock NÃO reproduz/gera texto bíblico na interpretation: {}",
+            answer.interpretation
+        );
+        assert_ne!(
+            answer.cited_text, answer.interpretation,
+            "cited_text (store) e interpretation (modelo) são coisas distintas"
+        );
+
+        // ── Provedor/modelo e referência canônica. ───────────────────────────────
+        assert_eq!(answer.provider, "mock", "provider deve ser 'mock'");
+        assert_eq!(answer.model, "mock-1", "modelo do mock do core");
+        assert_eq!(answer.reference.book, 43, "João é o livro 43");
+        assert_eq!(answer.reference.chapter, 3, "capítulo 3");
+        assert_eq!(
+            answer.reference.verses,
+            VerseRange::Single { verse: 16 },
+            "versículo único 16"
+        );
+    }
+
+    #[test]
+    fn cited_text_tracks_store_while_interpretation_is_invariant() {
+        // Prova anti-fake: com O MESMO fixture/mock, perguntar de dois versículos
+        // distintos muda o `cited_text` (segue o STORE) mas NÃO a `interpretation`
+        // (vem do modelo, não do texto bíblico).
+        let db = build_kjv_fixture();
+
+        let a16 = ask_anchored(
+            db.path(),
+            "kjv".to_string(),
+            "John 3:16".to_string(),
+            "Explique.".to_string(),
+            "mock".to_string(),
+            None,
+            None,
+            "en".to_string(),
+        )
+        .expect("ask_anchored 3:16");
+
+        let a17 = ask_anchored(
+            db.path(),
+            "kjv".to_string(),
+            "John 3:17".to_string(),
+            "Explique.".to_string(),
+            "mock".to_string(),
+            None,
+            None,
+            "en".to_string(),
+        )
+        .expect("ask_anchored 3:17");
+
+        // cited_text acompanha o store (textos verbatim diferentes por versículo).
+        assert!(a16.cited_text.contains(JOHN_3_16_KJV));
+        assert!(a17.cited_text.contains(JOHN_3_17_KJV));
+        assert_ne!(
+            a16.cited_text, a17.cited_text,
+            "cited_text muda com o versículo do store"
+        );
+
+        // interpretation é a MESMA (a do modelo) — invariante ao texto bíblico.
+        assert_eq!(
+            a16.interpretation, a17.interpretation,
+            "a interpretação do mock não depende do texto bíblico"
+        );
+        assert_eq!(a16.interpretation, mock_fixed_response());
+    }
+
+    #[test]
+    fn ask_anchored_error_paths_do_not_panic() {
+        let db = build_kjv_fixture();
+
+        // Referência inválida → CoreError (parse falha antes de qualquer I/O).
+        let err = ask_anchored(
+            db.path(),
+            "kjv".to_string(),
+            "isto nao e referencia".to_string(),
+            "?".to_string(),
+            "mock".to_string(),
+            None,
+            None,
+            "en".to_string(),
+        )
+        .expect_err("referência inválida deve falhar");
+        assert!(matches!(err, CoreError::Generic { .. }));
+
+        // Tradução inexistente no store → CoreError (via core), sem panic.
+        let err = ask_anchored(
+            db.path(),
+            "nao-existe".to_string(),
+            "John 3:16".to_string(),
+            "?".to_string(),
+            "mock".to_string(),
+            None,
+            None,
+            "en".to_string(),
+        )
+        .expect_err("tradução inexistente deve falhar");
+        assert!(matches!(err, CoreError::Generic { .. }));
+
+        // Provedor desconhecido → CoreError (via `build_provider`), sem panic.
+        let err = ask_anchored(
+            db.path(),
+            "kjv".to_string(),
+            "John 3:16".to_string(),
+            "?".to_string(),
+            "provedor-inexistente".to_string(),
+            None,
+            None,
+            "en".to_string(),
+        )
+        .expect_err("provedor desconhecido deve falhar");
+        assert!(matches!(err, CoreError::Generic { .. }));
     }
 }
