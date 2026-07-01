@@ -89,6 +89,22 @@ cp "$ROOT/bindings/"*.ts "$NATIVE_JS_DIR/bindings/"
 [ -f "$NATIVE_JS_DIR/src/index.tsx" ] || { echo "ERRO: cópia do barrel falhou" >&2; exit 1; }
 [ -f "$NATIVE_JS_DIR/bindings/the_light_app_core.ts" ] || { echo "ERRO: cópia dos bindings falhou" >&2; exit 1; }
 
+# ── Sanear JSDoc dos bindings gerados: `**/` → `** /` (ADR-0027) ──────────────
+# O `ubrn` copia os doc-comments Rust (`///`) VERBATIM para blocos JSDoc `/** … */`.
+# Quando um doc-comment contém a sequência markdown `**puro**/` (negrito seguido de
+# barra, ex.: "tipo **puro**/`ai-pure`"), o `**/` embutido produz um `*/` que FECHA o
+# bloco JSDoc PREMATURAMENTE — o resto vira "código" e o `tsc`/Metro veem centenas de
+# erros de sintaxe (TS1005/TS1109/…). Como NÃO podemos tocar `core/src/lib.rs` (F3.5) e
+# os bindings são artefatos GERADOS-IGNORADOS, saneamos o ARTEFATO aqui: inserir um espaço
+# em `**/` (→ `** /`) quebra o `*/` sem alterar tipo/assinatura/comportamento algum (é só
+# comentário; o negrito markdown "puro" segue legível). Nenhuma linha usa `**/` como
+# FECHAMENTO legítimo de comentário nestes arquivos (o fechamento é ` */`), então a
+# substituição global é segura. (Correção de raiz = doc-comment do core, via PR + ADR.)
+echo "==> Saneando JSDoc gerado (**/ -> ** /) p/ não fechar comentário prematuramente"
+find "$NATIVE_JS_DIR" -name '*.ts' -type f -print0 | xargs -0 perl -i -pe 's{\*\*/}{** /}g'
+grep -qF '**/' "$NATIVE_JS_DIR/bindings/the_light_app_core.ts" \
+  && { echo "ERRO: saneamento de JSDoc (**/) falhou nos bindings" >&2; exit 1; } || true
+
 echo "==> OK — módulo nativo iOS gerado:"
 {
   find "$XCFRAMEWORK" -maxdepth 2 -name '*.a' -o -maxdepth 2 -name 'Info.plist'

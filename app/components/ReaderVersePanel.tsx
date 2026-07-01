@@ -75,6 +75,7 @@ export function ReaderVersePanel({
   bookNameOf,
   onSelectXref,
   onAsk,
+  onStudy,
   onChanged,
   onClose,
 }: {
@@ -96,6 +97,8 @@ export function ReaderVersePanel({
   onSelectXref: (ref: XrefReference) => void;
   /** Abre o estudo assistido (IA) ancorado nesta passagem (F2.5). Opcional. */
   onAsk?: () => void;
+  /** Abre o estudo profundo (IA) ancorado nesta passagem (F3.5). Opcional. */
+  onStudy?: () => void;
   /** Avisa a tela após criar/editar/remover nota ou highlight (re-lista indicadores). */
   onChanged: () => void;
   onClose: () => void;
@@ -291,6 +294,19 @@ export function ReaderVersePanel({
               accessibilityLabel="Perguntar à IA sobre esta passagem"
             >
               <Text style={styles.btnText}>Perguntar (IA)</Text>
+            </Pressable>
+          ) : null}
+
+          {/* ── ESTUDO PROFUNDO (IA) — F3.5 ──────────────────────────────── */}
+          {onStudy ? (
+            <Pressable
+              style={[styles.btn, styles.btnAsk]}
+              onPress={onStudy}
+              testID="verse-study"
+              accessibilityRole="button"
+              accessibilityLabel="Estudo profundo (IA) desta passagem"
+            >
+              <Text style={styles.btnText}>Estudo (IA)</Text>
             </Pressable>
           ) : null}
 

@@ -30,6 +30,10 @@ import { runNotesSelfTest } from './notes-selftest';
 // `ask-selftest.web.ts` é um SKIP (IA web = F2.7), mantendo o bundle web sem a camada
 // `ai`/o banco bundled.
 import { runAskSelfTest } from './ask-selftest';
+// F3.5: prova de ESTUDO PROFUNDO + LÉXICO no device (marcador TLA_STUDY, provider="mock",
+// sem chave/rede). Par nativo/web por extensão — no web, `study-selftest.web.ts` é um SKIP
+// (estudo/léxico web = F3.12), mantendo o bundle web sem a camada `ai`/store/o banco bundled.
+import { runStudySelfTest } from './study-selftest';
 
 // Marcador (prefixo grep-ável). console.error garante o nível alto no log
 // unificado; console.log o complementa. O script assere o texto exato.
@@ -84,5 +88,10 @@ export async function runReferenceSelfTest(): Promise<void> {
   // fronteira `ask_anchored_stream` com o provedor "mock" (offline, sem chave). Emite
   // TLA_ASK (cited_text verbatim do store SEPARADO da interpretação do mock).
   await runAskSelfTest();
+  // F3.5: prova de ESTUDO PROFUNDO + LÉXICO (deep_study + lexical_entries) via as
+  // fronteiras `deep_study`/`lexical_entries` com o provedor "mock" (offline, sem chave).
+  // Emite TLA_STUDY (passageText verbatim do store SEPARADO da interpretação do mock +
+  // léxico Strong do banco + atribuição STEP CC-BY).
+  await runStudySelfTest();
   console.log(`${MARK} DONE`);
 }

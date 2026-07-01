@@ -25,6 +25,8 @@ import {
   listHighlights as listHighlightsNative,
   askAnchored as askAnchoredNative,
   askAnchoredStream as askAnchoredStreamNative,
+  deepStudy as deepStudyNative,
+  lexicalEntries as lexicalEntriesNative,
 } from './native-generated/src/index';
 import type {
   Book,
@@ -36,9 +38,34 @@ import type {
   Highlight,
   AiAnswer,
   AiTokenCallback,
+  StudyResultOut,
+  StudySection,
+  StudyCitation,
+  VerifiedLexiconOut,
+  LexEntry,
+} from './native-generated/bindings/the_light_app_core';
+import {
+  StudyMode,
+  StudyLens,
+  StudyDepth,
 } from './native-generated/bindings/the_light_app_core';
 
-export type { Book, Passage, Translation, SearchHit, CrossRef, Note, Highlight, AiAnswer };
+export type {
+  Book,
+  Passage,
+  Translation,
+  SearchHit,
+  CrossRef,
+  Note,
+  Highlight,
+  AiAnswer,
+  StudyResultOut,
+  StudySection,
+  StudyCitation,
+  VerifiedLexiconOut,
+  LexEntry,
+};
+export { StudyMode, StudyLens, StudyDepth };
 
 /** 66 livros canônicos (PURO — `reference::BOOKS`, independe do banco). */
 export function listBooks(): Book[] {
@@ -233,4 +260,80 @@ export async function askAnchoredStream(
     lang,
     callback,
   );
+}
+
+// ── ESTUDO PROFUNDO + LÉXICO (deep_study/lexical_entries) — F3.5, fronteira F3.2/F3.3 ─
+// Glue NATIVO das duas funções de estudo/léxico geradas → JSI → a camada `ai` do
+// the-light-core. NÃO reimplementa prompt/RAG/aparato/SQL/JOIN de léxico em TS — TODO
+// o pipeline (passagem VERBATIM do store → léxico verificado do banco → RAG leve →
+// provedor BYOK → interpretação) vive no core (uma fonte da verdade). O `StudyResultOut`
+// SEPARA `passageText` (texto bíblico, verbatim do store — anti-alucinação) da
+// `interpretation` (saída do LLM/mock); as `citations` e o léxico vêm SEMPRE do banco
+// local verificado (STEP Bible CC-BY), nunca do modelo. `VerifiedLexiconOut.sources`
+// preserva a ATRIBUIÇÃO STEP CC-BY que a UI (F3.5) exibe obrigatoriamente.
+//
+// BYOK/offline-first: a `key` é ARGUMENTO (lida sob demanda do keystore pela UI) e
+// NUNCA é logada aqui; com `provider="mock"` não há chave nem rede (prova headless).
+// A paridade web de estudo/léxico é a F3.12 (`reading.web.ts` = stub). Síncrono no JSI;
+// embrulhado em Promise p/ assinatura uniforme com o web.
+//
+// ATENÇÃO à ordem REAL dos argumentos da fronteira (contra alucinação): `deep_study`
+// recebe `lang` ANTES de `providerName`, e a passagem é `book/chapter/verse` NUMÉRICOS
+// (não uma string "John 3:16"); `lexical_entries` NÃO tem `translation` (o léxico é
+// independente de tradução, chaveado por book/chapter[/verse]).
+
+/**
+ * Estudo profundo (modo × lente × profundidade) de uma passagem, delegando ao binding
+ * gerado `deepStudy` → JSI → `the_light_core::ai::study`. `key`/`model` `undefined` no
+ * mock (o core usa o default e não faz rede). O `StudyResultOut` traz `passageText`
+ * (store, verbatim) SEPARADO de `interpretation` (LLM), mais `sections`/`citations`/
+ * `warnings`. Anti-alucinação: o texto bíblico e as citações vêm do banco, não do modelo.
+ */
+export async function deepStudy(
+  dbPath: string,
+  translation: string,
+  book: number,
+  chapter: number,
+  verse: number | undefined,
+  mode: StudyMode,
+  lens: StudyLens,
+  depth: StudyDepth,
+  lang: string,
+  providerName: string,
+  key: string | undefined,
+  model: string | undefined,
+): Promise<StudyResultOut> {
+  return deepStudyNative(
+    dbPath,
+    translation,
+    book,
+    chapter,
+    verse,
+    mode,
+    lens,
+    depth,
+    lang,
+    providerName,
+    key,
+    model,
+  );
+}
+
+/**
+ * Dados léxicos Strong verificados de uma passagem, delegando ao binding gerado
+ * `lexicalEntries` → JSI → `the_light_core::ai::lexicon`. SEM `translation` (léxico é
+ * independente de tradução). Cada `LexEntry` traz `strongs`/`lemma`/`translit`/`gloss`
+ * VERBATIM do léxico local (STEP Bible / TBESH–TBESG, CC-BY) — nenhum LLM envolvido
+ * (lookup puro de banco, anti-alucinação). `sources` guarda a atribuição STEP CC-BY que
+ * a UI exibe obrigatoriamente. `limit` opcional (padrão do core).
+ */
+export async function lexicalEntries(
+  dbPath: string,
+  book: number,
+  chapter: number,
+  verse: number | undefined,
+  lang: string,
+  limit: number | undefined,
+): Promise<VerifiedLexiconOut> {
+  return lexicalEntriesNative(dbPath, book, chapter, verse, lang, limit);
 }

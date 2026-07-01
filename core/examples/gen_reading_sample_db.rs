@@ -11,10 +11,15 @@
 //! v16 verbatim) — mais Gênesis e Salmos (AT) para uma navegação plausível em
 //! ambas as traduções. O banco completo fica para uma otimização posterior.
 //!
+//! Além do texto, o subset propaga o **léxico STEP** (ADR-0027): `scholarly_sources`
+//! (atribuição CC-BY), `original_tokens` (línguas originais dos livros do subset) e as
+//! `lexicon` referenciadas — assim `lexical_entries`/`deep_study` (F3.2/F3.3) e a UI de
+//! estudo (F3.5) têm léxico + atribuição STEP visível no device (senão viriam vazios).
+//!
 //! Regra "uma fonte da verdade" + anti-alucinação: o **schema** vem das
 //! **migrações do `the-light-core`** (`Store::open` cria/migra), nunca de SQL de
-//! schema à mão; o **texto** é copiado **verbatim do store** (`bible.sqlite`,
-//! domínio público), nunca inventado/hardcodado.
+//! schema à mão; o **texto** e o **léxico** são copiados **verbatim do store**
+//! (`bible.sqlite`, domínio público / STEP Bible CC-BY), nunca inventados/hardcodados.
 //!
 //! Uso (via `scripts/gen-reading-sample-db.sh`, ou direto):
 //!   cargo run --example gen_reading_sample_db -- [saida.sqlite] [origem.sqlite]
@@ -137,6 +142,63 @@ fn main() {
         )
         .expect("copiar referências cruzadas (ambos os lados no subset)");
 
+    // ── Léxico / línguas originais (pipeline de DADOS, ADR-0027; STEP Bible CC-BY) ──
+    // O schema v2 do core cria `scholarly_sources`/`original_tokens`/`lexicon` (via
+    // `Store::open`) mas o gerador NÃO as populava — sem isto, `lexical_entries(...)`/
+    // `deep_study(...)` no device (F3.2/F3.3, UI da F3.5) retornariam léxico VAZIO e a
+    // atribuição STEP CC-BY não apareceria. Propagamos do corpus completo (`src`) —
+    // mesmo molde do xref/`verses_fts` acima. É DADO/fixture (verbatim do store, STEP
+    // Bible / TBESH–TBESG, CC BY 4.0, ADR-0026): a query/JOIN/agregação de léxico
+    // continuam no core (`ai::lexicon::verified_lexicon`), chamados pela fronteira
+    // `lexical_entries` — nada de léxico é reimplementado aqui.
+    //
+    // ORDEM (FKs ligadas por `Store::open`): `scholarly_sources` ANTES de
+    // `original_tokens`/`lexicon` (ambos `REFERENCES scholarly_sources(id)`).
+    //
+    // (a) TODAS as `scholarly_sources` (4 linhas: tahot/tagnt/tbesh/tbesg — atribuição
+    //     STEP CC-BY verbatim). Poucas linhas; copiar todas evita FK órfã e mantém as
+    //     atribuições disponíveis para qualquer token/léxico copiado.
+    let sources = conn
+        .execute(
+            "INSERT INTO scholarly_sources(id,name,license,embeddable,attribution,url,version) \
+             SELECT id,name,license,embeddable,attribution,url,version FROM src.scholarly_sources",
+            [],
+        )
+        .expect("copiar scholarly_sources (atribuição STEP CC-BY)");
+
+    // (b) `original_tokens` dos versículos dos livros do subset {Gn,Sl,Jo}. Chaveados por
+    //     (book_number,chapter,verse) — casam com `verses`; é o que o `verified_lexicon`
+    //     do core lê para agregar por Strong base.
+    let tokens = conn
+        .execute(
+            &format!(
+                "INSERT INTO original_tokens(id,testament,book_number,chapter,verse,\
+                 word_index,surface,translit,lemma,strongs,strongs_raw,morph_code,gloss,source_id) \
+                 SELECT id,testament,book_number,chapter,verse,\
+                 word_index,surface,translit,lemma,strongs,strongs_raw,morph_code,gloss,source_id \
+                 FROM src.original_tokens WHERE book_number IN ({in_list})"
+            ),
+            [],
+        )
+        .expect("copiar original_tokens dos livros do subset");
+
+    // (c) `lexicon`: SOMENTE as linhas referenciadas pelos Strong dos tokens copiados
+    //     (poucos milhares vs. o léxico inteiro ~22,7k) — mantém o subset enxuto. O JOIN
+    //     `l.strongs = t.strongs` do core casa por Strong; copiamos o léxico dessas chaves.
+    let lexicon = conn
+        .execute(
+            &format!(
+                "INSERT INTO lexicon(strongs,lemma,translit,pron,gloss,gloss_pt,definition,derivation,source_id) \
+                 SELECT strongs,lemma,translit,pron,gloss,gloss_pt,definition,derivation,source_id \
+                 FROM src.lexicon WHERE strongs IN (\
+                   SELECT DISTINCT strongs FROM src.original_tokens \
+                   WHERE book_number IN ({in_list}) AND strongs IS NOT NULL AND strongs <> ''\
+                 )"
+            ),
+            [],
+        )
+        .expect("copiar lexicon referenciado pelos tokens do subset");
+
     conn.execute("DETACH DATABASE src", [])
         .expect("desanexar src");
 
@@ -219,10 +281,42 @@ fn main() {
         "João 3:16 deve ter ≥1 xref no subset (alvo dentro de {BOOKS:?})"
     );
 
+    // Sanidade léxico (ADR-0027; dado LIDO do banco): João 3:16 tem ≥1 token com Strong
+    // (base da prova TLA_STUDY: `lexicon>=1`) e a atribuição STEP CC-BY está presente. A
+    // prova de que `lexical_entries`/`deep_study` AGREGAM/verificam vive no core (F3.2/
+    // F3.3) e no device (self-test TLA_STUDY da F3.5); aqui só garantimos que os DADOS
+    // existem (sem reimplementar o léxico no pipeline).
+    let john_3_16_tokens: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM original_tokens \
+             WHERE book_number=43 AND chapter=3 AND verse=16 \
+             AND strongs IS NOT NULL AND strongs <> ''",
+            [],
+            |r| r.get(0),
+        )
+        .expect("contar tokens Strong de João 3:16 no subset");
+    assert!(
+        john_3_16_tokens >= 1,
+        "João 3:16 deve ter ≥1 token com Strong no subset (léxico propagado, ADR-0027)"
+    );
+    let step_sources: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM scholarly_sources WHERE attribution LIKE '%STEP Bible%'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("contar fontes STEP no subset");
+    assert!(
+        step_sources >= 1,
+        "atribuição STEP Bible CC-BY deve estar presente no subset (ADR-0026/0027)"
+    );
+
     println!(
         "reading-sample.sqlite gerado: {out}\n  \
          traduções={translations} livros={:?} versículos={inserted} verses_fts={indexed} \
          cross_references={xrefs} joão_3_16_xrefs={john_3_16_xrefs} \
+         scholarly_sources={sources} original_tokens={tokens} lexicon={lexicon} \
+         joão_3_16_tokens_strong={john_3_16_tokens} step_sources={step_sources} \
          joão_capítulos_kjv={john_chapters}",
         BOOKS
     );

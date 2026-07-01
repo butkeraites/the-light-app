@@ -18,6 +18,7 @@ import { ReaderParallelView } from '../../../components/ReaderParallelView';
 import { ReaderVersionPicker } from '../../../components/ReaderVersionPicker';
 import { ReaderVersePanel } from '../../../components/ReaderVersePanel';
 import { ReaderAskPanel } from '../../../components/ReaderAskPanel';
+import { ReaderStudyPanel } from '../../../components/ReaderStudyPanel';
 import { ensureReadingDb } from '../../../lib/db';
 import { ensureUserDataDir } from '../../../lib/userdata';
 import { resolveHighlightColor } from '../../../lib/highlightColors';
@@ -70,6 +71,9 @@ export default function ChapterScreen() {
   // F2.5: versículo alvo do painel de "Perguntar" (IA). Separado de `selectedVerse`
   // para que a referência não se perca ao fechar o painel por-versículo.
   const [askVerse, setAskVerse] = useState<number | null>(null);
+  // F3.5: versículo alvo do painel de "Estudo" (IA profundo). Separado de `selectedVerse`
+  // pelo mesmo motivo — a referência não se perde ao fechar o painel por-versículo.
+  const [studyVerse, setStudyVerse] = useState<number | null>(null);
 
   // F1.9: versículo selecionado + painel de referências cruzadas (xref). Os dados
   // vêm SEMPRE da fronteira `cross_refs` (F1.8) — sem SQL/ordenação/filtro em TS.
@@ -385,6 +389,12 @@ export default function ChapterScreen() {
           setAskVerse(selectedVerse);
           setSelectedVerse(null);
         }}
+        onStudy={() => {
+          // F3.5: abre o estudo profundo ancorado na MESMA passagem; fecha o painel
+          // por-versículo preservando a referência no `studyVerse`.
+          setStudyVerse(selectedVerse);
+          setSelectedVerse(null);
+        }}
         onChanged={() => void refreshUserData()}
         onClose={() => setSelectedVerse(null)}
       />
@@ -405,6 +415,26 @@ export default function ChapterScreen() {
         translation={translation}
         lang="pt"
         onClose={() => setAskVerse(null)}
+      />
+
+      {/* F3.5: estudo profundo (IA) ancorado na passagem — modo × lente × profundidade.
+          A `passageText` (verbatim do store) e o LÉXICO Strong vêm do retorno das
+          fronteiras `deep_study`/`lexical_entries` (F3.3/F3.2) e são exibidos SEPARADOS da
+          interpretação (LLM) — anti-alucinação visível — com a ATRIBUIÇÃO STEP CC-BY
+          obrigatória. Provedor "mock" nesta entrega (offline, sem chave/rede; BYOK = F3.10).
+          A passagem vai NUMÉRICA (book/chapter/verse) — não string canônica. */}
+      <ReaderStudyPanel
+        visible={studyVerse != null}
+        sourceLabel={
+          studyVerse != null ? `${bookNamePt(bookNumber)} ${chapterNumber}:${studyVerse}` : ''
+        }
+        book={bookNumber}
+        chapter={chapterNumber}
+        verse={studyVerse}
+        dbPath={dbPath}
+        translation={translation}
+        lang="pt"
+        onClose={() => setStudyVerse(null)}
       />
     </View>
   );

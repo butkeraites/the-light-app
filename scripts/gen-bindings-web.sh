@@ -122,6 +122,16 @@ wasm-bindgen \
   --out-dir "$TS_DIR/wasm-bindgen" \
   "$WASM_FILE"
 
+# ── Sanear JSDoc dos bindings gerados: `**/` → `** /` (ADR-0027) ──────────────
+# Mesmo saneamento do `gen-bindings-ios.sh`: o `ubrn` copia os doc-comments Rust
+# (`///`) VERBATIM para blocos JSDoc `/** … */`; um `**puro**/` (negrito+barra)
+# embute um `*/` que FECHA o comentário prematuramente e derruba `tsc`/Metro com
+# erros de sintaxe. Como NÃO tocamos `core/src/lib.rs` e os bindings são artefatos
+# GERADOS-IGNORADOS, inserimos um espaço (`**/` → `** /`) — só comentário, zero
+# efeito em tipo/assinatura/comportamento; nenhum `**/` é fechamento legítimo aqui.
+echo "==> Saneando JSDoc gerado (**/ -> ** /) p/ não fechar comentário prematuramente"
+find "$TS_DIR" -maxdepth 1 -name '*.ts' -type f -print0 | xargs -0 perl -i -pe 's{\*\*/}{** /}g'
+
 echo "==> OK — bindings web/wasm gerados:"
 find "$TS_DIR" -maxdepth 2 -type f \( -name '*.ts' -o -name '*.js' -o -name '*.wasm' \) \
   | sort | sed "s#^$ROOT/#      #"

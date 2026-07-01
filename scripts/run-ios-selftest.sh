@@ -101,6 +101,15 @@ MARK_NOTES_REF='TLA_NOTES note_ref="John 3:16"'  # nota de João 3:16 via a fron
 # do store, separado da interpretação do mock. Aqui o script só confere substrings.
 MARK_ASK='TLA_ASK ref="John 3:16" provider="mock"'  # ask ancorado de João 3:16, provedor mock
 MARK_ASK_CITED='cited_prefix="For God so loved'     # João 3:16 KJV verbatim do store (sem HL/nº)
+# F3.5 (ADR-0027): PROVA DE ESTUDO PROFUNDO + LÉXICO no device. O app chama as fronteiras
+# `deep_study` (the_light_core::ai::study via JSI) e `lexical_entries` (ai::lexicon) p/
+# João 3:16 com o provedor "mock" (SEM chave, SEM rede) e compõe o marcador do RETORNO
+# REAL: provider="mock" (via LlmProvider::name()), passage_prefix do `passage_text` (João
+# 3:16 KJV VERBATIM do store, sem o número de versículo — SEPARADO da interpretação do
+# mock), lexicon>=1 (subset com léxico propagado, ADR-0027) e attribution_ok=true (STEP
+# Bible CC-BY presente em `sources`). Aqui o script só confere substrings/padrões.
+MARK_STUDY='TLA_STUDY ref="John 3:16" provider="mock"'  # estudo profundo de João 3:16, provedor mock
+MARK_STUDY_PASSAGE='passage_prefix="For God so loved'   # João 3:16 KJV verbatim do store (sem nº)
 
 export PATH="/opt/homebrew/bin:$PATH"  # cocoapods/node instalados via brew
 LOG_DIR="$(mktemp -d -t f07-ios-selftest)"
@@ -193,8 +202,8 @@ sleep 2
 
 xcrun simctl launch "$UDID" "$BUNDLE_ID" >/dev/null
 
-# ── [5/5] Asserção: parse (PT+EN) + leitura + paralela + busca + xref + notas + ask ──
-echo "==> [5/5] Aguardando marcadores PT+EN + leitura + paralela + busca + xref + notas + ask (até ${LAUNCH_WAIT}s)"
+# ── [5/5] Asserção: parse (PT+EN) + leitura + paralela + busca + xref + notas + ask + estudo ──
+echo "==> [5/5] Aguardando marcadores PT+EN + leitura + paralela + busca + xref + notas + ask + estudo (até ${LAUNCH_WAIT}s)"
 found=0
 for _ in $(seq 1 "$LAUNCH_WAIT"); do
   if grep -qF "$MARK_PT" "$STREAM_LOG" \
@@ -217,7 +226,11 @@ for _ in $(seq 1 "$LAUNCH_WAIT"); do
     && grep -qF "$MARK_ASK" "$STREAM_LOG" \
     && grep -qE 'TLA_ASK .*streamed=true' "$STREAM_LOG" \
     && grep -qF "$MARK_ASK_CITED" "$STREAM_LOG" \
-    && grep -qE 'TLA_ASK .*interp_len=[1-9][0-9]*' "$STREAM_LOG"; then
+    && grep -qE 'TLA_ASK .*interp_len=[1-9][0-9]*' "$STREAM_LOG" \
+    && grep -qF "$MARK_STUDY" "$STREAM_LOG" \
+    && grep -qF "$MARK_STUDY_PASSAGE" "$STREAM_LOG" \
+    && grep -qE 'TLA_STUDY .*lexicon=[1-9][0-9]*' "$STREAM_LOG" \
+    && grep -qE 'TLA_STUDY .*attribution_ok=true' "$STREAM_LOG"; then
     found=1
     break
   fi
@@ -229,7 +242,7 @@ grep -F "TLA_" "$STREAM_LOG" | sed 's/.*\(TLA_\)/\1/' | sort -u || true
 echo "---------------------------------------------"
 
 if [ "$found" != "1" ]; then
-  echo "ERRO: marcadores de parse (PT/EN), leitura (TLA_READ), leitura paralela (TLA_PARALLEL + Almeida), busca (TLA_SEARCH: query=\"God\", hits>=1, João 3:16, \"For God so loved\"), xref (TLA_XREF: verse=\"John 3:16\", count>=1, first_ref de um livro do subset Genesis/Psalm(s)/John), notas (TLA_NOTES: note_ref=\"John 3:16\", highlights>=1, persisted=true) e/ou estudo assistido (TLA_ASK: ref=\"John 3:16\", provider=\"mock\", streamed=true, cited_prefix=\"For God so loved\", interp_len>=1) não apareceram em ${LAUNCH_WAIT}s." >&2
+  echo "ERRO: marcadores de parse (PT/EN), leitura (TLA_READ), leitura paralela (TLA_PARALLEL + Almeida), busca (TLA_SEARCH: query=\"God\", hits>=1, João 3:16, \"For God so loved\"), xref (TLA_XREF: verse=\"John 3:16\", count>=1, first_ref de um livro do subset Genesis/Psalm(s)/John), notas (TLA_NOTES: note_ref=\"John 3:16\", highlights>=1, persisted=true), estudo assistido (TLA_ASK: ref=\"John 3:16\", provider=\"mock\", streamed=true, cited_prefix=\"For God so loved\", interp_len>=1) e/ou estudo profundo (TLA_STUDY: ref=\"John 3:16\", provider=\"mock\", passage_prefix=\"For God so loved\", lexicon>=1, attribution_ok=true) não apareceram em ${LAUNCH_WAIT}s." >&2
   exit 1
 fi
 
@@ -242,4 +255,5 @@ grep -F 'TLA_SEARCH query="God"' "$STREAM_LOG" | sed 's/.*\(TLA_SEARCH\)/\1/' | 
 grep -F 'TLA_XREF verse="John 3:16"' "$STREAM_LOG" | sed 's/.*\(TLA_XREF\)/\1/' | head -1
 grep -F 'TLA_NOTES note_ref="John 3:16"' "$STREAM_LOG" | sed 's/.*\(TLA_NOTES\)/\1/' | head -1
 grep -F 'TLA_ASK ref="John 3:16" provider="mock"' "$STREAM_LOG" | sed 's/.*\(TLA_ASK\)/\1/' | head -1
-echo "==> OK — parse_reference (PT==EN), leitura (books=66, João 3:16 KJV verbatim, john_chapters=21), leitura PARALELA (João 3:16 KJV|Almeida 1911, ambos do store via get_chapter), busca (TLA_SEARCH: \"God\" via a fronteira search, João 3:16 + \"For God so loved\" verbatim do store, hits>=1), xref (TLA_XREF: João 3:16 via a fronteira cross_refs, count>=1, first_ref do subset + votos do retorno), notas/highlights (TLA_NOTES: João 3:16 via a fronteira userdata, highlights>=1, persisted=true — 2ª leitura independente do disco) E estudo assistido (TLA_ASK: João 3:16 via a fronteira ask_anchored_stream, provider=\"mock\" sem chave/rede, streamed=true, cited_prefix \"For God so loved\" verbatim do store SEPARADO da interpretação do mock, interp_len>=1) provados pelo Rust nativo via Turbo Module."
+grep -F 'TLA_STUDY ref="John 3:16" provider="mock"' "$STREAM_LOG" | sed 's/.*\(TLA_STUDY\)/\1/' | head -1
+echo "==> OK — parse_reference (PT==EN), leitura (books=66, João 3:16 KJV verbatim, john_chapters=21), leitura PARALELA (João 3:16 KJV|Almeida 1911, ambos do store via get_chapter), busca (TLA_SEARCH: \"God\" via a fronteira search, João 3:16 + \"For God so loved\" verbatim do store, hits>=1), xref (TLA_XREF: João 3:16 via a fronteira cross_refs, count>=1, first_ref do subset + votos do retorno), notas/highlights (TLA_NOTES: João 3:16 via a fronteira userdata, highlights>=1, persisted=true — 2ª leitura independente do disco), estudo assistido (TLA_ASK: João 3:16 via a fronteira ask_anchored_stream, provider=\"mock\" sem chave/rede, streamed=true, cited_prefix \"For God so loved\" verbatim do store SEPARADO da interpretação do mock, interp_len>=1) E estudo profundo (TLA_STUDY: João 3:16 via as fronteiras deep_study/lexical_entries, provider=\"mock\" sem chave/rede, passage_prefix \"For God so loved\" verbatim do store SEPARADO da interpretação do mock, lexicon>=1 do léxico STEP verificado, attribution_ok=true STEP CC-BY) provados pelo Rust nativo via Turbo Module."

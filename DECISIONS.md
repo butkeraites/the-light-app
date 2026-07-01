@@ -2195,3 +2195,127 @@ puro. A **numeração de Strong** é PD, mas os **tokens e glosas amalgamados**
   profundo** (`deep_study`/`study`) é **F3.3**; a **UI** com léxico inline +
   **atribuição STEP CC-BY visível** + propagação ao subset `reading-sample.sqlite`
   (bundling) é **F3.5**. Não antecipados aqui.
+
+## ADR-0027 — UI nativa de estudo profundo (F3.5): propagação do léxico STEP ao subset bundled + atribuição STEP CC-BY visível + anti-alucinação visível (`passage_text`×`interpretation`) + saneamento de JSDoc nos bindings gerados
+
+- **Data:** 2026-07-01 · **Status:** aceito · **Tarefa:** F3.5 · **Depende:** ADR-0014 (subset), ADR-0016 (atribuição visível), ADR-0023/ADR-0025 (anti-alucinação visível), ADR-0026 (dados de léxico STEP CC-BY)
+
+### Contexto
+A F3.5 entrega a **UI nativa (iOS/Android) de estudo profundo** ancorada numa
+passagem do Reader: seletores de **modo × lente × profundidade** que chamam
+`deep_study` (F3.3) e exibem, com **anti-alucinação VISÍVEL**, a `passage_text`
+(texto bíblico, verbatim do STORE) **separada** da `interpretation` (IA) +
+`sections`/`citations`/`warnings`, mais o **léxico Strong inline**
+(`lexical_entries`, F3.2) com a **atribuição STEP CC-BY VISÍVEL** (ADR-0026). A
+fronteira Rust (`deep_study`/`lexical_entries`) **já existe** (F3.2/F3.3); F3.5 é
+**só** app/UI/glue/self-test + o **gerador do subset** + os **bindings gerados**
+(NÃO toca `the-light` nem `core/src/lib.rs`). Três subproblemas exigiram decisão.
+
+### Decisão
+
+1. **PROPAGAR o léxico STEP ao subset bundled `reading-sample.sqlite` (não só ao
+   `bible.sqlite`).** O subset (ADR-0014) empacotado no app nativo propagava só
+   `translations`/`books`/`verses`/`verses_fts`/`cross_references` — **não** o
+   léxico. Como `lexical_entries`/`deep_study` leem de `original_tokens`+`lexicon`+
+   `scholarly_sources` (schema v2, criado vazio por `Store::open`), no device o
+   léxico viria **VAZIO** e a atribuição STEP **não apareceria**. Estendemos
+   `core/examples/gen_reading_sample_db.rs` (via `scripts/gen-reading-sample-db.sh`)
+   para copiar do `bible.sqlite`-fonte (ATTACH `src`, **mesmo molde do xref/FTS**):
+   (a) **todas** as `scholarly_sources` (4 linhas — `tahot/tagnt/tbesh/tbesg`,
+   atribuição STEP CC-BY verbatim — INSERIDAS ANTES, pois as FKs estão ligadas por
+   `Store::open`); (b) `original_tokens` dos livros do subset `{Gn(1),Sl(19),Jo(43)}`;
+   (c) as `lexicon` **referenciadas** pelos Strong desses tokens (não o léxico
+   inteiro — enxuga o bundle). É **DADO/fixture** (verbatim do store, STEP Bible /
+   TBESH–TBESG, CC BY 4.0): a query/JOIN/agregação de léxico continuam **no core**
+   (`ai::lexicon::verified_lexicon`) — nada de léxico é reimplementado no gerador.
+   - **Contagens (LIDAS do subset regenerado, não hardcode):** `scholarly_sources=4`,
+     `original_tokens=56 268`, `lexicon=4 534` (vs. 22 717 inteiro),
+     `joão_3_16_tokens_strong=26`, `step_sources=4`. **Tamanho do subset:
+     ~4,4 MB → ~14,4 MB** (`14 409 728` bytes) — aceitável p/ asset bundled (o
+     `bible.sqlite` completo é da ordem de ~130 MB). Sanidade no próprio gerador:
+     João 3:16 tem ≥1 token com Strong + atribuição STEP presente.
+   - **Armazenamento:** o subset segue **artefato de build IGNORADO** (ADR-0014):
+     reprodutível por `scripts/gen-reading-sample-db.sh`; `.gitignore` inalterado.
+
+2. **Atribuição STEP CC-BY VISÍVEL + anti-alucinação VISÍVEL na UI de estudo
+   (obrigatórias).** `app/components/ReaderStudyPanel.tsx` (molde `ReaderAskPanel`
+   F2.5 + atribuição do `ReaderXrefPanel` F1.9): renderiza `StudyResultOut.passage_text`
+   num bloco **"Passagem (texto bíblico)"** (rótulo distinto, `testID=study-passage-text`)
+   **separado** de **"Interpretação (IA) — confira nas Escrituras"** (`interpretation`,
+   `testID=study-interpretation`) + `sections`/`citations`/`warnings`; o **léxico
+   inline** (`lexicalEntries`) exibe `strongs`/`lemma`/`translit`/`gloss` do RETORNO
+   real; e a **atribuição STEP CC-BY** (`VerifiedLexiconOut.sources`, verbatim do
+   banco) aparece **sempre** que léxico/estudo é exibido (molde ADR-0016). O provedor
+   é **`"mock"`** nesta entrega (offline, sem chave/rede; BYOK real = F3.10). Ação
+   **"Estudo (IA)"** (`testID=verse-study`) no `ReaderVersePanel` + estado `studyVerse`
+   + `<ReaderStudyPanel>` em `[book]/[chapter].tsx` (passagem **numérica**
+   book/chapter/verse — não string canônica). Glue: `reading.ts` reexporta/embrulha
+   `deepStudy`/`lexicalEntries` (ordem REAL: `lang` ANTES de `provider`; `lexical_entries`
+   **sem** `translation`); `reading.web.ts` = **stub** (estudo web = F3.12). Prova
+   headless no device: self-test `TLA_STUDY` (`provider="mock"`, `passage_prefix`
+   = João 3:16 KJV verbatim, `lexicon>=1`, `attribution_ok=true`), sem regressão dos
+   demais `TLA_*`.
+
+3. **Saneamento de JSDoc nos bindings GERADOS (`**/` → `** /`).** Ao consumir os
+   bindings gerados no app `tsc`/Metro, aflorou um defeito LATENTE: o `ubrn` copia os
+   doc-comments Rust (`///`) VERBATIM para blocos JSDoc `/** … */`; doc-comments do
+   core que contêm a sequência markdown `**puro**/` (negrito seguido de barra, ex.:
+   "tipo **puro**/`ai-pure`", em `core/src/lib.rs` linhas 846–1457, dos tipos de léxico
+   F3.2 / estudo F3.3 / conversa F3.4) embutem um `*/` que **fecha o bloco JSDoc
+   PREMATURAMENTE** — o resto vira "código" e `tsc` acusa centenas de erros de sintaxe
+   (TS1005/TS1109/…) nos dois bindings gerados (`app/web/{generated,native-generated}`).
+   Como F3.5 **não** pode tocar `core/src/lib.rs` (correção de raiz = doc-comment no
+   core, via PR + ADR — decisão humana) e os bindings são **artefatos GERADOS-IGNORADOS**,
+   saneamos o **ARTEFATO** nos geradores (`scripts/gen-bindings-ios.sh` e
+   `-web.sh`): um `perl -pe 's{\*\*/}{** /}g'` insere um espaço em `**/` (→ `** /`),
+   quebrando o `*/` **sem** alterar tipo/assinatura/comportamento (é só comentário; o
+   negrito markdown "puro" segue legível). É **seguro/global**: nenhuma linha usa `**/`
+   como FECHAMENTO legítimo de comentário nesses arquivos (o fechamento é ` */`).
+   **Follow-up recomendado (fora do escopo F3.5):** corrigir os doc-comments do core
+   (`**puro** /` com espaço) via PR + ADR, tornando o saneamento redundante.
+
+### Verificação (lendo do banco/retorno, não hardcode)
+- **Subset regenerado:** contagens acima lidas de `reading-sample.sqlite`
+  (`sqlite3`); João 3:16 com 21 Strong distintos (≥1 base agregado) + atribuição
+  `tagnt` = `"Credit it to 'STEP Bible' … CC BY 4.0"`.
+- **Prova no device (`run-ios-selftest.sh`):** `TLA_STUDY ref="John 3:16"
+  provider="mock" passage_prefix="For God so loved…" lexicon=<n≥1> attribution_ok=true`,
+  composto do RETORNO real de `deep_study`/`lexical_entries` (MOCK, sem chave/rede);
+  **sem regressão** de `TLA_SELFTEST`/`TLA_READ`/`TLA_PARALLEL`/`TLA_SEARCH`/`TLA_XREF`/
+  `TLA_NOTES`/`TLA_ASK`.
+- **Qualidade:** `tsc --noEmit` limpo (0 erros após o saneamento); `expo export
+  --platform web` sai 0 (estudo/léxico web = stub F3.12); `gen-bindings-ios.sh` exit 0
+  com `deepStudy`/`lexicalEntries` presentes e 0 `**/` residual; UI separa
+  `passage_text`/léxico da `interpretation` e exibe a string STEP CC-BY (grep).
+- **`the-light`/core intactos:** `git -C ../the-light rev-parse HEAD` == `c8ecb2f`
+  (working tree limpo); `core/src/lib.rs` + `core/Cargo.toml` **não** modificados.
+
+### Alternativas rejeitadas
+- **Aceitar léxico VAZIO no device (provar só no host `bible.sqlite`):** ❌ a UI de
+  estudo mostraria léxico/atribuição vazios no aparelho — descaracteriza a entrega;
+  a propagação é de baixo risco (já feita p/ xref/FTS).
+- **Copiar o léxico INTEIRO (22 717 linhas):** ❌ infla o bundle sem ganho (só os
+  Strong dos livros do subset são consultáveis); copiamos os **referenciados**.
+- **Corrigir os doc-comments em `core/src/lib.rs` (`**puro**/` → `**puro** /`):** ❌
+  fora do escopo F3.5 (só via PR + ADR) e a **verificação da própria tarefa FALHA** se
+  `core/src/lib.rs` for tocado; saneamos o artefato gerado (equivalente, reversível).
+- **Excluir os bindings gerados do `tsconfig`:** ❌ não resolve — os arquivos são
+  **importados** por `reading.ts`/`reading.web.ts` e entram no programa `tsc` mesmo
+  fora do `include`; e `@ts-nocheck` **não** suprime erros de SINTAXE.
+
+### Consequências
+- **Versionado nesta tarefa:** `app/components/ReaderStudyPanel.tsx` (novo),
+  `app/components/ReaderVersePanel.tsx` (ação "Estudo (IA)"),
+  `app/app/read/[book]/[chapter].tsx` (estado `studyVerse` + painel),
+  `app/web/reading.ts`/`reading.web.ts` (glue `deepStudy`/`lexicalEntries` + stub),
+  `app/web/study-selftest.ts`/`.web.ts` (novos) + `app/web/selftest.ts` (registro),
+  `scripts/run-ios-selftest.sh` (asserções `TLA_STUDY`),
+  `scripts/gen-bindings-ios.sh`/`gen-bindings-web.sh` (saneamento JSDoc),
+  `core/examples/gen_reading_sample_db.rs` (propagação do léxico), `DECISIONS.md`
+  (este ADR). **Gerado/IGNORADO:** `assets/data/reading-sample.sqlite` (~14,4 MB, agora
+  com léxico), `app/web/{generated,native-generated}` (bindings saneados).
+- **Offline-first / BYOK preservados:** a prova roda **offline** (provedor `"mock"`,
+  sem chave, sem rede); nenhuma chave é logada/exibida. O texto bíblico e o léxico
+  vêm SEMPRE do store local, verbatim; o LLM só interpreta.
+- **Escopo:** estudo/léxico **web = F3.12** (`reading.web.ts` = stub); **BYOK real +
+  rede + streaming de estudo = F3.10** (gate). Não antecipados aqui.

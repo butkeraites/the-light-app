@@ -43,7 +43,13 @@ import type {
   Note,
   Highlight,
   AiAnswer,
+  StudyResultOut,
+  StudySection,
+  StudyCitation,
+  VerifiedLexiconOut,
+  LexEntry,
 } from './generated/the_light_app_core';
+import { StudyMode, StudyLens, StudyDepth } from './generated/the_light_app_core';
 import {
   composeChapterPassage,
   hasTranslation,
@@ -66,7 +72,22 @@ import {
 } from './userdata-fs.web';
 import { openUserDataWeb } from './userdata-opfs.web';
 
-export type { Book, Passage, Translation, SearchHit, CrossRef, Note, Highlight, AiAnswer };
+export type {
+  Book,
+  Passage,
+  Translation,
+  SearchHit,
+  CrossRef,
+  Note,
+  Highlight,
+  AiAnswer,
+  StudyResultOut,
+  StudySection,
+  StudyCitation,
+  VerifiedLexiconOut,
+  LexEntry,
+};
+export { StudyMode, StudyLens, StudyDepth };
 
 /**
  * 66 livros canônicos (PURO — `reference::BOOKS`), do RUST (wasm). SÍNCRONO, como
@@ -328,4 +349,42 @@ export async function askAnchoredStream(
     onToken(answer.interpretation);
   }
   return answer;
+}
+
+// ── ESTUDO PROFUNDO + LÉXICO (deep_study/lexical_entries) — STUB WEB (F3.12) ──────────
+// O estudo profundo (`deep_study`) e o léxico verificado (`lexical_entries`) NÃO estão
+// disponíveis no web nesta tarefa (F3.5 é só NATIVO). A superfície pesada do `ai::study`
+// e o store SQLite de léxico são `embedded`-only (nativo); a paridade web é a F3.12.
+// Aqui apenas lançamos um erro explícito (mesmo padrão do `crossRefs` pré-F1.15), mantendo
+// `tsc`/Metro web verdes e a camada `ai`/store FORA do bundle web. As assinaturas são
+// idênticas às do glue nativo (respeitando a ordem real dos argumentos da fronteira).
+
+/** STUB web: estudo profundo = F3.12. Assinatura idêntica ao nativo (`_` = não usados). */
+export async function deepStudy(
+  _dbPath: string,
+  _translation: string,
+  _book: number,
+  _chapter: number,
+  _verse: number | undefined,
+  _mode: StudyMode,
+  _lens: StudyLens,
+  _depth: StudyDepth,
+  _lang: string,
+  _providerName: string,
+  _key: string | undefined,
+  _model: string | undefined,
+): Promise<StudyResultOut> {
+  throw new Error('estudo profundo no web = F3.12');
+}
+
+/** STUB web: léxico verificado = F3.12. Assinatura idêntica ao nativo (sem `translation`). */
+export async function lexicalEntries(
+  _dbPath: string,
+  _book: number,
+  _chapter: number,
+  _verse: number | undefined,
+  _lang: string,
+  _limit: number | undefined,
+): Promise<VerifiedLexiconOut> {
+  throw new Error('léxico verificado no web = F3.12');
 }
