@@ -11,7 +11,8 @@
     "test:web:reading": "node web/__tests__/reading.web.test.mjs",
     "test:web:search": "node web/__tests__/search.web.test.mjs",
     "test:web:xref": "node web/__tests__/xref.web.test.mjs",
-    "test:web:notes": "node web/__tests__/notes.web.test.mjs"
+    "test:web:notes": "node web/__tests__/notes.web.test.mjs",
+    "test:keystore": "node web/__tests__/keystore.test.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~56.0.15",
@@ -22,6 +23,7 @@
     "expo-file-system": "~56.0.8",
     "expo-linking": "~56.0.14",
     "expo-router": "~56.2.11",
+    "expo-secure-store": "~56.0.4",
     "expo-status-bar": "~56.0.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
