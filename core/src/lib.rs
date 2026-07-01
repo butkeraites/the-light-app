@@ -1428,6 +1428,339 @@ pub fn deep_study(
     }
 }
 
+/// Papel de um turno de conversa (`user`/`assistant`), na fronteira UniFFI.
+///
+/// Espelha `the_light_core::ai::ChatRole` (enum **puro**/`ai-pure`, presente em **todos**
+/// os alvos, sem `cfg`). Enum sem dados (como [`StudyMode`]); o [`From`] para o tipo-fonte
+/// é **cfg-free** (o alvo existe também no wasm). Usado só como **entrada** (o histórico da
+/// conversa), via [`ChatTurn`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum ChatRole {
+    /// Turno do usuário (pergunta/follow-up).
+    User,
+    /// Turno do assistente (resposta anterior do modelo).
+    Assistant,
+}
+
+impl From<ChatRole> for the_light_core::ai::ChatRole {
+    fn from(r: ChatRole) -> Self {
+        use the_light_core::ai::ChatRole as Core;
+        match r {
+            ChatRole::User => Core::User,
+            ChatRole::Assistant => Core::Assistant,
+        }
+    }
+}
+
+/// Um **turno** do histórico de conversa (papel + conteúdo), na fronteira UniFFI.
+///
+/// Record de **entrada** que espelha `the_light_core::ai::ChatMessage` (tipo **puro**/
+/// `ai-pure`). O [`From`] para `ChatMessage` é **cfg-free**. O [`content`](Self::content)
+/// é **texto do usuário/modelo** (não bíblico) — a âncora com o texto do versículo é
+/// montada **pela fronteira, do store**, e injetada como `context` pelo core (invariante:
+/// o `context` entra só no 1º turno de usuário).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ChatTurn {
+    /// Papel do turno (`User`/`Assistant`).
+    pub role: ChatRole,
+    /// Conteúdo textual do turno (pergunta/follow-up ou resposta anterior).
+    pub content: String,
+}
+
+impl From<ChatTurn> for the_light_core::ai::ChatMessage {
+    fn from(t: ChatTurn) -> Self {
+        the_light_core::ai::ChatMessage {
+            role: t.role.into(),
+            content: t.content,
+        }
+    }
+}
+
+/// Uma **rodada de refinamento** já respondida (pergunta + resposta), na fronteira UniFFI.
+///
+/// Record de **entrada** para o `prior` de [`refine_scope`]: cada par vira `(pergunta,
+/// resposta)` no vetor que o core usa como histórico. Puro (só `String`) → **cfg-free**.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct RefinementRound {
+    /// A pergunta feita pelo modelo naquela rodada.
+    pub question: String,
+    /// A resposta escolhida/dada pelo usuário.
+    pub answer: String,
+}
+
+/// Uma **rodada de refinamento** produzida pelo modelo (pergunta + opções), na fronteira
+/// UniFFI.
+///
+/// Espelha `the_light_core::ai::Refinement` (struct **pura**/`ai-pure`, sem `cfg`): uma
+/// [`question`](Self::question) e as [`options`](Self::options) (deduplicadas, sem vazias
+/// — o parsing/dedup vive no core). O [`From`] a partir de `Refinement` é **cfg-free**.
+/// **Não há texto bíblico aqui** (é escopo/pergunta), mas segue a lei anti-alucinação: a
+/// fronteira nada fabrica — só adapta o que o core devolve.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct RefinementOut {
+    /// A pergunta de refinamento (pode ser vazia quando a rodada não trouxe pergunta).
+    pub question: String,
+    /// As opções sugeridas (deduplicadas, sem vazias), na ordem do core.
+    pub options: Vec<String>,
+}
+
+impl From<the_light_core::ai::Refinement> for RefinementOut {
+    fn from(r: the_light_core::ai::Refinement) -> Self {
+        RefinementOut {
+            question: r.question,
+            options: r.options,
+        }
+    }
+}
+
+/// Resolve o **provedor** de IA (BYOK) para os fluxos de conversa/refinamento, com o
+/// **caminho mock cfg-free**.
+///
+/// - `provider_name == "mock"`: instancia `MockLlmProvider::default()` **direto** (é
+///   `ai-pure`, sem `cfg`) — **NÃO** via `build_provider` (que é `embedded`-only). Assim o
+///   caminho MOCK **compila e roda no wasm**, antecipando a paridade web do refinamento.
+/// - qualquer outro nome: no **nativo** (`cfg(not(wasm32))`) delega a `ai::build_provider`
+///   (providers reais via `reqwest`, BYOK); no **web** (`cfg(wasm32)`) retorna
+///   [`CoreError`] (transporte web = F3.12), sem arrastar `reqwest` para o grafo wasm.
+///
+/// Devolve um `Box<dyn LlmProvider>` (mesma forma que `build_provider`), pronto para as
+/// funções **puras** `ai::ask_session`/`ai::refine_scope`.
+fn resolve_provider(
+    provider_name: &str,
+    key: Option<String>,
+    model: Option<String>,
+) -> Result<Box<dyn the_light_core::ai::LlmProvider>, CoreError> {
+    if provider_name == "mock" {
+        // ai-pure → instanciado DIRETO (sem `build_provider`, que é embedded-only) → o
+        // caminho MOCK é cfg-free e roda no wasm. `key`/`model` não se aplicam ao mock.
+        return Ok(Box::new(the_light_core::ai::MockLlmProvider::default()));
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        the_light_core::ai::build_provider(provider_name, key, model).map_err(|e| {
+            CoreError::Generic {
+                message: e.to_string(),
+            }
+        })
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (key, model);
+        Err(CoreError::Generic {
+            message: format!("provedor '{provider_name}' indisponível no alvo web (F3.12)"),
+        })
+    }
+}
+
+/// **Refinamento de escopo** (`refine_scope`) — pede ao provedor UMA rodada de
+/// refinamento (pergunta + opções) a partir de um assunto (`brief`) e do histórico de
+/// respostas, delegando a `the_light_core::ai::refine_scope`.
+///
+/// Pipeline (o core faz o trabalho — a fronteira só **adapta** tipos/erros e resolve o
+/// provedor):
+/// 1. `lang` → `Lang` (default `Pt`, sem panicar); `prior` (`Vec<RefinementRound>`) →
+///    `Vec<(String, String)>` (pares pergunta/resposta);
+/// 2. `resolve_provider(provider_name, key, model)` — **mock cfg-free** (roda no wasm) ou
+///    provedor real gated (F3.12 no web);
+/// 3. `ai::refine_scope(provider, mode, lang, brief, prior, round)` → `Refinement`,
+///    adaptado para [`RefinementOut`]. Com o **mock**, o `refine_system_prompt` contém
+///    `"PERGUNTA:"` → o mock devolve a **rodada canônica** (determinística, sem rede).
+///
+/// **Sem `lens`:** `refine_scope` do core recebe só `mode` (não uma denominação) — a
+/// fronteira **não** inventa um parâmetro de lente. Não há texto bíblico (é escopo:
+/// pergunta + opções); ainda assim nada é fabricado — tudo vem do core.
+///
+/// **Gating:** **cfg-free** para o caminho `"mock"` (compila e roda no wasm, pois
+/// `ai::refine_scope` e `MockLlmProvider` são `ai-pure` e **não tocam o store**); o
+/// provedor real fica sob `cfg(not(wasm32))` dentro de [`resolve_provider`].
+#[uniffi::export]
+#[allow(clippy::too_many_arguments)]
+pub fn refine_scope(
+    mode: StudyMode,
+    lang: String,
+    brief: String,
+    prior: Vec<RefinementRound>,
+    round: u8,
+    provider_name: String,
+    key: Option<String>,
+    model: Option<String>,
+) -> Result<RefinementOut, CoreError> {
+    // 1) Idioma (default Pt) + histórico de rodadas como pares (pergunta, resposta).
+    let lang = lang
+        .parse::<the_light_core::model::Lang>()
+        .unwrap_or(the_light_core::model::Lang::Pt);
+    let prior_pairs: Vec<(String, String)> =
+        prior.into_iter().map(|r| (r.question, r.answer)).collect();
+
+    // 2) Provedor (mock cfg-free / real gated). BYOK: a chave é argumento; mock = sem rede.
+    let provider = resolve_provider(&provider_name, key, model)?;
+
+    // 3) DELEGA ao core: a rodada (pergunta + opções) é do modelo — nada reimplementado.
+    let refinement = the_light_core::ai::refine_scope(
+        provider.as_ref(),
+        mode.into(),
+        lang,
+        &brief,
+        &prior_pairs,
+        round,
+    )
+    .map_err(|e| CoreError::Generic {
+        message: e.to_string(),
+    })?;
+
+    Ok(RefinementOut::from(refinement))
+}
+
+/// **Parser puro** de uma rodada de refinamento (`parse_refinement`) — string
+/// (`PERGUNTA:` + `- opção`) → [`RefinementOut`], delegando a
+/// `the_light_core::ai::parse_refinement`.
+///
+/// **Determinístico, SEM provedor, SEM store** → **cfg-free** (compila **e roda** no wasm
+/// E no nativo, antecipando a paridade web do parser). O parsing tolerante (linha
+/// `PERGUNTA:`/`Pergunta:` ou 1ª linha não-opção vira a pergunta; linhas `- …`/`* …` viram
+/// opções deduplicadas, sem vazias) vive **no core** — a fronteira só **adapta** o tipo.
+/// Entrada vazia/inválida → `question` vazia e `options` vazio (**sem panic**).
+#[uniffi::export]
+pub fn parse_refinement(raw: String) -> RefinementOut {
+    RefinementOut::from(the_light_core::ai::parse_refinement(&raw))
+}
+
+/// **Conversa ancorada com follow-up** (`ask_session`) sobre uma passagem/estudo,
+/// delegando a `the_light_core::ai::ask_session` e mantendo a **âncora** (texto do
+/// versículo) **do store local**, separada da **interpretação** (modelo).
+///
+/// Pipeline no **nativo** (a âncora vem do store — anti-alucinação):
+/// 1. `lang` → `Lang` (default `Pt`); `reference` = `Reference::single` (com `verse`) ou
+///    `Reference::whole_chapter`;
+/// 2. `Store::open(db_path)` → `Passage` **verbatim do store** (`EmbeddedSource::passage`,
+///    mesma rota da F1.2) → `ai::numbered_passage` (o `cited_text`, numerado);
+/// 3. `label` via `reference::format_reference` + rótulos de xref via `xref::passage_labels`
+///    (RAG leve) → `context` via `ai::ask_context` (o **contexto ancorado**);
+/// 4. `study_mode.zip(study_lens)` → `Option<(StudyMode, Denomination)>` (modo + lente do
+///    estudo, quando ambos presentes → prompt de follow-up de estudo);
+/// 5. `resolve_provider` (mock/real, BYOK); `turns` (`Vec<ChatTurn>`) → `Vec<ChatMessage>`;
+/// 6. `ai::ask_session(provider, lang, context, messages, study)` → **só a interpretação**
+///    (o modelo nunca gera texto bíblico; o core embute o `context` só no 1º turno de
+///    usuário), composta em [`AiAnswer`] separando `cited_text` (store) de `interpretation`.
+///
+/// **Nenhuma** lógica de conversa (transcript/prompt/parsing) é reimplementada — tudo em
+/// `ai::ask_session`/`ai::ask_context`/`ai::numbered_passage`/store. Anti-alucinação: o
+/// `cited_text` (âncora) é **sempre** do store verbatim; o LLM só conversa/interpreta.
+///
+/// **Gating por alvo (molde F3.3):** corpo `cfg(not(wasm32))` (a âncora é montada do store
+/// nativo, `rusqlite`/`embedded`); no **web**, stub que retorna [`CoreError`] (a paridade
+/// web — montar o `context` do store web e chamar a `ask_session` **pura** — é a F3.12),
+/// sem arrastar store/`rusqlite`/`reqwest` para o grafo wasm.
+#[uniffi::export]
+#[allow(clippy::too_many_arguments)]
+pub fn ask_session_anchored(
+    db_path: String,
+    translation: String,
+    book: u8,
+    chapter: u16,
+    verse: Option<u16>,
+    lang: String,
+    turns: Vec<ChatTurn>,
+    study_mode: Option<StudyMode>,
+    study_lens: Option<StudyLens>,
+    provider_name: String,
+    key: Option<String>,
+    model: Option<String>,
+) -> Result<AiAnswer, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        // Trait em escopo para chamar `.passage(...)` em `EmbeddedSource` (como em
+        // `deep_study`). `name()/model()` do `dyn LlmProvider` dispensam import.
+        use the_light_core::source::BibleSource;
+
+        // 1) Idioma (default Pt) + referência (single ou capítulo inteiro).
+        let lang = lang
+            .parse::<the_light_core::model::Lang>()
+            .unwrap_or(the_light_core::model::Lang::Pt);
+        let reference = match verse {
+            Some(v) => the_light_core::model::Reference::single(book, chapter, v),
+            None => the_light_core::model::Reference::whole_chapter(book, chapter),
+        };
+
+        // 2) Passagem VERBATIM do store, pela MESMA rota da F1.2 (anti-alucinação) →
+        //    texto numerado (o `cited_text`, a âncora da conversa).
+        let store =
+            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })?;
+        let source = the_light_core::source::EmbeddedSource::new(&store);
+        let translation_id = the_light_core::model::TranslationId::new(translation);
+        let passage =
+            source
+                .passage(&reference, &translation_id)
+                .map_err(|e| CoreError::Generic {
+                    message: e.to_string(),
+                })?;
+        let cited_text = the_light_core::ai::numbered_passage(&passage);
+
+        // 3) Contexto ancorado: rótulo + texto numerado + rótulos de xref (RAG leve).
+        let label = the_light_core::reference::format_reference(&reference, lang);
+        let related = the_light_core::xref::passage_labels(
+            store.conn(),
+            &reference,
+            &[],
+            lang,
+            the_light_core::xref::DEFAULT_LIMIT,
+        );
+        let context = the_light_core::ai::ask_context(&label, &cited_text, &related);
+
+        // 4) Estudo (modo + lente) só quando ambos presentes → prompt de follow-up.
+        let study = study_mode
+            .zip(study_lens)
+            .map(|(m, l)| (m.into(), l.into()));
+
+        // 5) Provedor (mock/real, BYOK) + histórico de turnos → mensagens do core.
+        let provider = resolve_provider(&provider_name, key, model)?;
+        let messages: Vec<the_light_core::ai::ChatMessage> =
+            turns.into_iter().map(Into::into).collect();
+
+        // 6) DELEGA ao core: a interpretação é SÓ a saída do modelo (o core embute o
+        //    `context` no 1º turno de usuário). Nada de conversa é reimplementado aqui.
+        let interpretation =
+            the_light_core::ai::ask_session(provider.as_ref(), lang, &context, &messages, study)
+                .map_err(|e| CoreError::Generic {
+                    message: e.to_string(),
+                })?;
+
+        // Contrato anti-alucinação: cited_text (store) separado da interpretation (modelo).
+        Ok(AiAnswer {
+            reference: reference.into(),
+            cited_text,
+            interpretation,
+            provider: provider.name().to_string(),
+            model: provider.model().to_string(),
+        })
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        // Stub web: a âncora é montada do store nativo (`embedded`); a paridade web
+        // (montar `context` do store web + `ask_session` pura) é a F3.12. Falha explícita
+        // sem tocar store/`rusqlite`/`build_provider`/`reqwest` (grafo wasm puro).
+        let _ = (
+            db_path,
+            translation,
+            book,
+            chapter,
+            verse,
+            lang,
+            turns,
+            study_mode,
+            study_lens,
+            provider_name,
+            key,
+            model,
+        );
+        Err(CoreError::Generic {
+            message: "conversa ancorada indisponível no alvo web (F3.12)".to_string(),
+        })
+    }
+}
+
 /// Uma **nota** do usuário associada a uma referência, na fronteira UniFFI.
 ///
 /// Espelha `the_light_core::userdata::notes::Note`: a [`reference`](Self::reference)
@@ -4470,5 +4803,386 @@ mod study_tests {
             "interpretation do mock invariante ao corpus"
         );
         assert!(!result.interpretation.contains("For God so loved"));
+    }
+}
+
+/// Testes de host da **conversa/refinamento** da F3.4 (`ask_session_anchored`,
+/// `refine_scope`, `parse_refinement`), **apenas no nativo** (o corpo ancorado toca o
+/// store; molde F2.1/F3.3). Provam por **MOCK** (sem rede/chave): a âncora vem do **store
+/// verbatim** e a interpretação/refinamento do **modelo**; o parser é determinístico.
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod session_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    // ── Textos KJV **verbatim** (domínio público), usados SÓ no fixture/assert;
+    //    nenhum texto bíblico é gerado em produção (anti-alucinação). ──────────────
+    /// João 3:16 — King James Version.
+    const JOHN_3_16_KJV: &str = "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.";
+    /// João 3:17 — King James Version (prova de que o `cited_text` acompanha o STORE e a
+    /// `interpretation` não).
+    const JOHN_3_17_KJV: &str = "For God sent not his Son into the world to condemn the world; but that the world through him might be saved.";
+
+    /// Banco temporário do fixture: remove o arquivo (e sidecars WAL/SHM) no `Drop`.
+    struct TmpDb(PathBuf);
+
+    impl TmpDb {
+        fn path(&self) -> String {
+            self.0.to_string_lossy().into_owned()
+        }
+    }
+
+    impl Drop for TmpDb {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+            if let Some(name) = self.0.file_name().and_then(|n| n.to_str()) {
+                let dir = self.0.parent().map(PathBuf::from).unwrap_or_default();
+                let _ = std::fs::remove_file(dir.join(format!("{name}-wal")));
+                let _ = std::fs::remove_file(dir.join(format!("{name}-shm")));
+            }
+        }
+    }
+
+    /// Caminho temporário único (offline, sem deps externas).
+    fn unique_tmp_db() -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "the-light-app-f3_4-{}-{nanos}-{n}.sqlite",
+            std::process::id()
+        ))
+    }
+
+    /// Constrói o fixture KJV: schema via migrações do core (`Store::open`) + DML de
+    /// domínio público (João 3:16 e 3:17). A conexão fecha antes do uso pela fronteira.
+    fn build_kjv_fixture() -> TmpDb {
+        let path = unique_tmp_db();
+        let _ = std::fs::remove_file(&path);
+
+        {
+            let store =
+                the_light_core::store::Store::open(&path).expect("abrir/migrar fixture KJV");
+            let conn = store.conn();
+
+            conn.execute(
+                "INSERT INTO translations(id,abbrev,name,language,license,embeddable) \
+                 VALUES ('kjv','KJV','King James Version','en','public-domain',1)",
+                [],
+            )
+            .expect("inserir tradução kjv");
+
+            for (chapter, verse, text) in [(3u16, 16u16, JOHN_3_16_KJV), (3, 17, JOHN_3_17_KJV)] {
+                let sql = format!(
+                    "INSERT INTO verses(translation_id,book_number,chapter,verse,text) \
+                     VALUES ('kjv',43,{chapter},{verse},'{text}')"
+                );
+                conn.execute(&sql, []).expect("inserir versículo João");
+            }
+        } // `store`/`conn` fecham aqui (flush no arquivo).
+
+        TmpDb(path)
+    }
+
+    /// Resposta fixa do `MockLlmProvider` do core, obtida **do próprio core** (sem
+    /// hardcode): como o `system` da conversa (`ask_session`) **não** contém o marcador
+    /// `PERGUNTA:`, `complete` devolve a resposta canônica — **exatamente** o que a
+    /// `ask_session` retorna com o mock, independentemente do texto bíblico. Prova que a
+    /// `interpretation` é do **modelo**, não do store.
+    fn mock_fixed_response() -> String {
+        use the_light_core::ai::LlmProvider;
+        the_light_core::ai::MockLlmProvider::default()
+            .complete("sistema de teste sem marcador de refinamento", "usuario")
+            .expect("mock complete não deve falhar (sem rede)")
+    }
+
+    #[test]
+    fn ask_session_anchored_cites_store_verbatim_and_interprets_via_mock() {
+        let db = build_kjv_fixture();
+
+        let answer = ask_session_anchored(
+            db.path(),
+            "kjv".to_string(),
+            43,
+            3,
+            Some(16),
+            "en".to_string(),
+            vec![ChatTurn {
+                role: ChatRole::User,
+                content: "What does this mean?".to_string(),
+            }],
+            None,
+            None,
+            "mock".to_string(),
+            None, // BYOK: sem chave (mock não faz rede)
+            None,
+        )
+        .expect("ask_session_anchored com o mock deve retornar Ok");
+
+        // ── Anti-alucinação: cited_text é VERBATIM do store, numerado. ────────────
+        assert!(
+            answer.cited_text.contains("16 For God so loved the world"),
+            "cited_text deve ser o versículo numerado verbatim do store: {}",
+            answer.cited_text
+        );
+        assert!(
+            answer.cited_text.contains(JOHN_3_16_KJV),
+            "cited_text deve conter o texto KJV integral verbatim do store: {}",
+            answer.cited_text
+        );
+
+        // ── interpretation é a saída do MODELO (mock), NÃO o texto bíblico. ───────
+        assert_eq!(
+            answer.interpretation,
+            mock_fixed_response(),
+            "interpretation deve ser a resposta fixa do MockLlmProvider"
+        );
+        assert!(
+            !answer.interpretation.contains("For God so loved"),
+            "o LLM/mock NÃO reproduz/gera texto bíblico na interpretation: {}",
+            answer.interpretation
+        );
+        assert_ne!(
+            answer.cited_text, answer.interpretation,
+            "cited_text (store) e interpretation (modelo) são coisas distintas"
+        );
+
+        // ── Provedor/modelo e referência canônica. ───────────────────────────────
+        assert_eq!(answer.provider, "mock", "provider deve ser 'mock'");
+        assert_eq!(answer.model, "mock-1", "modelo do mock do core");
+        assert_eq!(answer.reference.book, 43, "João é o livro 43");
+        assert_eq!(answer.reference.chapter, 3, "capítulo 3");
+        assert_eq!(
+            answer.reference.verses,
+            VerseRange::Single { verse: 16 },
+            "versículo único 16"
+        );
+    }
+
+    #[test]
+    fn ask_session_anchored_multi_turn_no_panic() {
+        // Multi-turno (User/Assistant/User): a invariante "context só no 1º turno de
+        // usuário" é do core; a fronteira prova a separação citado/interpretação e que
+        // vários turnos não causam panic.
+        let db = build_kjv_fixture();
+
+        let answer = ask_session_anchored(
+            db.path(),
+            "kjv".to_string(),
+            43,
+            3,
+            Some(16),
+            "en".to_string(),
+            vec![
+                ChatTurn {
+                    role: ChatRole::User,
+                    content: "q1".to_string(),
+                },
+                ChatTurn {
+                    role: ChatRole::Assistant,
+                    content: "a1".to_string(),
+                },
+                ChatTurn {
+                    role: ChatRole::User,
+                    content: "q2".to_string(),
+                },
+            ],
+            None,
+            None,
+            "mock".to_string(),
+            None,
+            None,
+        )
+        .expect("multi-turno com o mock deve retornar Ok");
+
+        assert!(
+            answer.cited_text.contains(JOHN_3_16_KJV),
+            "cited_text = passagem do store mesmo com múltiplos turnos: {}",
+            answer.cited_text
+        );
+        assert_eq!(
+            answer.interpretation,
+            mock_fixed_response(),
+            "interpretation = resposta fixa do mock (invariante aos turnos)"
+        );
+    }
+
+    #[test]
+    fn cited_text_tracks_store_while_interpretation_is_invariant() {
+        // Prova anti-fake (molde F2.1): com O MESMO fixture/mock, conversar sobre dois
+        // versículos distintos muda o `cited_text` (segue o STORE) mas NÃO a
+        // `interpretation` (vem do modelo, não do texto bíblico).
+        let db = build_kjv_fixture();
+
+        let run = |verse: u16| -> AiAnswer {
+            ask_session_anchored(
+                db.path(),
+                "kjv".to_string(),
+                43,
+                3,
+                Some(verse),
+                "en".to_string(),
+                vec![ChatTurn {
+                    role: ChatRole::User,
+                    content: "What does this mean?".to_string(),
+                }],
+                None,
+                None,
+                "mock".to_string(),
+                None,
+                None,
+            )
+            .expect("ask_session_anchored deve retornar Ok")
+        };
+
+        let a16 = run(16);
+        let a17 = run(17);
+
+        // cited_text acompanha o store (textos verbatim diferentes por versículo).
+        assert!(a16.cited_text.contains(JOHN_3_16_KJV));
+        assert!(a17.cited_text.contains(JOHN_3_17_KJV));
+        assert_ne!(
+            a16.cited_text, a17.cited_text,
+            "cited_text muda com o versículo do store"
+        );
+
+        // interpretation é a MESMA (a do modelo) — invariante ao texto bíblico.
+        assert_eq!(
+            a16.interpretation, a17.interpretation,
+            "a interpretação do mock não depende do texto bíblico"
+        );
+        assert_eq!(a16.interpretation, mock_fixed_response());
+    }
+
+    #[test]
+    fn refine_scope_with_mock_returns_canonical_round() {
+        // O `refine_system_prompt` contém "PERGUNTA:" → o mock devolve a rodada canônica
+        // (determinística, sem rede/chave).
+        let refinement = refine_scope(
+            StudyMode::Academic,
+            "pt".to_string(),
+            "graça em Efésios".to_string(),
+            Vec::new(), // prior vazio
+            1,
+            "mock".to_string(),
+            None,
+            None,
+        )
+        .expect("refine_scope com o mock deve retornar Ok");
+
+        assert!(
+            !refinement.question.is_empty(),
+            "a rodada de refinamento traz uma pergunta não-vazia: {:?}",
+            refinement
+        );
+        assert_eq!(
+            refinement.options.len(),
+            3,
+            "a rodada canônica do mock tem 3 opções: {:?}",
+            refinement.options
+        );
+        assert!(
+            refinement
+                .options
+                .iter()
+                .any(|o| o.contains("Efésios 2.8-9")),
+            "a rodada canônica do mock inclui 'Efésios 2.8-9': {:?}",
+            refinement.options
+        );
+    }
+
+    #[test]
+    fn parse_refinement_is_deterministic() {
+        // Pergunta explícita + opções.
+        let r = parse_refinement("PERGUNTA: Foco?\n- v.16\n- Rm 5".to_string());
+        assert_eq!(r.question, "Foco?");
+        assert_eq!(r.options, vec!["v.16".to_string(), "Rm 5".to_string()]);
+
+        // 1ª linha não-opção vira a pergunta; sem opções.
+        let r = parse_refinement("foca no v.16".to_string());
+        assert_eq!(r.question, "foca no v.16");
+        assert!(r.options.is_empty());
+
+        // Só opções, com duplicata → dedup; sem pergunta.
+        let r = parse_refinement("- a\n- a\n- b".to_string());
+        assert_eq!(r.question, "");
+        assert_eq!(r.options, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn parse_refinement_empty_and_blank_do_not_panic() {
+        let r = parse_refinement(String::new());
+        assert_eq!(r.question, "");
+        assert!(r.options.is_empty());
+
+        let r = parse_refinement("   ".to_string());
+        assert_eq!(r.question, "");
+        assert!(r.options.is_empty());
+    }
+
+    #[test]
+    fn error_paths_do_not_panic() {
+        // refine_scope com provedor desconhecido → CoreError (via build_provider), nativo.
+        let err = refine_scope(
+            StudyMode::Academic,
+            "pt".to_string(),
+            "graça".to_string(),
+            Vec::new(),
+            1,
+            "nope".to_string(),
+            None,
+            None,
+        )
+        .expect_err("provedor desconhecido deve falhar");
+        assert!(matches!(err, CoreError::Generic { .. }));
+
+        let db = build_kjv_fixture();
+
+        // ask_session_anchored com provedor desconhecido → CoreError, sem panic.
+        let err = ask_session_anchored(
+            db.path(),
+            "kjv".to_string(),
+            43,
+            3,
+            Some(16),
+            "en".to_string(),
+            vec![ChatTurn {
+                role: ChatRole::User,
+                content: "q".to_string(),
+            }],
+            None,
+            None,
+            "nope".to_string(),
+            None,
+            None,
+        )
+        .expect_err("provedor desconhecido deve falhar");
+        assert!(matches!(err, CoreError::Generic { .. }));
+
+        // db_path = diretório existente → CoreError (via Store::open), sem panic.
+        let dir = std::env::temp_dir().to_string_lossy().into_owned();
+        let err = ask_session_anchored(
+            dir,
+            "kjv".to_string(),
+            43,
+            3,
+            Some(16),
+            "en".to_string(),
+            vec![ChatTurn {
+                role: ChatRole::User,
+                content: "q".to_string(),
+            }],
+            None,
+            None,
+            "mock".to_string(),
+            None,
+            None,
+        )
+        .expect_err("db_path = diretório deve falhar no Store::open");
+        assert!(matches!(err, CoreError::Generic { .. }));
     }
 }
