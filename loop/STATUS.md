@@ -4,8 +4,8 @@
 > esta tabela a cada ciclo. O Guia só audita. Legenda: ⬜ backlog · 🟡 ready ·
 > 🔵 in_progress · 🔴 blocked/failed · ✅ aceito · ⛔ gate (HALT p/ sign-off)
 
-Última atualização: 2026-07-01 14:30 UTC · Estado do loop: **▶️ ATIVO (RETOMADO) — gate F2.2 DECIDIDO por sign-off (ADR-0023): D1 Gemini via PR ao core · D2 IA web via PR ao core (wasm) · D3 **BYOK API key indolor** (login-de-conta OAuth REJEITADO por pesquisa — banido em Anthropic/Google, só-identidade na OpenAI) · D4 streaming. `loop/HALT` removido. Queue vazia → próximo ciclo o planner RE-ESCOPA a Fase 2 (PHASE-2.md) per ADR-0023 e semeia a próxima tarefa.** Corpus completo (~59 MB) permanece backlog transversal.
-Heartbeat: ver `HEARTBEAT` · HALT: **ausente (F2.2 resolvido)** · **F2.2 decidido** (ADR-0023) · **Consequência de processo:** D1+D2 mudam o `the-light` → só via **PR+ADR**: implementação em branch, **push+merge do humano**, **re-pin** do rev (molde F0.6) = ponto de handoff bloqueante quando a fronteira depender do core novo. Caminho não-bloqueante disponível AGORA: **F2.4** (chave nativa `expo-secure-store`, app-side, testável sem key real). IA real com a chave do usuário = **F2.6** (bloqueante). `the-light` intocado por ora (`8f66004`). Diretriz do Driver: seguir até um **ponto bloqueante**. Próximo ADR livre = **ADR-0024**.
+Última atualização: 2026-07-01 15:05 UTC · Estado do loop: **▶️ ATIVO — F2.4 ACEITA (`34c831f`; keystore BYOK nativo, chave nunca em git/log). Queue vazia → próximo elegível = **F2.3** (PR consolidado ao `the-light`: Gemini D1 + IA-pura-wasm D2 + streaming-no-trait D4). O Driver implementa em BRANCH no repo `the-light` (autorizado por ADR-0023), verifica (cargo test/clippy + build wasm), e PARA no handoff BLOQUEANTE = **push/merge do humano + re-pin** (molde F0.6).** Corpus completo (~59 MB) permanece backlog transversal.
+Heartbeat: ver `HEARTBEAT` · HALT: **ausente** · **Re-escopagem F2.3–F2.8 (+F2.3a):** os 3 core-changes (D1 Gemini + D2 IA-pura-wasm + D4 streaming-no-trait) foram **consolidados num ÚNICO PR ao `the-light`** = **F2.3** (branch autorizado → **push+merge humano** → **re-pin** do rev, molde F0.6a) = 1º handoff BLOQUEANTE. **Investigação na fonte (8f66004) confirma:** `LlmProvider` (`ai/mod.rs:327`) é síncrono/não-streaming (`complete → String`; sem `stream`/callback/`async`; providers com `"stream": false`) → **D4 EXIGE mudar o trait** (entra no PR). `study.rs:11`/`citation.rs:18` acoplam `research::WebSource`→`reqwest` (`research.rs:48`) → **D2 = desacoplar** p/ wasm. Gemini encaixa no molde `AnthropicProvider` (`providers.rs`). **F2.4 é não-bloqueante** (app-side, testável sem chave real) → semeada agora. IA real com a chave = **F2.6** (gate). `the-light` intocado (`8f66004`) até o re-pin de F2.3. Diretriz do Driver: seguir até um **ponto bloqueante** (= F2.3/PR). Próximo ADR livre = **ADR-0024**.
 
 ## Fase 0 — Prova da ponte Rust → Expo
 
@@ -56,25 +56,29 @@ Heartbeat: ver `HEARTBEAT` · HALT: **ausente (F2.2 resolvido)** · **F2.2 decid
 
 ## Fase 2 — Camada de IA BYOK (Claude · GPT · Gemini · `ask` ancorado)
 
-> Decomposta em `loop/backlog/PHASE-2.md`. **IA OPCIONAL e ADITIVA:** a Fase 1
-> segue 100% offline sem IA; a IA só liga com a **chave do usuário** (nunca em
-> git/log). **Anti-alucinação:** o texto do versículo vem **sempre do store
-> local** (verbatim); o LLM só interpreta. Padrão (herdado da Fase 1): fronteira
-> nativa + teste de host com **MOCK** → gate estratégico F2.2 → chave+UI nativa →
-> validação real (chave, bloqueante) → paridade web (per decisão) → Marco 2.
-> Só **F2.1** está semeada; as demais entram conforme as deps forem aceitas (F2.3+
-> dependem da decisão da F2.2). **Investigação do core:** `ai` existe mas é
-> `embedded`-only (só nativo); **Gemini não existe** (a criar — onde vive = F2.2).
+> Decomposta em `loop/backlog/PHASE-2.md` (**RE-ESCOPADA per ADR-0023**). **IA
+> OPCIONAL e ADITIVA:** a Fase 1 segue 100% offline sem IA; a IA só liga com a
+> **API key do usuário** (nunca em git/log). **Anti-alucinação:** o texto do
+> versículo vem **sempre do store local** (verbatim); o LLM só interpreta. Padrão
+> (herdado da Fase 1): fronteira nativa + teste de host com **MOCK** → gate F2.2
+> [feito] → **PR consolidado ao core** (F2.3: Gemini+wasm+streaming, BLOQUEANTE) →
+> fronteira que consome o re-pin (F2.3a) → chave BYOK nativa (F2.4, paralela e
+> não-bloqueante) → UI nativa MOCK (F2.5) → validação real (F2.6, gate) → paridade
+> web (F2.7) → Marco 2 (F2.8). **F2.4 está SEMEADA** (ready); F2.3a/F2.5–F2.8 entram
+> conforme as deps forem aceitas. **Investigação do core (8f66004):** `ai` é
+> `embedded`-only (só nativo); **Gemini não existe** e o `LlmProvider` é
+> **síncrono/não-streaming** → Gemini+streaming+wasm = **um PR ao the-light** (F2.3).
 
 | ID | Tarefa | Estado | Depende de | Resultado |
 |----|--------|--------|------------|-----------|
 | F2.1 | Pergunta ancorada (`ask`) na fronteira (nativo) + MOCK + anti-alucinação | ✅ aceito | — | passed (357abca) — ask_anchored→ai::ask; cited_text do store, interpretation do mock; 37 testes; web puro |
-| F2.2 | **GATE estratégico** (⛔): arquitetura da IA (Gemini · web · chave web · streaming) | ✅ **DECIDIDO** | F2.1 | sign-off — D1 PR core (Gemini) · D2 PR core (wasm) · D3 BYOK API key (OAuth banido) · D4 streaming; ADR-0023 |
-| F2.3 | Provedor Gemini (per F2.2: impl local na fronteira vs PR ao core) | ⬜ backlog | F2.2 | prova por MOCK (corpo/parse puros, sem rede) |
-| F2.4 | Gestão segura de chaves (BYOK) nativa — `expo-secure-store` | ⬜ backlog | F2.2 | Keychain/Keystore; chave nunca logada |
-| F2.5 | UI nativa: `ask` ancorado (provedor/modelo + custo + citado/interpretação) | ⬜ backlog | F2.1, F2.3, F2.4 | prova por MOCK no device (`TLA_ASK`) |
-| F2.6 | **Validação real** (⛔): `ask` real com a chave do usuário (Claude/GPT/Gemini) | ⬜ backlog | F2.5 | BLOQUEANTE (chave real/segredo) → HALT |
-| F2.7 | Paridade web de IA (per F2.2 — possivelmente adiada) | ⬜ backlog | F2.2, F2.5 | conforme a decisão da F2.2 |
+| F2.2 | **GATE estratégico** (⛔): arquitetura da IA (Gemini · web · chave · streaming) | ✅ **DECIDIDO** | F2.1 | sign-off — D1 PR core (Gemini) · D2 PR core (wasm) · D3 BYOK API key (OAuth banido) · D4 streaming; ADR-0023 |
+| F2.3 | **PR consolidado ao `the-light-core`**: Gemini (D1) + IA-pura-wasm (D2) + streaming-no-trait (D4) | ⬜ backlog | F2.2 | **BLOQUEANTE** (branch + push/merge humano + re-pin) · **toca the-light** · prova cargo test/clippy + build wasm |
+| F2.3a | Fronteira: rotear `"gemini"` + expor streaming (callback UniFFI), consumindo o re-pin; MOCK | ⬜ backlog | F2.3 | não-bloqueante; app-side; teste host MOCK; web puro |
+| F2.4 | **Gestão segura de chaves (BYOK) nativa — `expo-secure-store`** | ✅ aceito | F2.2 | passed (34c831f) — keystore por provedor (Keychain), chave nunca logada/versionada; stub web; app-side |
+| F2.5 | UI nativa: `ask` ancorado (provedor/modelo + custo + streaming + citado/interpretação) | ⬜ backlog | F2.1, F2.3a, F2.4 | prova por MOCK no device (`TLA_ASK`) |
+| F2.6 | **Validação real** (⛔): `ask` real com a chave do usuário (Claude/GPT/Gemini) | ⬜ backlog | F2.5 | **gate** — BLOQUEANTE (chave real/segredo/rede) → HALT |
+| F2.7 | Paridade web de IA via core wasm-safe (D2) + `fetch` | ⬜ backlog | F2.3, F2.5 | prova headless MOCK; política de chave web fixada aqui |
 | F2.8 | **Marco 2** (⛔ gate): IA BYOK ancorada com Claude/GPT/Gemini | ⬜ backlog | F2.5, F2.6, F2.7 | HALT p/ sign-off humano |
 
 ## Fases seguintes
