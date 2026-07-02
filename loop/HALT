@@ -1,10 +1,17 @@
 HALT — gate F4.6 (PR ao the-light: streaming NATIVO real por provedor) · 2026-07-02 20:40 UTC
+[ATUALIZADO 21:10 UTC] O humano AUTORIZOU o Driver a executar o PR diretamente
+(escolha "Liberar acesso ao the-light"). Pendente APENAS: o humano remover, em
+.claude/settings.json → deny, as linhas Read/Edit/Write(../the-light/**) e
+Bash(git push:*) (e, recomendado, allowlistar git checkout/switch/branch/merge/
+push/fetch/rev-parse/diff + gh + grep), e REINICIAR a sessão. Ao retomar com acesso:
+o Driver executa o PR completo (NÃO volta a esperar merge humano) — ver "EXECUÇÃO
+AUTORIZADA" no fim deste arquivo. As linhas de secrets.toml/.env permanecem no deny.
 
-MOTIVO (regra não-negociável): a F4.6 MODIFICA o `the-light` (override de
+MOTIVO ORIGINAL (regra não-negociável): a F4.6 MODIFICA o `the-light` (override de
 LlmProvider::complete_stream com SSE/NDJSON por provedor). Por CLAUDE.md, mudanças
-no the-light só via PR + ADR + merge humano — o loop NÃO modifica o the-light. O
-executor preparou toda a proposta SEM tocar o the-light; agora o loop PARA para você
-revisar/mergear o PR e fornecer o novo rev.
+no the-light só via PR + ADR — o guardrail (deny Read/Edit/Write ../the-light/**)
+forçava HALT. O humano agora deu sign-off explícito e delegou a execução ao Driver.
+O executor já preparou toda a proposta SEM tocar o the-light.
 
 O QUE FOI PREPARADO (commit 269b8fe, só no app repo):
 - loop/proposals/the-light-PR-native-sse-streaming.md — proposta COMPLETA (645 linhas):
@@ -42,3 +49,34 @@ arquivar F4.6 e seguir para F4.7 (Marco 4 — Polimento da IA completo).
 Alternativa (se preferir NÃO fazer este PR agora): pode-se pular F4.6 e ir direto ao
 Marco 4 (F4.7) com o streaming nativo no default (emite 1×) — o web já tem streaming real
 (F4.1/F4.2). Basta avisar e o Driver reordena.
+
+════════════════════════════════════════════════════════════════════════════
+EXECUÇÃO AUTORIZADA (Driver, ao retomar COM acesso ao ../the-light)
+════════════════════════════════════════════════════════════════════════════
+Pré-condição: `git -C ../the-light status` funciona (deny removida) e `git push`
+liberado. Se ainda negado → o humano não concluiu a mudança de settings/restart.
+
+Passos:
+  1. Verificar acesso + estado: no ../the-light, git status limpo; achar a base
+     04b9b24 (fetch se preciso); criar branch feat/native-sse-streaming a partir
+     de 04b9b24a990bb78c5e7cf2fffd9cc1571dc68376.
+  2. Aplicar a proposta loop/proposals/the-light-PR-native-sse-streaming.md em
+     crates/the-light-core/src/ai/{mod.rs,providers.rs} + testes. Ler os arquivos
+     REAIS e editar (a proposta foi confirmada em 04b9b24 mas não compilada).
+  3. Quality gates no the-light: cargo fmt --check · cargo clippy --workspace
+     -D warnings · cargo test --workspace. Corrigir ajustes mecânicos até VERDE.
+     Provar zero-drift: teste concat(complete_stream) == complete por fixture.
+  4. Commit no branch (msg: "feat(ai): native SSE/NDJSON streaming override de
+     complete_stream por provedor (embedded-only, não-quebrante, zero-drift)"),
+     push, abrir PR via gh, mergear na main (squash), pegar o NOVO rev (SHA).
+  5. No app: re-pinar core/Cargo.toml (2 linhas: web ai-pure + nativo embedded)
+     para o novo rev; cargo update -p the-light-core; regenerar bindings se
+     preciso (assinatura NÃO muda → deve ser idempotente).
+  6. Revalidar: cargo test (fronteira) · gen-bindings-web/ios · cd app && tsc
+     --noEmit 0 · expo export web 0 · self-tests nativos/web sem regressão ·
+     grafo wasm puro · ask_anchored_stream emite N tokens reais.
+  7. Fechar F4.6: atualizar ADR-0035 (status aceito+merged, rev), PROGRESS/STATUS/
+     JOURNAL, arquivar task+result, REMOVER este loop/HALT, commit de aceite.
+  8. Seguir para F4.7 (Marco 4 — gate final da Fase 4).
+Invariantes: anti-alucinação zero-drift; chave nunca em git/log; só ai/{mod,
+providers}.rs + testes no the-light; secrets.toml/.env seguem negados.
