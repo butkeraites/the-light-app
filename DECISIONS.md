@@ -2365,3 +2365,65 @@ em TS (`fetch`, molde F2.7b/ADR-0025). Hoje `study()`/`verified_lexicon`/`StudyR
   re-pin (liga `ai-pure` estendido na linha web), molde F2.7b.
 - **F3.13 = Marco 3.**
 - Anti-alucinação, offline-first (opt-in), BYOK e `the-light`-só-via-PR+ADR preservados.
+
+## ADR-0030 — F3.11: PR `ai-pure` do **estudo profundo** (wasm-safe) — widening de `#[cfg]` + 1 `pub` novo (`user_prompt`) + `chrono` clock-free no grafo puro
+
+- **Data:** 2026-07-02 · **Status:** aceito (PR sancionado ao the-light; branch `feat/ai-pure-study`, **aguardando push/merge humano** + re-pin do Driver) · **Tarefa:** F3.11 · **Depende:** ADR-0029 (D2 autoriza), ADR-0024 (precedente da feature `ai-pure`), ADR-0025 (prepare→fetch→finalize web) · **Habilita:** F3.12 (paridade web do estudo)
+
+### Contexto
+A ADR-0029 (D2) mandou levar o **estudo profundo** ao web com **fonte única em Rust**
+(zero drift do anti-alucinação). No core @ `c8ecb2f`, a superfície do deep-study era
+`#[cfg(feature = "embedded")]`-only (`StudyRequest`/`StudyResult`/renders,
+`WebSource`/`from_web_results`) e `user_prompt` era **`fn` privado** → **não havia
+entrada pública pura** para o web montar `(system, user)` do estudo. `pub mod ai` já
+estava sob `any(embedded, ai-pure)` desde a F2.7/ADR-0024, e `prompts::system_prompt_in`
+(pura, `None` = prompt embutido) e os tipos de `lexicon`/`citation` já eram públicos.
+
+### Decisão
+Ampliar a feature **`ai-pure`** (ADR-0024) para cobrir as **partes puras do estudo**, via
+**widening do gate** (`embedded` → `any(embedded, ai-pure)`) nos itens puros e **1 `pub`
+novo**, sem mover código (aditivo, defaults byte-a-byte). Escopo cirúrgico: só
+`crates/the-light-core/src/ai/{mod,study,research,citation}.rs` + `Cargo.toml [features]`
+(**`lib.rs` NÃO mudou**).
+- **Cargo:** `ai-pure = ["dep:serde_json", "dep:chrono"]` com **`chrono` clock-free**
+  (`default-features = false, features = ["serde", "std"]`) — necessário porque
+  `WebSource.fetched_at: DateTime<Utc>` e `from_web_results` entram no grafo puro; o
+  caminho puro **nunca** chama `Utc::now()` (o timestamp vem do TS via `from_timestamp`),
+  então sem `clock` o chrono **não** puxa `wasm-bindgen`/`js-sys`. `embedded` reativa o
+  clock via **`chrono/clock`** (usado por `Utc::now()` nos providers de rede), mantendo o
+  nativo **byte-a-byte**. `default = ["embedded"]` intacto; `ai-pure` fora do default.
+- **`study.rs`:** widening p/ `ai-pure` de `StudyRequest`/`StudyResult`/`impl StudyResult`
+  (`to_markdown`/`to_academic_markdown`)/`user_prompt`/`cited_web_indices`; `study()` e
+  `CitationCollector` seguem `embedded` (provider real + `system_prompt` de disco +
+  `lexicon::verify`). **`user_prompt` `fn`→`pub fn`** (a ÚNICA mudança de visibilidade;
+  `cited_web_indices` também vira `pub`).
+- **`research.rs`:** ficam puros (`ai-pure`) `WebSource`/`ResearchProvider`/
+  `MockResearchProvider`/`RESEARCH_BACKENDS`; reqwest+clock (`WikipediaProvider`/
+  `TavilyProvider`/`build_research_provider`/`blocking_client`/`urlencode`/`strip_html`)
+  seguem `embedded`.
+- **`citation.rs`:** `WebSource`/`from_web_results` passam a `any(embedded, ai-pure)`.
+
+### Superfície pública nova (mínima)
+**1 `pub` novo:** `ai::study::user_prompt`. Widening (aditivo) p/ `ai-pure` de itens já
+públicos: `study::{StudyRequest, StudyResult}` + renders; `study::cited_web_indices`
+(`pub`); `research::{WebSource, ResearchProvider, MockResearchProvider,
+RESEARCH_BACKENDS}`; `citation::from_web_results`. API pública **nativa** inalterada.
+
+### Prova (portão D2)
+`cargo build -p the-light-core --no-default-features --features ai-pure --target
+wasm32-unknown-unknown` **compila** com as peças do estudo. `cargo tree` do grafo
+`ai-pure`/wasm **sem** `reqwest`/`rusqlite` (e **sem** `wasm-bindgen`/`js-sys` — a via
+primária **chrono clock-free funcionou**; deps: chrono, regex, serde, serde_json,
+thiserror). Não-quebrante: `default` intacto; workspace verde (fmt 0, clippy `-D warnings`
+0, `cargo test --workspace` 0 falhas; **core lib 184**); chrono nativo mantém `clock`
+(`iana-time-zone`). Escopo = só `ai/` + `[features]`.
+
+### Consequências
+- **the-light a re-pinar** de `c8ecb2f` → `<rev do merge de feat/ai-pure-study>` (handoff:
+  push/merge humano; re-pin do Driver na linha WEB → `features = ["ai-pure"]`).
+- **F3.12** consome a superfície nova (prepare = `system_prompt_in(...,None)` +
+  `user_prompt`; finalize = `split_sections`/`verify`/`cited_web_indices`/
+  `CitationCollector`/`to_academic_markdown` com `rewrite_anchors`) — MESMA impl Rust do
+  nativo, **zero drift**. Transporte (LLM + Wikipedia) = `fetch`/TS (molde F2.7b).
+- Anti-alucinação (texto do versículo do store; LLM só interpreta), offline-first (IA
+  opt-in) e BYOK preservados; `the-light` alterado só via PR + ADR.
