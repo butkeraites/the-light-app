@@ -432,20 +432,46 @@ handoff = aguardando push/merge humano + re-pin). **Toca `the-light`** (via PR +
 **Não** stubar/forkar/copiar; **não** espelhar o anti-alucinação do estudo em TS (drift
 PROIBIDO — ADR-0029).
 
-## F3.12 — Paridade web: estudo profundo + léxico + conversa + pesquisa web + export
-**Objetivo:** com o core **re-pinado** da F3.11 (feature `ai-pure` ampliada, ADR-0029),
-destubar no web: **estudo profundo** (montagem/citação pela **mesma impl Rust** — zero
-drift), **léxico** (recuperação sobre o store web `wa-sqlite`/OPFS, tipos/verificação
-do Rust), **conversa** (`ask_session` já pura, F3.4), **pesquisa web Wikipedia** (busca
-por `fetch` no browser → `WebSource` → mesma montagem `[W:n]` pura, molde F2.7b) e
-**export acadêmico**, com transporte por `fetch` e o texto/léxico vindos do **store web**
-(F1.13–F1.16). Chave web session-only (ADR-0025); pesquisa web opt-in (padrão desligado).
-**Aceite:** estudo profundo + léxico + conversa + pesquisa web + export no browser com o
-texto/glosas do store, separando citado/interpretação; prova **headless node** com
-**MOCK de `fetch`** (sem rede real); `expo export web` 0; anti-alucinação = mesma impl
-Rust.
-**Verificação:** prova headless node com MOCK + `expo export web` 0.
-**Depende:** F3.11 (re-pinado), F3.5, F3.6, F3.8. **Não-bloqueante** (app-side).
+## F3.12 — Paridade web do estudo (FATIADA pelo planner em F3.12a + F3.12b)
+> **Fatiada (2026-07-02)** por tamanho (estudo + léxico + conversa + pesquisa web +
+> export + 4 painéis compartilhados = muito para uma tarefa atômica). A **fronteira
+> web nova** (`study_web_prepare`/`study_web_finalize`, molde EXATO F2.7b/`ai_web_prepare`)
+> nasce na F3.12a e **já aceita `web_sources`** (vazio) para que a F3.12b seja
+> **app-side apenas** (fetch Wikipedia → passar `web_sources`), sem re-tocar o Rust.
+> Anti-alucinação ZERO-DRIFT (ADR-0029): prompt/citação/aparato/verify do MESMO Rust
+> `ai-pure` (`04b9b24`); só recuperação de store (SELECT léxico, ADR-0011) e transporte
+> (`fetch`, ADR-0025) são infra TS.
+
+### F3.12a — estudo profundo + léxico + export acadêmico (**SEMEADA** em `queue/`)
+Estudo profundo web via `ai-pure` **prepare→fetch→finalize** (fronteira web nova em
+`core/src/lib.rs`; recuperação de léxico do subset em TS = ADR-0011; export reusa
+`buildStudyExport`/`academicMarkdown`). Prova headless node = `deepStudy` web (fetch
+MOCK): João 3:16 do store + citações do léxico STEP CC-BY + `academic_markdown>0` +
+paridade nativo↔web (host). **Depende:** F3.11, F3.5, F3.8. **Não-bloqueante** (só o
+`core/src/lib.rs` da fronteira web; the-light `04b9b24`/`core/Cargo.toml` intactos).
+Ver `queue/F3.12a-paridade-web-estudo.task.md`.
+
+### F3.12b — conversa ancorada + pesquisa web Wikipedia (opt-in) + comparação
+**Objetivo:** completar a paridade web (app-side, sobre a fronteira da F3.12a):
+- **Conversa ancorada** (`askSessionAnchored` web): `ask_session` **já é pura** (F3.4);
+  o web monta o `context` (âncora) do store web (capítulo numerado + xrefs, molde
+  `ask_context`) + prepare/fetch/finalize multi-turno → destubar `askSessionAnchored`
+  em `reading.web.ts`; `ReaderChatPanel` funciona no web pelo glue.
+- **Pesquisa web Wikipedia (opt-in, ADR-0028):** `research.web.ts` faz `fetch` à API
+  pública da Wikipedia (keyless) → `WebSource[]` → alimenta `web_sources` do
+  `study_web_prepare`/`study_web_finalize` da F3.12a (padrão DESLIGADO + aviso de
+  privacidade; `WikipediaProvider`/`build_research_provider` do core são `embedded`-only
+  → no web a busca é `fetch` TS, a montagem `[W:n]`/citação segue o MESMO Rust `ai-pure`).
+- **Comparação multi-IA web:** `askAnchored` já destubada (F2.7b) → un-SKIP do
+  `compare-selftest.web.ts`; `ReaderComparePanel` funciona no web.
+**Aceite:** conversa/pesquisa/comparação no browser com texto/glosas do store,
+separando citado/interpretação; prova **headless node** (fetch MOCK): conversa web
+mantém a âncora; Wikipedia fetch mock → `WebSource` → citações `[W:n]` do estudo web;
+comparação web (≥2 provedores, mesma âncora). `tsc`/`expo export web` 0; chave
+session-only nunca logada; pesquisa web opt-in (padrão desligado).
+**Verificação:** headless node (conversa/pesquisa/comparação, MOCK) + `expo export web` 0.
+**Depende:** F3.11, F3.6, F3.7, **F3.12a**. **Não-bloqueante** (app-side; NÃO toca
+the-light nem — em princípio — a fronteira Rust, que a F3.12a já entrega).
 
 ## F3.13 — ⛔ Marco 3: plataforma de estudo profundo completa
 **Objetivo:** confirmar a **plataforma de estudo profundo** funcionando: estudo
