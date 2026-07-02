@@ -2758,3 +2758,100 @@ compare/…).
   multiProvider.web.test.mjs}` (novos), `DECISIONS.md` (este ADR).
   **Gerado/IGNORADO:** `app/web/generated/*` (bindings web, inalterados — nenhum símbolo novo de
   fronteira).
+
+## ADR-0035 — F4.6: streaming NATIVO real por provedor (SSE/NDJSON) = **PR ao `the-light-core`** sobrescrevendo `LlmProvider::complete_stream` nos 4 provedores (embedded-only, não-quebrante, zero-drift); assinatura/fronteira/bindings INALTERADOS
+
+- **Data:** 2026-07-02 · **Status:** **aceito (PR proposto; pendente merge humano)** · **Tarefa:** F4.6 (**gate:true** — toca o `the-light` via PR + ADR) · **Depende:** ADR-0023 (D4: streaming na fronteira), ADR-0024/F2.7 (precedente PR `ai-pure` ao core + re-pin), ADR-0005 (precedente PR de feature-gating + molde de handoff), ADR-0033/ADR-0034 (streaming/multi-provedor **web** = só transporte TS). · **Handoff:** push/merge é ação humana → o Driver **re-pina** `core/Cargo.toml` (2 linhas) no novo rev.
+
+### Contexto
+Este é o **último caminho de IA ainda não-streaming**. No core pinado (`04b9b24`), **nenhum**
+provedor sobrescreve `LlmProvider::complete_stream`: todos caem no **default não-quebrante**
+(`ai/mod.rs:378-387`), que chama `self.complete()` e emite a **String inteira 1×** por `on_token`.
+Logo o nativo "streama" em **um único incremento**. O web já streama token-a-token via transporte
+**TS** (F4.1/F4.2, ADR-0033/ADR-0034); a fronteira (`ask_anchored_stream` → `AiTokenCallback`
+UniFFI) já sabe repassar N tokens — só o **transporte nativo** ainda emite 1×. A **D4** do ADR-0023
+(streaming) previu justamente o override SSE real de `complete_stream` mantendo a assinatura, sem
+mudar os chamadores. Fatos confirmados byte-a-byte na fonte (checkout só-leitura do cargo,
+`04b9b24`): trait `complete_stream` é **puro** (`ai-pure`, o default compila em wasm); os 4
+providers são `#[cfg(feature="embedded")]`; `AiError::Http`/`BadResponse` (puros) bastam;
+`reqwest::blocking::Response: std::io::Read` → `BufReader::lines()` cobre SSE **e** NDJSON (sem a
+feature async `stream`).
+
+### Decisão
+**PR sancionado ao `the-light`** (branch `feat/native-sse-streaming` sobre `04b9b24`; escopo SÓ
+`crates/the-light-core/src/ai/{mod.rs,providers.rs}` + testes) que **sobrescreve
+`complete_stream`** nos 4 provedores reais, abrindo a conexão de **streaming do provedor** com
+`reqwest::blocking`, emitindo **cada delta** por `on_token` e devolvendo a **resposta completa**
+(concatenação) — **idêntica** à de `complete`. Design em duas camadas (espelha `send_json`
+embedded ↔ `parse_api_response` puro), detalhado em
+`loop/proposals/the-light-PR-native-sse-streaming.md`:
+
+1. **Parsers de delta PUROS, un-gated** (só `serde_json`, já em `ai-pure`; cobertos pelo
+   `allow(dead_code)` de topo de `providers.rs`): `sse_data` (payload de linha SSE `data:`),
+   `anthropic_stream_delta`/`openai_stream_delta`/`gemini_stream_delta`/`ollama_stream_delta`
+   (cada um espelha o `*_extract` correspondente) e `with_stream` (liga `"stream": true` reusando
+   o `*_body`).
+2. **Leitor `stream_reader` PURO** (`std::io::BufRead`, testável com `Cursor` de fixture) +
+   **`stream_response` `#[cfg(embedded)]`** (checa status HTTP → `AiError::Http`, delega ao leitor)
+   + os **overrides** de `complete_stream` e métodos `post_stream` por provedor (`embedded`).
+3. **Transporte por provedor:** SSE (`text/event-stream`) p/ anthropic (`content_block_delta` →
+   `delta.text` do `text_delta`; ignora `thinking_delta`; `refusal` → erro), openai
+   (`choices[0].delta.content`; `[DONE]` ignorado), gemini (endpoint
+   `:streamGenerateContent?alt=sse`, corpo idêntico; `candidates[0].content.parts[].text`;
+   `blockReason` → erro); **NDJSON** p/ ollama (1 JSON por linha, `message.content`,
+   `with_stream` troca o `"stream": false` do `ollama_body` p/ `true`).
+- **Ollama = INCLUIR o override** (decisão explícita, não deixar no default): NDJSON é mais simples
+  que SSE, o web já streama ollama (ADR-0034), e deixar 1 dos 4 no default manteria o "último
+  caminho não-streaming" aberto. Reversível (remover o override → volta ao default).
+
+### Garantias
+- **Não-quebrante:** só se **acrescenta** o override de um método de trait que já tem **default**.
+  `MockLlmProvider` (e qualquer provedor futuro sem override) continua no default (1×);
+  `complete`/`chat`/`*_body`/`*_extract` intactos; **nenhuma** mudança em `Cargo.toml`/`lib.rs`/
+  `[features]`; `default = ["embedded"]` **byte-a-byte**; nenhuma variante de `AiError` nova.
+- **Zero-drift (anti-alucinação):** a **concatenação dos deltas == a resposta de `complete`** (cada
+  parser espelha seu `*_extract`); o streaming muda **só o TRANSPORTE nativo**; a interpretação
+  final é a MESMA e o `cited_text`/citações continuam do store/`ai-pure` na fronteira. Os deltas são
+  **só** texto do modelo — **nunca** texto bíblico.
+- **Embedded-only / wasm PURO:** tudo que usa `reqwest` fica sob `#[cfg(feature="embedded")]`; os
+  parsers puros usam só `serde_json` (já em `ai-pure`). **Nada novo** no grafo `ai-pure`/wasm; o
+  `complete_stream` **default** segue puro; o **web permanece** com o transporte TS (F4.1/F4.2 —
+  ADR-0033/0034).
+- **Assinatura INALTERADA:** `complete_stream(&self, &str, &str, &mut dyn FnMut(&str)) ->
+  Result<String>`. Logo `ask_anchored_stream` (`core/src/lib.rs`) + `AiTokenCallback` (UniFFI/JSI) e
+  os bindings **não** mudam — só passam a receber **N tokens reais** em vez de 1. **Sem** regeneração
+  de bindings.
+- **BYOK:** chave **só no header** (anthropic `x-api-key`; openai `authorization: Bearer`; gemini
+  `x-goog-api-key`; ollama **sem chave**), **nunca** na URL/log/git. Prova **determinística por
+  parser puro sobre fixture** (sem rede/chave no CI).
+- **Offline-first:** streaming é opt-in e só melhora o transporte de uma chamada de IA que já é
+  opt-in; nenhuma capacidade essencial passa a exigir rede.
+
+### Prova (no `the-light`, branch) e testes propostos
+Sob `cargo test` (default = `embedded`): (a) parser SSE/NDJSON **por provedor** sobre um corpo de
+**fixture** (via `Cursor`) → N deltas na ordem, concat == full (com `thinking_delta`/`event:`/
+vazias/`[DONE]` corretamente ignorados; `refusal`/`blockReason` → erro); (b) `complete_stream`
+concat == `complete` para o `MockLlmProvider` (prova o **default preservado** = 1 delta e o
+zero-drift do retorno). Portões: `cargo fmt --all --check`, `cargo clippy --workspace -- -D
+warnings`, `cargo test --workspace` verdes; `cargo build -p the-light-core` (default/embedded)
+byte-a-byte; `cargo build -p the-light-core --no-default-features --features ai-pure --target
+wasm32-unknown-unknown` verde (grafo puro intacto). Validação com **chave real** de streaming
+nativo (SSE/NDJSON em rede) = **etapa humana** (fora do loop; base de conteúdo real aceita na F4.5).
+
+### Consequências / handoff
+- **Bloqueante (gate:true):** o executor preparou a proposta
+  (`loop/proposals/the-light-PR-native-sse-streaming.md`) + este ADR; o Driver **HALTA** para o
+  humano revisar/mergear o PR no `the-light` e fornecer o **novo rev**.
+- **Pós-merge (Driver):** re-pina `core/Cargo.toml` (2 linhas: web `ai-pure` l.37 + nativa
+  `embedded` l.44 → novo rev) + `core/Cargo.lock`; revalida a fronteira (`cargo test -p
+  the-light-app-core`, `ask_anchored_stream` funcional), o grafo wasm PURO (`ai-pure` sem
+  `reqwest`/`rusqlite`) e o web (`tsc --noEmit` + `expo export --platform web`).
+- **Risco registrado (para o humano):** o zero-drift *de fixture* prova que o **parser** não diverge;
+  a igualdade *em rede real* (stream vs não-stream) depende do provedor (ordenação de partes/
+  whitespace) → validação humana. Se, ao compilar no branch, ficar comprovado que a assinatura de
+  `complete_stream` PRECISA mudar (novo tipo de erro/sink que force a fronteira/bindings) → é
+  **decisão para o humano**: parar e registrar, **não** improvisar.
+- **Versionado nesta tarefa (app repo apenas):** `loop/proposals/the-light-PR-native-sse-streaming.md`
+  (proposta do PR), `DECISIONS.md` (este ADR), `loop/queue/F4.6-pr-streaming-nativo-sse.task.md`
+  (task `in_progress`). **NENHUM** arquivo do `the-light`/`core/**`/`core/Cargo.toml` tocado; pin
+  `04b9b24` intacto.
