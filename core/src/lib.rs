@@ -840,6 +840,18 @@ pub fn cross_refs(
 #[cfg(not(target_arch = "wasm32"))]
 const DEFAULT_LEXICON_LIMIT: usize = 32;
 
+/// Número máximo de fontes web devolvidas pela **pesquisa web opt-in** do estudo
+/// (`deep_study` com `research_backend = Some(...)`, ADR-0028).
+///
+/// Padrão **local** da fronteira (o core não expõe uma constante equivalente): um teto
+/// baixo (poucas fontes secundárias citáveis por `[W:n]`) que não infla o prompt nem a
+/// UI (F3.5). O provedor `"mock"` ignora este valor além das 2 fontes canônicas; o
+/// `WikipediaProvider` (rede opt-in, F3.10) o respeita. Só entra no caminho nativo (o
+/// corpo que faz a busca é `cfg(not(wasm32))`); gateado para não disparar `dead_code`
+/// no build web.
+#[cfg(not(target_arch = "wasm32"))]
+const DEFAULT_RESEARCH_LIMIT: usize = 4;
+
 /// Uma **entrada léxica verificada** (número de Strong + lema/transliteração/glosa),
 /// na fronteira UniFFI.
 ///
@@ -1314,8 +1326,20 @@ impl From<the_light_core::ai::study::StudyResult> for StudyResultOut {
 /// **Nenhum** prompt/RAG/SQL/aparato de citação é reimplementado aqui — tudo vive em
 /// `ai::study`/`ai::lexicon`/`xref`/store. Anti-alucinação: o `passage_text` e as
 /// `citations`/léxico vêm **sempre do banco local verificado** (verbatim); o LLM/mock só
-/// **interpreta**. `web_sources` fica **vazio** (offline; a pesquisa web é a F3.9);
-/// `brief` é `None` (foco temático é fora de escopo aqui — sempre uma passagem concreta).
+/// **interpreta**. `brief` é `None` (foco temático é fora de escopo aqui — sempre uma
+/// passagem concreta).
+///
+/// **Pesquisa web opt-in (ADR-0028, F3.9a):** `research_backend` liga a busca de **fontes
+/// secundárias** citáveis por `[W:n]`. Padrão **desligado**: `None` (ou omitido) → nenhuma
+/// rede, `web_sources = vec![]` (comportamento offline anterior). Com `Some(backend)`, a
+/// fronteira delega a `ai::build_research_provider(backend, None, lang)` + `provider.search`
+/// e injeta o `Vec<WebSource>` no `StudyRequest`; o `study()` monta as citações `Web`
+/// **das URLs realmente buscadas** (`CitationCollector::from_web_results`, **nunca do
+/// modelo**) e sinaliza `[W:n]` fora do intervalo — anti-alucinação embutida. Backends:
+/// `"mock"` (fontes canônicas, **sem rede** — a prova headless), `"wikipedia"|"wiki"`
+/// (**keyless**, rede opt-in do usuário, validada na F3.10). A chave é **sempre `None`**
+/// aqui (Wikipedia é keyless; Tavily/BYOK é futuro). O módulo `research` é `embedded`-only
+/// (`reqwest`) → a busca vive **só** no bloco nativo (grafo wasm puro).
 ///
 /// **BYOK / offline-first:** com `provider_name = "mock"` e `key = None` (esta tarefa)
 /// não há rede nem chave; nenhuma chave é logada. A chave real do usuário e a rede opt-in
@@ -1340,11 +1364,13 @@ pub fn deep_study(
     provider_name: String,
     key: Option<String>,
     model: Option<String>,
+    research_backend: Option<String>,
 ) -> Result<StudyResultOut, CoreError> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         // Trait em escopo para chamar `.passage(...)` em `EmbeddedSource` (como em
-        // `ask_anchored`). `name()/model()` do `dyn LlmProvider` dispensam import.
+        // `ask_anchored`). `name()/model()` do `dyn LlmProvider` e `.search(...)` do
+        // `dyn ResearchProvider` dispensam import (métodos de trait object).
         use the_light_core::source::BibleSource;
 
         // 1) Idioma de exibição/resposta (`"pt"|"en"` + sinônimos); default Pt.
@@ -1398,8 +1424,32 @@ pub fn deep_study(
                 }
             })?;
 
-        // 6) Monta o StudyRequest (fatos do store) e DELEGA ao core — o `study` separa
-        //    o `passage_text` (banco) da `interpretation` (modelo). Offline: sem web.
+        // 5b) Pesquisa web OPT-IN (ADR-0028): desligada por padrão. Com `research_backend =
+        //     Some(backend)`, delega a `ai::build_research_provider` (chave SEMPRE `None` —
+        //     Wikipedia é keyless) + `provider.search`; o `study()` monta as citações `Web`
+        //     DAS URLs buscadas (nunca do modelo). `"mock"` não faz rede (prova headless);
+        //     `"wikipedia"` é rede opt-in do usuário (F3.10). Sem backend → `vec![]` (offline,
+        //     comportamento anterior). Query = `reference_label` (determinístico; o mock a
+        //     ignora, só o Wikipedia a usa).
+        let web_sources = match research_backend {
+            Some(backend) => {
+                let research =
+                    the_light_core::ai::build_research_provider(&backend, None, lang.code())
+                        .map_err(|e| CoreError::Generic {
+                            message: e.to_string(),
+                        })?;
+                research
+                    .search(&reference_label, DEFAULT_RESEARCH_LIMIT)
+                    .map_err(|e| CoreError::Generic {
+                        message: e.to_string(),
+                    })?
+            }
+            None => Vec::new(),
+        };
+
+        // 6) Monta o StudyRequest (fatos do store + fontes web opt-in) e DELEGA ao core — o
+        //    `study` separa o `passage_text` (banco) da `interpretation` (modelo) e cita as
+        //    fontes web `[W:n]` das URLs (anti-alucinação). Sem research → `web_sources` vazio.
         let request = the_light_core::ai::study::StudyRequest {
             reference,
             reference_label,
@@ -1410,7 +1460,7 @@ pub fn deep_study(
             passage: Some(&passage),
             cross_references,
             verified_lexicon,
-            web_sources: Vec::new(),
+            web_sources,
             brief: None,
         };
         let result =
@@ -1427,6 +1477,8 @@ pub fn deep_study(
         // Stub web: a superfície pesada do `ai` (`study`/`StudyRequest`/`StudyResult`) e o
         // store são `embedded`-only (nativo). O estudo web é a F3.12; até lá, falha
         // explícita — sem tocar `ai::study`/store/`rusqlite`/`reqwest` (grafo wasm puro).
+        // `research_backend` também ignorado: a pesquisa web no browser é `fetch` (F3.12),
+        // não `reqwest::blocking` (embedded-only). O grafo wasm segue puro.
         let _ = (
             db_path,
             translation,
@@ -1440,6 +1492,7 @@ pub fn deep_study(
             provider_name,
             key,
             model,
+            research_backend,
         );
         Err(CoreError::Generic {
             message: "estudo profundo indisponível no alvo web (F3.12)".to_string(),
@@ -4631,6 +4684,7 @@ mod study_tests {
             "mock".to_string(),
             None, // BYOK: sem chave (mock não faz rede)
             None,
+            None, // research OFF (padrão): sem web (comportamento F3.3 preservado)
         )
         .expect("deep_study com o mock deve retornar Ok");
 
@@ -4702,6 +4756,142 @@ mod study_tests {
     }
 
     #[test]
+    fn deep_study_opt_in_web_research_via_mock_cites_urls_not_the_model() {
+        // F3.9a (ADR-0028): pesquisa web OPT-IN no `deep_study`. Com `research_backend =
+        // Some("mock")` + modo Academic, a fronteira delega a `ai::build_research_provider`
+        // (SEM rede — `MockResearchProvider::canned` = 2 WebSource fixos) e o `study()` do
+        // core monta as citações `Web` DAS URLs (nunca do modelo). Prova determinística e
+        // offline. A MESMA chamada com `None` (research OFF) NÃO traz citação web — o
+        // comportamento offline da F3.3 fica preservado (padrão desligado).
+        let db = build_kjv_fixture();
+
+        let run = |research: Option<String>| -> StudyResultOut {
+            deep_study(
+                db.path(),
+                "kjv".to_string(),
+                43,
+                3,
+                Some(16),
+                StudyMode::Academic,
+                StudyLens::Presbyterian,
+                StudyDepth::Exegetical,
+                "en".to_string(),
+                "mock".to_string(),
+                None, // BYOK: sem chave LLM (mock não faz rede)
+                None,
+                research, // pesquisa web opt-in (None = OFF; Some("mock") = sem rede)
+            )
+            .expect("deep_study com o mock deve retornar Ok")
+        };
+
+        // ── Research LIGADO (mock): as citações `Web` fluem do provider ao `study()`. ──
+        let with_web = run(Some("mock".to_string()));
+        let web_citations: Vec<&StudyCitation> = with_web
+            .citations
+            .iter()
+            .filter(|c| c.kind == "Web")
+            .collect();
+        assert!(
+            !web_citations.is_empty(),
+            "com research=Some(\"mock\") + Academic deve haver ≥1 citação Web: {:?}",
+            with_web.citations
+        );
+        // As citações Web vêm das URLs REALMENTE buscadas (mock canônico), não do modelo.
+        assert!(
+            web_citations
+                .iter()
+                .any(|c| c.url.as_deref().is_some_and(|u| u.contains("example.org"))),
+            "citação Web deve trazer a URL da fonte buscada (example.org): {web_citations:?}"
+        );
+        // Anti-alucinação preservada: passagem verbatim do store ≠ interpretação do modelo,
+        // e o modelo NÃO gerou o texto bíblico nem a URL.
+        assert!(
+            with_web.passage_text.contains(JOHN_3_16_KJV),
+            "passage_text deve seguir verbatim do store: {}",
+            with_web.passage_text
+        );
+        assert_ne!(
+            with_web.passage_text, with_web.interpretation,
+            "passage_text (store) ≠ interpretation (modelo)"
+        );
+        assert_eq!(
+            with_web.interpretation,
+            mock_fixed_response(),
+            "interpretation é a resposta fixa do mock (não citou [W:n]) — invariante à web"
+        );
+
+        // ── Research DESLIGADO (None): comportamento offline da F3.3 preservado. ──────
+        let without_web = run(None);
+        assert!(
+            without_web.citations.iter().all(|c| c.kind != "Web"),
+            "com research=None NÃO deve haver citação Web (offline por padrão): {:?}",
+            without_web.citations
+        );
+        assert!(
+            without_web.passage_text.contains(JOHN_3_16_KJV),
+            "passage_text segue verbatim do store mesmo sem research"
+        );
+    }
+
+    #[test]
+    fn deep_study_web_research_unknown_backend_errors_without_network() {
+        // Backend de pesquisa desconhecido → CoreError (via `build_research_provider`),
+        // sem panic e SEM rede. Backend não citado pelo mock só importaria com rede real.
+        let db = build_kjv_fixture();
+
+        let err = deep_study(
+            db.path(),
+            "kjv".to_string(),
+            43,
+            3,
+            Some(16),
+            StudyMode::Academic,
+            StudyLens::Presbyterian,
+            StudyDepth::Exegetical,
+            "en".to_string(),
+            "mock".to_string(),
+            None,
+            None,
+            Some("definitely-not-a-backend".to_string()),
+        )
+        .expect_err("backend de pesquisa desconhecido deve falhar");
+        assert!(matches!(err, CoreError::Generic { .. }));
+    }
+
+    #[test]
+    fn deep_study_web_research_ignored_outside_apparatus_mode() {
+        // Modo NÃO-Academic (Devotional) não emite aparato (`emits_apparatus()` = false):
+        // mesmo com research=Some("mock"), o core não produz citações — sem panic, offline.
+        let db = build_kjv_fixture();
+
+        let result = deep_study(
+            db.path(),
+            "kjv".to_string(),
+            43,
+            3,
+            Some(16),
+            StudyMode::Devotional,
+            StudyLens::Baptist,
+            StudyDepth::Overview,
+            "en".to_string(),
+            "mock".to_string(),
+            None,
+            None,
+            Some("mock".to_string()),
+        )
+        .expect("deep_study (Devotional, research=mock) deve retornar Ok");
+        assert!(
+            result.citations.is_empty(),
+            "modo sem aparato não emite citações mesmo com research ligado: {:?}",
+            result.citations
+        );
+        assert!(
+            result.passage_text.contains(JOHN_3_16_KJV),
+            "passage_text segue verbatim do store"
+        );
+    }
+
+    #[test]
     fn passage_text_tracks_store_while_interpretation_is_invariant() {
         // Prova anti-fake (molde F2.1): com O MESMO fixture/mock, estudar dois
         // versículos distintos muda o `passage_text` (segue o STORE) mas NÃO a
@@ -4722,6 +4912,7 @@ mod study_tests {
                 "mock".to_string(),
                 None,
                 None,
+                None, // research OFF (padrão)
             )
             .expect("deep_study deve retornar Ok")
         };
@@ -4763,6 +4954,7 @@ mod study_tests {
             "nope".to_string(),
             None,
             None,
+            None, // research OFF
         )
         .expect_err("provedor desconhecido deve falhar");
         assert!(matches!(err, CoreError::Generic { .. }));
@@ -4782,6 +4974,7 @@ mod study_tests {
             "mock".to_string(),
             None,
             None,
+            None, // research OFF
         )
         .expect_err("db_path = diretório deve falhar no Store::open");
         assert!(matches!(err, CoreError::Generic { .. }));
@@ -4809,6 +5002,7 @@ mod study_tests {
             "mock".to_string(),
             None,
             None,
+            None, // research OFF
         )
         .expect("deep_study de João 3:16 no bible.sqlite");
         assert!(
@@ -4907,6 +5101,7 @@ mod study_tests {
             "mock".to_string(),
             None, // BYOK: sem chave (mock não faz rede)
             None,
+            None, // research OFF (este teste foca no Markdown SBL, não na pesquisa web)
         )
         .expect("deep_study (Academic, mock) deve retornar Ok");
 

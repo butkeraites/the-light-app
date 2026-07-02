@@ -375,6 +375,7 @@ export async function deepStudy(
   _providerName: string,
   _key: string | undefined,
   _model: string | undefined,
+  _researchBackend?: string,
 ): Promise<StudyResultOut> {
   throw new Error('estudo profundo no web = F3.12');
 }

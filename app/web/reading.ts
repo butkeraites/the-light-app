@@ -292,6 +292,11 @@ export async function askAnchoredStream(
  * mock (o core usa o default e não faz rede). O `StudyResultOut` traz `passageText`
  * (store, verbatim) SEPARADO de `interpretation` (LLM), mais `sections`/`citations`/
  * `warnings`. Anti-alucinação: o texto bíblico e as citações vêm do banco, não do modelo.
+ *
+ * `researchBackend` (ADR-0028/F3.9a) liga a PESQUISA WEB opt-in de fontes secundárias
+ * (`[W:n]`): `undefined` (padrão) = desligado, sem rede; `"wikipedia"` = keyless, rede
+ * opt-in do usuário (validada na F3.10); `"mock"` = fontes canônicas sem rede (prova). O
+ * core cita as URLs REALMENTE buscadas, nunca o modelo (anti-alucinação). Só NATIVO.
  */
 export async function deepStudy(
   dbPath: string,
@@ -306,6 +311,7 @@ export async function deepStudy(
   providerName: string,
   key: string | undefined,
   model: string | undefined,
+  researchBackend?: string,
 ): Promise<StudyResultOut> {
   return deepStudyNative(
     dbPath,
@@ -320,6 +326,7 @@ export async function deepStudy(
     providerName,
     key,
     model,
+    researchBackend,
   );
 }
 
