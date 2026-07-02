@@ -52,6 +52,102 @@ function articleUrl(site: string, title: string): string {
   return `https://${site}/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
 }
 
+// ── PESQUISA WEB TAVILY (opt-in, BYOK, chave SÓ no corpo) — F4.4 (ADR-0035) ─────────────
+//
+// 2º backend de pesquisa web (o par web do `ai::research::TavilyProvider`, que é
+// `embedded`-only/reqwest e NÃO existe no wasm). Faz um `POST` à `api.tavily.com/search`
+// com a chave BYOK NO CORPO (campo `api_key`) — NUNCA na URL/header/log — e mapeia
+// `results[]` em `StudyWebSourceInput[]` (o MESMO tipo que `wikipediaSearch` produz), que
+// `study_web_prepare`/`study_web_finalize` já ACEITAM. As citações `[W:n]`/`kind="Web"`
+// (das URLs) e o `verify` vêm do MESMO Rust `ai-pure` (ZERO DRIFT): esta camada só
+// RECUPERA fontes — NADA de anti-alucinação/citação é reimplementado aqui.
+//
+// PRIVACIDADE / OPT-IN (ADR-0025/ADR-0035): a rede Tavily só ocorre quando o usuário LIGA
+// a pesquisa web e informa a chave (session-only, in-memory — perdida no reload, NUNCA
+// persistida/logada/em git). A chave viaja SÓ no corpo do POST. O `fetch` é INJETÁVEL (a
+// prova headless passa um MOCK; produção usa `globalThis.fetch`).
+
+/** Limite default de fontes Tavily (espelha `DEFAULT_RESEARCH_LIMIT = 4` do core nativo). */
+export const DEFAULT_TAVILY_LIMIT = 4;
+
+/** Endpoint público do Tavily (a chave vai no CORPO, nunca na URL). */
+const TAVILY_ENDPOINT = 'https://api.tavily.com/search';
+
+/**
+ * Host (`site`) extraído de uma URL — espelha o helper do `TavilyProvider` do core:
+ * pega o que vem depois de `://` até o primeiro `/`. String vazia se não houver host.
+ */
+function hostFromUrl(url: string): string {
+  const afterScheme = url.split('://')[1] ?? url;
+  return afterScheme.split('/')[0] ?? '';
+}
+
+/**
+ * Busca fontes no Tavily (BYOK, opt-in) e devolve `StudyWebSourceInput[]` prontas p/
+ * alimentar `study_web_prepare`/`study_web_finalize` (o MESMO tipo de `wikipediaSearch`).
+ * Espelha a `TavilyProvider::search` do core (rev pinada `04b9b24`, só-leitura):
+ *   1) `POST https://api.tavily.com/search`, header `content-type: application/json`,
+ *      corpo JSON `{ api_key: <key BYOK>, query, max_results: clamp(1..10), search_depth:
+ *      "basic" }` — a **chave vai SÓ no CORPO** (`api_key`), NUNCA na URL/header/log;
+ *   2) erro HTTP → lança citando SÓ o status (sem a chave); query vazia → `[]` (sem fetch);
+ *   3) mapeia `results[]` → `{ title, url, snippet (=content), site (host da url), fetchedAt }`
+ *      (pula item sem `url`). `results` ausente → `[]` (sem throw).
+ * As citações `[W:n]`/`kind="Web"` são montadas pelo Rust (das URLs); esta fn só RECUPERA.
+ */
+export async function tavilySearch(
+  fetchImpl: AiFetch,
+  key: string,
+  query: string,
+  _lang: string,
+  limit?: number,
+): Promise<StudyWebSourceInput[]> {
+  const q = query.trim();
+  if (q.length === 0) {
+    return [];
+  }
+  // `max_results` = limite alinhado ao core (`limit.clamp(1, 10)`).
+  const maxResults = Math.min(10, Math.max(1, limit ?? DEFAULT_TAVILY_LIMIT));
+
+  // A chave BYOK vai SÓ no CORPO (`api_key`) — NUNCA na URL/header/log.
+  const res = await fetchImpl(TAVILY_ENDPOINT, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      api_key: key,
+      query: q,
+      max_results: maxResults,
+      search_depth: 'basic',
+    }),
+  });
+  if (!res.ok) {
+    // Cita SÓ o status HTTP; a chave (no corpo) NUNCA entra na mensagem de erro/log.
+    throw new Error(`Tavily respondeu HTTP ${res.status}`);
+  }
+  const raw: unknown = await res.json();
+  const results = (raw as { results?: unknown })?.results;
+  if (!Array.isArray(results)) {
+    return [];
+  }
+
+  const fetchedAt = BigInt(Math.floor(Date.now() / 1000));
+  return results
+    .map((item): StudyWebSourceInput | null => {
+      const it = item as { title?: unknown; url?: unknown; content?: unknown };
+      const url = typeof it?.url === 'string' ? it.url : '';
+      if (url.length === 0) {
+        return null;
+      }
+      return {
+        title: typeof it?.title === 'string' && it.title.length > 0 ? it.title : '(sem título)',
+        url,
+        snippet: typeof it?.content === 'string' ? it.content : '',
+        site: hostFromUrl(url),
+        fetchedAt,
+      };
+    })
+    .filter((s): s is StudyWebSourceInput => s != null);
+}
+
 /**
  * Busca fontes na Wikipedia (KEYLESS, opt-in) e devolve `StudyWebSourceInput[]` prontas p/
  * alimentar `study_web_prepare`/`study_web_finalize`. Passos:

@@ -30,6 +30,7 @@ import {
   Share,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 
@@ -50,11 +51,18 @@ import {
 // único provedor desta entrega (a chave real + rede são a F3.10).
 const MOCK_PROVIDER = 'mock';
 
-// Backend de pesquisa web OPT-IN (Wikipedia keyless, ADR-0028/ADR-0032): a única rede além
-// do LLM, DESLIGADA por padrão. Quando o usuário liga, o estudo (modo Acadêmico) ganha
-// citações `[W:n]`/`kind="Web"` das URLs buscadas — montadas pelo Rust `ai-pure`, nunca pelo
-// modelo. Sem liga → `undefined` (offline, comportamento F3.12a).
+// Backends de pesquisa web OPT-IN (ADR-0028/ADR-0032/ADR-0035): rede além do LLM, DESLIGADA
+// por padrão. Quando o usuário liga, o estudo (modo Acadêmico) ganha citações `[W:n]`/
+// `kind="Web"` das URLs buscadas — montadas pelo Rust `ai-pure`, nunca pelo modelo. Sem liga
+// → `undefined` (offline, comportamento F3.12a).
+//   - Wikipedia: KEYLESS (nenhuma chave/segredo).
+//   - Tavily (F4.4): BYOK — a chave é SESSION-ONLY (in-memory, `useState`; perdida no reload,
+//     NUNCA persistida/logada/em git) e vai SÓ no CORPO do POST a `api.tavily.com/search`.
 const WIKIPEDIA_BACKEND = 'wikipedia';
+const TAVILY_BACKEND = 'tavily';
+
+/** Estado do seletor 3-vias de pesquisa web (off | Wikipedia keyless | Tavily BYOK). */
+type WebBackend = 'off' | 'wikipedia' | 'tavily';
 
 /**
  * Atribuição STEP CC-BY CANÔNICA (ADR-0026) — string verbatim de
@@ -132,9 +140,13 @@ export function ReaderStudyPanel({
   const [mode, setMode] = useState<StudyMode>(StudyMode.Academic);
   const [lens, setLens] = useState<StudyLens>(StudyLens.Presbyterian);
   const [depth, setDepth] = useState<StudyDepth>(StudyDepth.Exegetical);
-  // Pesquisa web OPT-IN (Wikipedia keyless) — padrão DESLIGADO (offline por padrão). É uma
-  // PREFERÊNCIA do usuário: persiste entre passagens (não é resultado; não reseta no useEffect).
-  const [webResearch, setWebResearch] = useState(false);
+  // Pesquisa web OPT-IN — padrão DESLIGADO (offline por padrão). É uma PREFERÊNCIA do usuário:
+  // persiste entre passagens (não é resultado; não reseta no useEffect).
+  const [webBackend, setWebBackend] = useState<WebBackend>('off');
+  // Chave BYOK do Tavily — SESSION-ONLY / in-memory (ADR-0025): vive só neste estado, perdida
+  // no reload, NUNCA persistida (Storage/IndexedDB/disco), NUNCA logada, NUNCA em git. Vai só
+  // no CORPO do POST (o transporte a coloca em `api_key`).
+  const [tavilyKey, setTavilyKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<StudyResultOut | null>(null);
   const [lexicon, setLexicon] = useState<VerifiedLexiconOut | null>(null);
@@ -160,9 +172,17 @@ export function ReaderStudyPanel({
     setResult(null);
     setLexicon(null);
     try {
-      // Provedor "mock" → sem chave (undefined), sem rede; modelo undefined → default do
-      // core. O léxico é independente de tradução (sem `translation`). Ambas as chamadas
-      // leem do STORE local verbatim (anti-alucinação): `passageText` + glosas do banco.
+      // Pesquisa web opt-in: Wikipedia (keyless) ou Tavily (BYOK). Off → `undefined` (offline).
+      // A chave Tavily (session-only, in-memory) vai SÓ no `researchKey` → o transporte a coloca
+      // no CORPO do POST (nunca URL/header/log). Backend=tavily sem chave → o core lança citando
+      // só "tavily" (0 fetch).
+      const researchBackend =
+        webBackend === 'off' ? undefined : webBackend === 'tavily' ? TAVILY_BACKEND : WIKIPEDIA_BACKEND;
+      const researchKey = webBackend === 'tavily' ? tavilyKey.trim() || undefined : undefined;
+
+      // Provedor "mock" → sem chave de LLM (undefined), sem rede LLM; modelo undefined → default
+      // do core. O léxico é independente de tradução (sem `translation`). Ambas as chamadas leem
+      // do STORE local verbatim (anti-alucinação): `passageText` + glosas do banco.
       const [study, lex] = await Promise.all([
         deepStudy(
           dbPath,
@@ -177,8 +197,8 @@ export function ReaderStudyPanel({
           MOCK_PROVIDER,
           undefined,
           undefined,
-          // Pesquisa web opt-in (Wikipedia keyless) — só quando o usuário liga; senão offline.
-          webResearch ? WIKIPEDIA_BACKEND : undefined,
+          researchBackend,
+          researchKey,
         ),
         lexicalEntries(dbPath, book, chapter, verse ?? undefined, lang, undefined),
       ]);
@@ -296,31 +316,69 @@ export function ReaderStudyPanel({
             })}
           </View>
 
-          {/* ── PESQUISA WEB (opt-in, Wikipedia keyless) — ADR-0028/ADR-0032 ─────
-              Padrão DESLIGADO. Quando ligada, é a ÚNICA rede além do LLM: faz um `fetch`
-              à Wikipedia (keyless, sem chave/segredo) e o estudo Acadêmico ganha citações
-              [W:n] das URLs (do Rust, nunca do modelo). Aviso de privacidade abaixo. */}
+          {/* ── PESQUISA WEB (opt-in) — ADR-0028/ADR-0032/ADR-0035 ───────────────
+              Padrão DESLIGADO. Quando ligada, é rede além do LLM e o estudo Acadêmico ganha
+              citações [W:n] das URLs (montadas pelo Rust `ai-pure`, NUNCA pelo modelo):
+                • Wikipedia — KEYLESS (sem chave/segredo).
+                • Tavily    — BYOK: a chave é SESSION-ONLY (perdida no reload, nunca persistida/
+                  logada) e vai SÓ no CORPO do POST. Aviso de privacidade/atribuição abaixo. */}
           <Text style={styles.sectionTitle}>Pesquisa web (opcional)</Text>
           <View style={styles.chips}>
-            <Pressable
-              style={[styles.chip, webResearch ? styles.chipActive : null]}
-              onPress={() => setWebResearch((v) => !v)}
-              disabled={busy}
-              testID="study-web-research-toggle"
-              accessibilityRole="switch"
-              accessibilityState={{ checked: webResearch }}
-            >
-              <Text style={[styles.chipText, webResearch ? styles.chipTextActive : null]}>
-                Wikipedia {webResearch ? '✓ ligada' : '· desligada'}
-              </Text>
-            </Pressable>
+            {(
+              [
+                { value: 'off', key: 'off', label: 'Desligada' },
+                { value: 'wikipedia', key: 'wikipedia', label: 'Wikipedia' },
+                { value: 'tavily', key: 'tavily', label: 'Tavily (chave)' },
+              ] as const
+            ).map((o) => {
+              const active = webBackend === o.value;
+              return (
+                <Pressable
+                  key={o.key}
+                  style={[styles.chip, active ? styles.chipActive : null]}
+                  onPress={() => setWebBackend(o.value)}
+                  disabled={busy}
+                  testID={`study-web-research-${o.key}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>
+                    {o.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
-          {webResearch ? (
+          {webBackend === 'wikipedia' ? (
             <Text style={styles.hint} testID="study-web-research-privacy">
               Privacidade: ligada, esta opção consulta a Wikipedia (rede) para citar fontes.
-              É a única rede além da IA e nenhuma chave/segredo é enviada (Wikipedia é keyless).
-              O texto bíblico e as glosas continuam vindo do seu acervo local.
+              Nenhuma chave/segredo é enviada (Wikipedia é keyless). O texto bíblico e as glosas
+              continuam vindo do seu acervo local; as citações são montadas pelo app (não pela IA).
             </Text>
+          ) : null}
+          {webBackend === 'tavily' ? (
+            <>
+              <TextInput
+                style={styles.keyInput}
+                value={tavilyKey}
+                onChangeText={setTavilyKey}
+                placeholder="Chave Tavily (BYOK) — só nesta sessão"
+                placeholderTextColor={colors.muted}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!busy}
+                testID="study-web-research-tavily-key"
+                accessibilityLabel="Chave Tavily (session-only)"
+              />
+              <Text style={styles.hint} testID="study-web-research-privacy">
+                Privacidade: ligada, esta opção consulta o Tavily (rede) usando sua chave BYOK.
+                A chave fica só nesta sessão (na memória, perdida ao recarregar), nunca é salva no
+                dispositivo nem registrada, e viaja apenas no corpo da requisição. As citações Web
+                são montadas pelo app a partir das URLs retornadas (nunca pela IA); o texto bíblico
+                e as glosas continuam vindo do seu acervo local.
+              </Text>
+            </>
           ) : null}
 
           {/* Provedor fixo "mock" nesta entrega (offline; sem chave/rede). */}
@@ -510,6 +568,17 @@ function makeStyles(colors: ThemeColors) {
     chipText: { fontSize: 13, fontWeight: '600', color: colors.chipText },
     chipTextActive: { color: colors.chipActiveText },
     hint: { fontSize: 12, color: colors.muted, marginTop: 10, fontStyle: 'italic' },
+    keyInput: {
+      marginTop: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      fontSize: 14,
+      color: colors.text,
+      backgroundColor: colors.background,
+    },
     btn: {
       paddingHorizontal: 14,
       paddingVertical: 11,

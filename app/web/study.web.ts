@@ -38,10 +38,16 @@ import {
 import { webLlmTransport, type AiFetch } from './ai-anchored.web';
 import { hasTranslation, queryChapter, type ChapterRow, type ReadingDb } from './sqlite-reading.web';
 import { DEFAULT_LEXICON_LIMIT, queryVerifiedLexicon } from './sqlite-lexicon.web';
-import { DEFAULT_WIKIPEDIA_LIMIT, wikipediaSearch } from './research.web';
+import {
+  DEFAULT_TAVILY_LIMIT,
+  DEFAULT_WIKIPEDIA_LIMIT,
+  tavilySearch,
+  wikipediaSearch,
+} from './research.web';
 
-/** Backend de pesquisa web SUPORTADO no web (rede opt-in, KEYLESS). */
-const WIKIPEDIA_BACKEND = 'wikipedia';
+/** Backends de pesquisa web SUPORTADOS no web (rede opt-in). */
+const WIKIPEDIA_BACKEND = 'wikipedia'; // keyless (ADR-0028)
+const TAVILY_BACKEND = 'tavily'; // BYOK, chave session-only SÓ no corpo (ADR-0035)
 
 /**
  * Consulta de pesquisa web = rótulo da passagem (`<Livro> <cap>[:<verso>]`, nome EN do
@@ -56,14 +62,18 @@ function researchQuery(book: number, chapter: number, verse: number | undefined)
 
 /**
  * Resolve as FONTES WEB (opt-in) para o estudo. `undefined`/vazio → `[]` (comportamento
- * F3.12a, OFFLINE por padrão). `"wikipedia"` → `fetch` KEYLESS à Wikipedia (a única rede
- * além do LLM; só quando o usuário liga). Qualquer outro backend → erro explícito (espelha
- * a rejeição do nativo `build_research_provider`), sem rede. As citações/`[W:n]` são do
- * Rust `ai-pure` (das URLs); aqui só RECUPERAMOS as fontes.
+ * F3.12a, OFFLINE por padrão). `"wikipedia"` → `fetch` KEYLESS à Wikipedia (ADR-0028).
+ * `"tavily"` → `POST` a `api.tavily.com/search` com a chave BYOK SÓ no CORPO (F4.4/ADR-0035);
+ * SEM `researchKey` → erro explícito citando só "tavily" (0 fetch, sem vazar chave), espelhando
+ * `AiError::NoKey` do nativo. Qualquer outro backend → erro explícito (espelha a rejeição do
+ * nativo `build_research_provider`), sem rede. As citações/`[W:n]` são montadas pelo Rust
+ * `ai-pure` (das URLs); aqui só RECUPERAMOS as fontes cruas (ZERO DRIFT). A chave nunca é
+ * logada nem incluída em mensagem de erro/URL.
  */
 async function resolveWebSources(
   fetchImpl: AiFetch,
   researchBackend: string | undefined,
+  researchKey: string | undefined,
   book: number,
   chapter: number,
   verse: number | undefined,
@@ -72,11 +82,19 @@ async function resolveWebSources(
   if (researchBackend == null || researchBackend.trim().length === 0) {
     return [];
   }
-  if (researchBackend !== WIKIPEDIA_BACKEND) {
-    throw new Error(`backend de pesquisa web desconhecido no web: ${researchBackend}`);
-  }
   const query = researchQuery(book, chapter, verse);
-  return wikipediaSearch(fetchImpl, query, lang, DEFAULT_WIKIPEDIA_LIMIT);
+  if (researchBackend === WIKIPEDIA_BACKEND) {
+    return wikipediaSearch(fetchImpl, query, lang, DEFAULT_WIKIPEDIA_LIMIT);
+  }
+  if (researchBackend === TAVILY_BACKEND) {
+    const key = researchKey?.trim() ?? '';
+    if (key.length === 0) {
+      // Espelha `AiError::NoKey`: sem chave, 0 fetch; a mensagem cita SÓ "tavily" (nunca a chave).
+      throw new Error('pesquisa web tavily exige uma chave (BYOK) — nenhuma configurada');
+    }
+    return tavilySearch(fetchImpl, key, query, lang, DEFAULT_TAVILY_LIMIT);
+  }
+  throw new Error(`backend de pesquisa web desconhecido no web: ${researchBackend}`);
 }
 
 /**
@@ -122,11 +140,13 @@ function versesForPassage(verse: number | undefined, rows: ChapterRow[]): AiVers
  * KEYLESS à Wikipedia → `web_sources` alimenta prepare/finalize → o estudo ganha as
  * citações `[W:n]`/`kind="Web"` (do Rust `ai-pure`, das URLs — NUNCA do modelo). Sem
  * backend (ou `undefined`) → `web_sources` `[]` (comportamento F3.12a, OFFLINE por padrão).
- * `researchKey` (BYOK Tavily) é aceito por paridade de assinatura mas IGNORADO aqui: a
- * pesquisa Tavily web (`fetch` + chave session-only + toggle na UI) é a F4.4; a chave nunca
- * é logada. Anti-alucinação COM ZERO DRIFT: texto/léxico do store; prompt+verify+citação+
- * aparato do MESMO Rust `ai-pure` no web e no nativo; só a recuperação (léxico/Wikipedia) e o
- * transporte (`fetch`) são infra TS.
+ * `researchBackend === 'tavily'` (F4.4/ADR-0035, opt-in): `resolveWebSources` faz um `POST`
+ * a `api.tavily.com/search` com a chave BYOK (`researchKey`) SÓ no CORPO (nunca URL/header/log,
+ * session-only in-memory, ADR-0025) → as MESMAS `web_sources` cruas → as MESMAS citações
+ * `[W:n]`/`kind="Web"` do Rust. SEM `researchKey` com backend=tavily → erro citando só "tavily"
+ * (0 fetch). Anti-alucinação COM ZERO DRIFT: texto/léxico do store; prompt+verify+citação+
+ * aparato do MESMO Rust `ai-pure` no web e no nativo; só a recuperação (léxico/Wikipedia/Tavily)
+ * e o transporte (`fetch`) são infra TS.
  */
 export async function deepStudyOnHandle(
   handle: ReadingDb,
@@ -145,8 +165,6 @@ export async function deepStudyOnHandle(
   researchBackend?: string,
   researchKey?: string,
 ): Promise<StudyResultOut> {
-  // `researchKey` (BYOK Tavily) é aceito por paridade e IGNORADO aqui (Tavily web = F4.4).
-  void researchKey;
   if (!(await hasTranslation(handle, translation))) {
     // Espelha `SourceError::UnknownTranslation` propagado pelo nativo.
     throw new Error(`versão desconhecida: ${translation}`);
@@ -165,10 +183,20 @@ export async function deepStudyOnHandle(
     testament: e.testament,
   }));
 
-  // Pesquisa web OPT-IN (Wikipedia keyless) — a única rede além do LLM; padrão OFF ([]).
-  const webSources = await resolveWebSources(fetchImpl, researchBackend, book, chapter, verse, lang);
+  // Pesquisa web OPT-IN (Wikipedia keyless | Tavily BYOK) — rede além do LLM; padrão OFF ([]).
+  // A chave Tavily (`researchKey`) vai SÓ no corpo do POST (nunca URL/header/log); backend=tavily
+  // sem chave → erro citando só "tavily" (0 fetch).
+  const webSources = await resolveWebSources(
+    fetchImpl,
+    researchBackend,
+    researchKey,
+    book,
+    chapter,
+    verse,
+    lang,
+  );
 
-  // (4) prepare (wasm) — prompt/RAG/[W:n] do Rust `ai-pure`. web_sources = Wikipedia|[].
+  // (4) prepare (wasm) — prompt/RAG/[W:n] do Rust `ai-pure`. web_sources = Wikipedia|Tavily|[].
   const request = studyWebPrepare(
     book,
     chapter,
