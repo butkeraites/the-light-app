@@ -2604,3 +2604,75 @@ empacotado); sem regressão web (reading/search/xref/notes/ask/study/léxico/exp
   `app/web/__tests__/{askSession-headless-entry.ts,askSession.web.test.mjs,research.web.test.mjs,
   compare.web.test.mjs}` (novos), `app/package.json` (scripts), `DECISIONS.md` (este ADR).
   **Gerado/IGNORADO:** `app/web/generated/*` (bindings web).
+
+## ADR-0033 — F4.1: streaming WEB real da IA (token-a-token) = **só o transporte TS streama** via `fetch` + `ReadableStream` (Gemini `:streamGenerateContent?alt=sse`); `ai_web_prepare`/`ai_web_finalize` (Rust `ai-pure`) INALTERADOS
+
+- **Data:** 2026-07-02 · **Status:** aceito · **Tarefa:** F4.1 · **Depende:** ADR-0025 (F2.7b: prepare/fetch/finalize web + chave session-only; adiou o streaming web como follow-up EXPLÍCITO), ADR-0024 (feature `ai-pure`), ADR-0029 (D2: zero drift). **NÃO** toca o `the-light` (@ `04b9b24`) nem `core/**`.
+
+### Contexto
+A F2.7b (ADR-0025) entregou a paridade web de IA com o transporte `fetch` **não-streaming** e
+adiou EXPLICITAMENTE o streaming web: *"`askAnchoredStream` web é não-streaming (emite a
+interpretação 1× via `onToken`; SSE/`ReadableStream` = follow-up)"*. Enquanto o nativo já
+streama token-a-token (`AiTokenCallback` do binding gerado), o web (`reading.web.ts::
+askAnchoredStream`) obtinha a resposta COMPLETA por `askAnchored` e emitia a `interpretation`
+inteira **1×**. Esta tarefa realiza o follow-up: streaming web **real**, sem tocar a fronteira
+Rust nem o core.
+
+### Decisão
+**O streaming muda SÓ o transporte TS.** A fronteira Rust `ai-pure`
+(`ai_web_prepare`/`ai_web_finalize`) é suficiente e permanece **inalterada** — `cited_text`
+(numerado, VERBATIM do store) sai do `prepare` e a `interpretation` COMPLETA (concatenação dos
+deltas) passa pela MESMA `ai_web_finalize` (`rewrite_anchors`, Rust). **App-side apenas:**
+
+1. **`app/web/ai-anchored.web.ts` (transporte, versionado):**
+   - `geminiPartText(raw)`: extrator LENIENTE do delta de UM `GenerateContentResponse` parcial
+     (mesmo shape `candidates[0].content.parts[*].text`; `''` quando o evento não tem texto) —
+     fatorado de `geminiExtract` (estrito, não-streaming, que o REUSA na agregação).
+   - `geminiCompleteStream(fetchImpl, key, request, onToken)`: `POST` ao endpoint
+     `:streamGenerateContent?alt=sse` (MESMO corpo `geminiBody`), lê `res.body.getReader()` +
+     `TextDecoder`, quebra por linha, parseia cada evento SSE `data: {…}`, extrai o delta,
+     `onToken(delta)` por evento e ACUMULA. Tolera `data: [DONE]`/linhas parciais/quebra de
+     evento através de fronteiras de byte (buffer de linha). Devolve o texto completo (idêntico
+     ao `:generateContent`) → segue para `finalize`.
+   - `webLlmTransport(fetchImpl, provider, key, parts, onToken?)`: parâmetro OPCIONAL final. Com
+     `onToken`: `"gemini"` → `geminiCompleteStream`; `"mock"` → `emitMockStream` (fatia o
+     `MOCK_INTERPRETATION` por palavra, OFFLINE, ≥1 incrementos). Sem `onToken`: caminho
+     não-streaming INALTERADO (`:generateContent`/`res.json()` — sem regressão; estudo/conversa
+     seguem chamando com 4 args).
+   - `askAnchoredOnHandle(..., onToken?)`: repassa `onToken` ao transporte; a `interpretation`
+     que vai à `aiWebFinalize` é o texto ACUMULADO (idêntico ao não-streaming).
+2. **`app/web/reading.web.ts::askAnchoredStream`** DESTUBADO: abre o store web
+   (`openReadingDbWeb`) e delega a `askAnchoredOnHandle(..., onToken)` com o `onToken` REAL.
+   Assinatura pública e `AiAnswer` final **inalterados** (o `ReaderAskPanel` já consome
+   `onToken`; agora recebe N incrementos reais em vez de 1). Chave só no header, session-only.
+
+### Prova (portões F4.1)
+Prova **headless node** determinística (fetch MOCK, `ReadableStream` SSE, SEM rede/chave real)
+`askAnchoredStream.web` em 3 cenários: **(A limpo)** N=6 deltas → `onToken` 6× na ORDEM, e a
+concatenação dos tokens **== `AiAnswer.interpretation`**; 1 `fetch` ao `:streamGenerateContent?
+alt=sse` (POST, chave só no header `x-goog-api-key`, NUNCA na URL); `cited_text` = João 3:16 KJV
+VERBATIM do store (via `ai_web_prepare`, inalterado), separado da interpretação; **(B âncora)**
+o stream emite a âncora Strong ESPÚRIA `[V:G9999]` (bytes fatiados em 7B → eventos SSE quebrados
+através de chunks) → `ai_web_finalize` (Rust `rewrite_anchors`) a REMOVE (`interpretation` ==
+concatenação com só a âncora espúria removida pelo Rust); **(C mock)** `"mock"` + `onToken` emite
+≥1 incremento OFFLINE, **0 fetch**, concatenação == interpretation. `tsc --noEmit` 0 + `expo
+export --platform web` 0; grafo wasm segue PURO (streaming é só transporte TS; nada novo no
+Rust); SEM regressão dos testes web (reading/search/xref/notes/ask/study/session/research/
+compare/lexicon/export) nem do caminho não-streaming (`test:web:ai`).
+
+### Consequências
+- `the-light` **intacto** (`04b9b24`) e `core/src/lib.rs`/`core/Cargo.toml`/`Cargo.lock` **NÃO**
+  alterados — a mudança é 100% app-side (transporte TS). A fronteira `ai-pure` (prepare/finalize)
+  é suficiente para o streaming.
+- Anti-alucinação **ZERO-DRIFT**: o streaming só fatia a INTERPRETAÇÃO do modelo em incrementos;
+  nenhum texto bíblico é streamado nem reconstruído em TS; o `cited_text` viaja SEPARADO (store,
+  via `prepare`) e a interpretação completa passa pela MESMA `ai_web_finalize` (remove âncoras
+  Strong/`[W:n]` inválidas). Os deltas são SÓ texto do modelo.
+- Offline-first/BYOK: sem chave/sessão, o app segue offline; a IA web é opt-in; a chave
+  session-only vai SÓ no header (nunca em git/log/URL). O `"mock"` streama sem rede.
+- **Versionado nesta tarefa:** `app/web/ai-anchored.web.ts` (streaming no transporte),
+  `app/web/reading.web.ts` (destub `askAnchoredStream`), `app/package.json` (script
+  `test:web:ai-stream`), `app/web/__tests__/{askAnchoredStream-headless-entry.ts,
+  askAnchoredStream.web.test.mjs}` (novos), `DECISIONS.md` (este ADR).
+  **Gerado/IGNORADO:** `app/web/generated/*` (bindings web, inalterados — nenhum símbolo novo de
+  fronteira).

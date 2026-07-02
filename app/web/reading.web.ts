@@ -321,15 +321,18 @@ export async function askAnchored(
 }
 
 /**
- * Pergunta ancorada com "streaming" no web: NÃO-STREAMING nesta tarefa (F2.7b) — o
- * transporte web via `fetch` é não-streaming por ora (SSE/`ReadableStream` fica como
- * follow-up). Obtém a resposta completa por `askAnchored` e emite a `interpretation`
- * inteira 1× via `onToken` (mesma UX incremental que o nativo tem com o mock). Os
- * tokens são da INTERPRETAÇÃO (LLM), nunca do texto bíblico (que viaja separado, do
- * store, em `citedText`).
+ * Pergunta ancorada com STREAMING REAL no web (F4.1; realiza o follow-up adiado na F2.7b/
+ * ADR-0025): abre o store web (subset, F1.13) e delega ao pipeline `askAnchoredOnHandle`
+ * passando o `onToken` REAL. O transporte lê o `ReadableStream` do `fetch`
+ * (`:streamGenerateContent?alt=sse`), extrai cada DELTA de texto e chama `onToken(delta)`
+ * incrementalmente (o `"mock"` emite offline em ≥1 incrementos). O texto COMPLETO acumulado
+ * vai à MESMA `ai_web_finalize` → `AiAnswer` idêntico ao não-streaming (ZERO drift). Os
+ * tokens são da INTERPRETAÇÃO (LLM), nunca do texto bíblico (que viaja separado, do store,
+ * em `citedText`). Assinatura pública e `AiAnswer` final INALTERADOS (o `ReaderAskPanel` já
+ * consome `onToken`; agora recebe N incrementos reais em vez de 1).
  */
 export async function askAnchoredStream(
-  dbPath: string,
+  _dbPath: string,
   translation: string,
   reference: string,
   question: string,
@@ -339,20 +342,23 @@ export async function askAnchoredStream(
   lang: string,
   onToken: (token: string) => void,
 ): Promise<AiAnswer> {
-  const answer = await askAnchored(
-    dbPath,
-    translation,
-    reference,
-    question,
-    provider,
-    key,
-    model,
-    lang,
-  );
-  if (answer.interpretation.length > 0) {
-    onToken(answer.interpretation);
+  const handle = await openReadingDbWeb();
+  try {
+    return await askAnchoredOnHandle(
+      handle,
+      defaultFetch,
+      translation,
+      reference,
+      question,
+      provider,
+      key,
+      model,
+      lang,
+      onToken,
+    );
+  } finally {
+    await handle.close();
   }
-  return answer;
 }
 
 // ── ESTUDO PROFUNDO + LÉXICO (deep_study/lexical_entries) — F3.12a (ADR-0031) ──────────

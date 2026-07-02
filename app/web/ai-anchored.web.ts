@@ -68,9 +68,29 @@ const MOCK_INTERPRETATION =
   'A passagem é citada acima a partir do texto local.';
 
 /**
- * Extrai `candidates[0].content.parts[*].text` (concatenado) — ESPELHA o `gemini_extract`
- * PRIVADO do core (providers.rs). Sem `candidates`, tenta `promptFeedback.blockReason`
- * (resposta bloqueada por segurança) para uma mensagem clara.
+ * Extrai o texto dos `parts` de UM `GenerateContentResponse` — parcial (um evento SSE do
+ * `streamGenerateContent`) ou completo (`generateContent`): `candidates[0].content.parts[*]
+ * .text` concatenado. LENIENTE: devolve `''` quando o evento não tem texto (ex.: um evento
+ * SSE só com `usageMetadata`/`safetyRatings`, ou `finishReason` sem `parts`), SEM lançar —
+ * é o extrator de DELTA do stream, chamado por evento. Mesmo shape do `gemini_extract`
+ * PRIVADO do core (providers.rs); a versão ESTRITA (`geminiExtract`) valida/agrega em cima.
+ */
+function geminiPartText(raw: unknown): string {
+  const v = raw as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: unknown }> } }>;
+  };
+  const parts = v?.candidates?.[0]?.content?.parts;
+  if (!Array.isArray(parts)) {
+    return '';
+  }
+  return parts.map((p) => (typeof p?.text === 'string' ? p.text : '')).join('');
+}
+
+/**
+ * Extrai `candidates[0].content.parts[*].text` (concatenado) da resposta COMPLETA (caminho
+ * NÃO-streaming) — ESPELHA o `gemini_extract` PRIVADO do core (providers.rs). Sem
+ * `candidates`, tenta `promptFeedback.blockReason` (resposta bloqueada por segurança) para
+ * uma mensagem clara; texto vazio → erro. REUSA `geminiPartText` na agregação.
  */
 function geminiExtract(raw: unknown): string {
   const v = raw as {
@@ -90,11 +110,25 @@ function geminiExtract(raw: unknown): string {
   if (!Array.isArray(parts)) {
     throw new Error('sem `content.parts` no candidate');
   }
-  const text = parts.map((p) => (typeof p?.text === 'string' ? p.text : '')).join('');
+  const text = geminiPartText(raw);
   if (text.trim().length === 0) {
     throw new Error('resposta de texto vazia');
   }
   return text;
+}
+
+/**
+ * Corpo do request Gemini (`contents`/`system_instruction`/`generationConfig`) a partir do
+ * `system`/`user`/`model` do `AiWebRequest` — ESPELHA `gemini_body` PRIVADO do core. O MESMO
+ * corpo serve ao endpoint `:generateContent` (não-streaming) e `:streamGenerateContent`
+ * (streaming, SSE) — só a URL muda.
+ */
+function geminiBody(request: LlmRequestParts): string {
+  return JSON.stringify({
+    contents: [{ role: 'user', parts: [{ text: request.user }] }],
+    system_instruction: { parts: [{ text: request.system }] },
+    generationConfig: { maxOutputTokens: GEMINI_MAX_TOKENS },
+  });
 }
 
 /**
@@ -108,15 +142,10 @@ async function geminiComplete(
   request: LlmRequestParts,
 ): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${request.model}:generateContent`;
-  const body = {
-    contents: [{ role: 'user', parts: [{ text: request.user }] }],
-    system_instruction: { parts: [{ text: request.system }] },
-    generationConfig: { maxOutputTokens: GEMINI_MAX_TOKENS },
-  };
   const res = await fetchImpl(url, {
     method: 'POST',
     headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    body: geminiBody(request),
   });
   if (!res.ok) {
     // Mensagem cita o status HTTP — NUNCA a chave.
@@ -127,27 +156,138 @@ async function geminiComplete(
 }
 
 /**
+ * Transporte Gemini STREAMING (`fetch` + `ReadableStream`): usa o endpoint
+ * `:streamGenerateContent?alt=sse` (mesmo corpo do não-streaming). Lê `res.body` incremental
+ * (`getReader()` + `TextDecoder`), quebra por linha, parseia cada evento SSE `data: {…}` (um
+ * `GenerateContentResponse` PARCIAL com o MESMO shape), extrai o DELTA de texto
+ * (`geminiPartText`), chama `onToken(delta)` por evento e ACUMULA o texto completo — que é o
+ * MESMO que o `:generateContent` devolveria e que segue para `ai_web_finalize` (ZERO drift).
+ * O modelo vai na URL; a chave vai SÓ no header `x-goog-api-key` — NUNCA na URL nem em log.
+ * ANTI-ALUCINAÇÃO: os deltas são só da INTERPRETAÇÃO do modelo; nenhum texto bíblico é
+ * streamado (o `cited_text` viaja SEPARADO, do store, via `ai_web_prepare`/`finalize`).
+ */
+async function geminiCompleteStream(
+  fetchImpl: AiFetch,
+  key: string,
+  request: LlmRequestParts,
+  onToken: (token: string) => void,
+): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${request.model}:streamGenerateContent?alt=sse`;
+  const res = await fetchImpl(url, {
+    method: 'POST',
+    headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
+    body: geminiBody(request),
+  });
+  if (!res.ok) {
+    // Mensagem cita o status HTTP — NUNCA a chave.
+    throw new Error(`provedor "gemini" respondeu HTTP ${res.status}`);
+  }
+  if (res.body == null) {
+    throw new Error('resposta de streaming do provedor "gemini" sem corpo (`body`)');
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let full = '';
+
+  // Processa uma LINHA SSE completa: só `data: {…}` interessa; `data: [DONE]`/linhas
+  // vazias/parciais são ignoradas. Cada payload é um `GenerateContentResponse` parcial →
+  // extrai o delta (mesmo shape) e, se houver texto, emite + acumula.
+  const consumeLine = (line: string): void => {
+    const trimmed = line.trim();
+    if (trimmed.length === 0 || !trimmed.startsWith('data:')) {
+      return;
+    }
+    const payload = trimmed.slice('data:'.length).trim();
+    if (payload.length === 0 || payload === '[DONE]') {
+      return;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(payload);
+    } catch {
+      // Ruído/linha não-JSON — ignora (robustez do parser incremental).
+      return;
+    }
+    const delta = geminiPartText(parsed);
+    if (delta.length > 0) {
+      full += delta;
+      onToken(delta);
+    }
+  };
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    let nl = buffer.indexOf('\n');
+    while (nl >= 0) {
+      consumeLine(buffer.slice(0, nl));
+      buffer = buffer.slice(nl + 1);
+      nl = buffer.indexOf('\n');
+    }
+  }
+  // Flush do decoder + eventual última linha sem `\n` final.
+  buffer += decoder.decode();
+  if (buffer.length > 0) {
+    consumeLine(buffer);
+  }
+
+  if (full.trim().length === 0) {
+    throw new Error('resposta de texto (streaming) vazia');
+  }
+  return full;
+}
+
+/**
+ * Emite o `MOCK_INTERPRETATION` OFFLINE em ≥1 incrementos (fatiado por palavra, preservando
+ * os separadores → a concatenação é IDÊNTICA ao texto completo) via `onToken`, exercitando o
+ * caminho de STREAM sem rede/chave. Devolve o texto completo (o MESMO do caminho
+ * não-streaming) para a `ai_web_finalize`.
+ */
+function emitMockStream(onToken: (token: string) => void): string {
+  const chunks = MOCK_INTERPRETATION.match(/\S+\s*/g) ?? [MOCK_INTERPRETATION];
+  for (const chunk of chunks) {
+    onToken(chunk);
+  }
+  return MOCK_INTERPRETATION;
+}
+
+/**
  * Despacha o transporte por provedor (REUSADO por `ask` e `estudo`). `"mock"` =
  * determinístico offline (sem rede/chave). `"gemini"` = `fetch` real (MVP web, F2.6).
  * Demais provedores reais são follow-up (ADR-0025). A chave é exigida só para
  * provedores de rede e vai SÓ no header do `fetch` (nunca na URL/log). É a ÚNICA rede
  * em runtime da IA web (opt-in); o prompt/citação vêm do Rust `ai-pure` (parts).
+ *
+ * `onToken` (F4.1, opcional): quando presente, o transporte STREAMA a interpretação
+ * token-a-token — `"gemini"` via `:streamGenerateContent?alt=sse` (`ReadableStream`),
+ * `"mock"` fatiando o texto offline. Sem `onToken`, mantém o caminho NÃO-streaming (sem
+ * regressão). Em AMBOS os casos o texto COMPLETO acumulado é o mesmo → a MESMA
+ * `ai_web_finalize` (ZERO drift). Os tokens são só da INTERPRETAÇÃO do modelo — nunca
+ * texto bíblico (que viaja SEPARADO, do store).
  */
 export async function webLlmTransport(
   fetchImpl: AiFetch,
   provider: string,
   key: string | undefined,
   parts: LlmRequestParts,
+  onToken?: (token: string) => void,
 ): Promise<string> {
   if (provider === 'mock') {
-    return MOCK_INTERPRETATION;
+    return onToken ? emitMockStream(onToken) : MOCK_INTERPRETATION;
   }
   if (provider === 'gemini') {
     if (key == null || key.trim().length === 0) {
       // Não vaza a chave (nem sua ausência de valor) — cita só o provedor.
       throw new Error('Configure a chave do provedor "gemini" para usar a IA no web.');
     }
-    return geminiComplete(fetchImpl, key, parts);
+    return onToken
+      ? geminiCompleteStream(fetchImpl, key, parts, onToken)
+      : geminiComplete(fetchImpl, key, parts);
   }
   throw new Error(
     `Provedor "${provider}" ainda não tem transporte web (F2.7b MVP = Gemini). Use "gemini" ou "mock".`,
@@ -183,6 +323,12 @@ function versesForReference(ref: Reference, rows: ChapterRow[]): AiVerseInput[] 
  *      SEPARADO da interpretation).
  * Anti-alucinação COM ZERO DRIFT: o texto bíblico vem SEMPRE do store; prompt+citação do
  * MESMO Rust `ai-pure` no web e no nativo.
+ *
+ * `onToken` (F4.1, opcional): quando presente, o transporte STREAMA a interpretação
+ * token-a-token (SSE/`ReadableStream`) e chama `onToken(delta)` a cada incremento — para a
+ * UI web exibir a interpretação incremental (como o nativo). O texto COMPLETO acumulado é
+ * IDÊNTICO ao caminho não-streaming e vai à MESMA `aiWebFinalize` (ZERO drift). O streaming
+ * muda SÓ o transporte: `cited_text` (store) e `finalize` (Rust) são inalterados.
  */
 export async function askAnchoredOnHandle(
   handle: ReadingDb,
@@ -194,6 +340,7 @@ export async function askAnchoredOnHandle(
   key: string | undefined,
   model: string | undefined,
   lang: string,
+  onToken?: (token: string) => void,
 ): Promise<AiAnswer> {
   const ref = parseReference(reference);
   if (!(await hasTranslation(handle, translation))) {
@@ -203,7 +350,7 @@ export async function askAnchoredOnHandle(
   const rows = await queryChapter(handle, translation, ref.book, ref.chapter);
   const verses = versesForReference(ref, rows);
   const request = aiWebPrepare(reference, question, provider, model, lang, verses);
-  const interpretation = await webLlmTransport(fetchImpl, provider, key, request);
+  const interpretation = await webLlmTransport(fetchImpl, provider, key, request, onToken);
   return aiWebFinalize(
     reference,
     request.citedText,
