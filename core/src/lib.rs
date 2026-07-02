@@ -1267,17 +1267,18 @@ pub struct StudyResultOut {
     /// reescritas** deterministicamente pelo core), `## Notas`/`## Bibliografia` (SBL) e o
     /// **rodapé de procedência** que separa o **verificável** (acervo local + atribuição
     /// **STEP CC-BY** das citações `Source`) do **gerado por IA** ("…podem conter erros —
-    /// confira sempre as fontes primárias"). No **web** o Record nunca é construído (o
-    /// stub de `deep_study` retorna [`CoreError`]); o `From` que popula este campo é
-    /// `#[cfg(not(target_arch = "wasm32"))]` (grafo wasm puro).
+    /// confira sempre as fontes primárias"). No **web** (F3.12a) o Record é construído por
+    /// [`study_web_finalize`] via **este mesmo** `From` (ambos `StudyResult` e
+    /// `to_academic_markdown` são `ai-pure`, ADR-0030) — **zero drift** com o nativo.
     pub academic_markdown: String,
 }
 
-// O tipo-fonte `study::StudyResult` é `embedded`-only (superfície pesada do `ai`); este
-// `From` fica fora do grafo wasm (como `From<xref::CrossRef>`). O Record acima é puro e
-// vale p/ todos os alvos; aqui mapeamos só no nativo (enums/seções/citações via os `From`
-// puros; `reference` via o `From` de `model::Reference`; `language` via `Lang::code()`).
-#[cfg(not(target_arch = "wasm32"))]
+// O tipo-fonte `study::StudyResult` e `to_academic_markdown` são `ai-pure` (ADR-0030 /
+// rev 04b9b24) → presentes também no wasm. Por isso este `From` é **cfg-free** (não mais
+// `#[cfg(not(wasm32))]`): serve tanto ao `deep_study` nativo quanto ao `study_web_finalize`
+// web (F3.12a), com a MESMA serialização SBL do core (fonte única / zero drift). O Record
+// acima é puro; os enums/seções/citações vêm dos `From` puros; `reference` do `From` de
+// `model::Reference`; `language` de `Lang::code()`.
 impl From<the_light_core::ai::study::StudyResult> for StudyResultOut {
     fn from(r: the_light_core::ai::study::StudyResult) -> Self {
         // Markdown acadêmico (SBL) produzido pela MESMA impl do core (fonte única, zero
@@ -2668,6 +2669,366 @@ pub fn ai_web_finalize(
         provider,
         model,
     })
+}
+
+// ── F3.12a: fronteira WEB do ESTUDO PROFUNDO (study_web_prepare/study_web_finalize) ──────
+//
+// Molde EXATO da F2.7b (`ai_web_prepare`/`ai_web_finalize`, ADR-0025): corpo **cfg-free**
+// (só a superfície `pub` do `ai-pure`, disponível no wasm E no nativo; **nenhum**
+// store/`rusqlite`/`reqwest` → o grafo wasm segue puro). A F3.11 (ADR-0030, rev 04b9b24)
+// ampliou `ai-pure` para cobrir a superfície pura do estudo — `StudyRequest`/`StudyResult`,
+// `user_prompt`, `split_sections`/`cited_web_indices`, `to_academic_markdown` e os tipos de
+// `lexicon`/`citation`/`research` — logo o web monta o estudo em **prepare → (fetch no TS)
+// → finalize** com a MESMA impl Rust do nativo (`deep_study`/`ai::study::study`): **zero
+// drift** do anti-alucinação. O léxico (SELECT do store) e o transporte (`fetch`) são infra
+// TS (ADR-0011/ADR-0025); prompt/verify/citação/aparato NUNCA são espelhados em TS.
+
+/// Uma **entrada léxica de entrada** da fronteira web de estudo ([`study_web_prepare`]/
+/// [`study_web_finalize`]), na fronteira UniFFI.
+///
+/// Espelha `the_light_core::ai::LexicalEntry` (tipo **puro** /`ai-pure`). Vem da
+/// **recuperação TS do store web** (SELECT `original_tokens` + JOIN `lexicon`, agregado
+/// por Strong base — infra, ADR-0011), NÃO de um LLM: glosas/lemas/Strong são **verbatim
+/// do léxico local** (STEP Bible / TBESH–TBESG, CC-BY). Record **puro**, presente em todos
+/// os alvos (a mesma forma da fronteira nativa/web).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct StudyLexEntryInput {
+    /// Número de Strong **base** (ex.: `"G0025"`), a chave de citação `[V:...]`.
+    pub strongs: String,
+    /// Lema na língua original (ex.: `ἀγαπάω`).
+    pub lemma: Option<String>,
+    /// Transliteração.
+    pub translit: Option<String>,
+    /// Glosa breve (COALESCE `lexicon.gloss_pt` → `lexicon.gloss` → `original_tokens.gloss`).
+    pub gloss: Option<String>,
+    /// Ocorrências do termo na passagem.
+    pub occurrences: u32,
+    /// Testamento (`"OT"` hebraico | `"NT"` grego).
+    pub testament: String,
+}
+
+/// Uma **fonte web de entrada** da fronteira web de estudo (pesquisa opt-in), na fronteira
+/// UniFFI.
+///
+/// Espelha `the_light_core::ai::research::WebSource` (tipo **puro** /`ai-pure`; `chrono`
+/// clock-free). **Vazia na F3.12a** (a lista `web_sources` é sempre `[]`): a pesquisa web
+/// Wikipedia (rede opt-in via `fetch`) é a **F3.12b** — quando ela chegar, o app apenas
+/// **passa** este Record populado (sem re-tocar o Rust). Record **puro**, presente em todos
+/// os alvos.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct StudyWebSourceInput {
+    /// Título da fonte.
+    pub title: String,
+    /// URL canônica.
+    pub url: String,
+    /// Trecho recuperado (citado verbatim; nunca parafraseado).
+    pub snippet: String,
+    /// Domínio/origem (ex.: `"en.wikipedia.org"`).
+    pub site: String,
+    /// Momento da recuperação (timestamp Unix, segundos). **Ver nota em
+    /// [`to_web_sources`]**: no wasm o `chrono` é dep **transitiva** (não nomeável a
+    /// partir desta crate sem tocar `Cargo.toml`), então este campo ainda **não** é
+    /// materializado no `fetched_at` do `WebSource` nesta fatia (F3.12a: `web_sources`
+    /// vazio → inerte). A data de acesso das citações web é tema da F3.12b.
+    pub fetched_at: i64,
+}
+
+/// O **request preparado** de um estudo profundo no web (saída de [`study_web_prepare`]),
+/// na fronteira UniFFI.
+///
+/// Carrega **tudo que o transporte (`fetch`, no TS) precisa** para chamar o provedor,
+/// montado **em Rust `ai-pure`** — a MESMA impl do nativo (`ai::study`), logo **zero
+/// drift**:
+/// - [`passage_text`](Self::passage_text): a passagem numerada, **verbatim do store**
+///   (via `ai::numbered_verses`) — **nunca** do LLM;
+/// - [`system`](Self::system)/[`user`](Self::user): os prompts **EXATOS** do estudo
+///   (`prompts::system_prompt_in(..., None)` + `study::user_prompt`), idênticos aos do
+///   nativo (`study()` usa exatamente estas peças);
+/// - [`provider`](Self::provider)/[`model`](Self::model): o provedor e o modelo resolvido.
+///
+/// Record **puro** ([`Reference`]/`String`), presente em todos os alvos.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct StudyWebRequest {
+    /// Referência canônica estudada.
+    pub reference: Reference,
+    /// Referência formatada (ex.: `"John 3.16"`), via `reference::format_reference`.
+    pub reference_label: String,
+    /// Passagem numerada, **verbatim do store** (via `ai::numbered_verses`).
+    pub passage_text: String,
+    /// System prompt EXATO do estudo (`ai-pure`; mesmo do nativo — anti-alucinação).
+    pub system: String,
+    /// User prompt EXATO do estudo (`ai-pure`; lente/modo/prof + texto + léxico `[V:…]`).
+    pub user: String,
+    /// Provedor a usar no transporte (ex.: `"gemini"`/`"mock"`).
+    pub provider: String,
+    /// Modelo resolvido (default do provedor se não informado).
+    pub model: String,
+}
+
+/// Monta um `Passage` (fatos do store) a partir dos versículos de entrada — necessário
+/// para setar `passage: Some(&p)` no `StudyRequest` (ativa o ramo com passagem + o bloco
+/// léxico quando `mode.wants_lexical()`). Tipos **puros** de `model` (todos os alvos).
+fn to_passage(
+    reference: &the_light_core::model::Reference,
+    verses: &[AiVerseInput],
+) -> the_light_core::model::Passage {
+    the_light_core::model::Passage {
+        reference: *reference,
+        verses: verses
+            .iter()
+            .map(|v| the_light_core::model::Verse {
+                reference: the_light_core::model::Reference::single(
+                    reference.book,
+                    reference.chapter,
+                    v.number,
+                ),
+                text: v.text.clone(),
+                translation: the_light_core::model::TranslationId::new(""),
+            })
+            .collect(),
+    }
+}
+
+/// Reconstrói a `VerifiedLexicon` (`ai-pure`) a partir dos dados recuperados **do store
+/// web** (infra TS, ADR-0011). Anti-alucinação: entradas/glosas são **verbatim** do léxico
+/// local (STEP CC-BY) — nada é gerado aqui.
+fn to_verified_lexicon(
+    entries: &[StudyLexEntryInput],
+    sources: &[String],
+) -> the_light_core::ai::VerifiedLexicon {
+    the_light_core::ai::VerifiedLexicon {
+        entries: entries
+            .iter()
+            .map(|e| the_light_core::ai::LexicalEntry {
+                strongs: e.strongs.clone(),
+                lemma: e.lemma.clone(),
+                translit: e.translit.clone(),
+                gloss: e.gloss.clone(),
+                occurrences: e.occurrences,
+                testament: e.testament.clone(),
+            })
+            .collect(),
+        sources: sources.to_vec(),
+    }
+}
+
+/// Converte as fontes web de entrada em `Vec<WebSource>` (`ai-pure`). **Vazio na F3.12a**
+/// (`web_sources` é sempre `[]`). O `fetched_at` do `WebSource` usa `Default::default()`
+/// (época) porque o `chrono` é dependência **transitiva** do core (não nomeável a partir
+/// desta crate sem alterar `core/Cargo.toml`, o que é proibido nesta tarefa); como a lista
+/// é vazia aqui, isso é **inerte**. Quando a F3.12b ligar a pesquisa web (Wikipedia via
+/// `fetch`), a data de acesso das citações web poderá ser refinada.
+fn to_web_sources(inputs: &[StudyWebSourceInput]) -> Vec<the_light_core::ai::research::WebSource> {
+    inputs
+        .iter()
+        .map(|w| the_light_core::ai::research::WebSource {
+            title: w.title.clone(),
+            url: w.url.clone(),
+            snippet: w.snippet.clone(),
+            site: w.site.clone(),
+            // `chrono` é dep transitiva (não nomeável aqui); `Default` infere `DateTime<Utc>`
+            // (época) via o tipo do campo, sem tocar `Cargo.toml`. F3.12a: lista vazia.
+            fetched_at: Default::default(),
+        })
+        .collect()
+}
+
+/// **Prepara** um estudo profundo para o transporte web (`fetch`), delegando a montagem de
+/// prompt/RAG às partes **puras** do `ai` do `the-light-core` (feature `ai-pure`, ADR-0030).
+///
+/// Pipeline (**cfg-free** — só a superfície `pub` do `ai-pure`; **nenhum** store/`rusqlite`/
+/// `reqwest`, então o grafo wasm segue puro), espelhando `deep_study`/`ai::study::study`:
+/// 1. `reference` = `Reference::single`/`whole_chapter` (numérico, como `deep_study` — o
+///    store web é chaveado por número; garante **paridade** da referência com o nativo);
+/// 2. `lang.parse::<Lang>()` (default `Pt`); `reference_label = format_reference(&ref, lang)`;
+/// 3. `passage_text = ai::numbered_verses(verses)` — os `verses` vêm **verbatim do store
+///    web** (anti-alucinação; a fronteira não lê DB no wasm), numerados pela **mesma** fn do
+///    nativo (`numbered_passage` chama `numbered_verses`);
+/// 4. monta o `StudyRequest` (`passage: Some(&p)`, `verified_lexicon` do store,
+///    `web_sources` — vazio na F3.12a, `cross_references = []` nesta fatia, `brief: None`);
+/// 5. `system = prompts::system_prompt_in(mode, lens, depth, lang, None)` (builtin — igual ao
+///    nativo `system_prompt` quando não há override em disco);
+/// 6. `user = study::user_prompt(&req, &passage_text)` (a **fonte única** do user prompt);
+/// 7. `model` = o informado (não-vazio) ou `ai::default_model(provider)`.
+///
+/// Anti-alucinação **com zero drift**: `passage_text`/léxico do store; prompt do MESMO Rust
+/// `ai-pure` no web e no nativo. O transporte (`fetch`) fica no TS (ADR-0025). Sem rede aqui.
+#[uniffi::export]
+#[allow(clippy::too_many_arguments)]
+pub fn study_web_prepare(
+    book: u8,
+    chapter: u16,
+    verse: Option<u16>,
+    mode: StudyMode,
+    lens: StudyLens,
+    depth: StudyDepth,
+    lang: String,
+    provider_name: String,
+    model: Option<String>,
+    verses: Vec<AiVerseInput>,
+    lexicon_entries: Vec<StudyLexEntryInput>,
+    lexicon_sources: Vec<String>,
+    web_sources: Vec<StudyWebSourceInput>,
+) -> Result<StudyWebRequest, CoreError> {
+    let lang = lang
+        .parse::<the_light_core::model::Lang>()
+        .unwrap_or(the_light_core::model::Lang::Pt);
+    let reference = match verse {
+        Some(v) => the_light_core::model::Reference::single(book, chapter, v),
+        None => the_light_core::model::Reference::whole_chapter(book, chapter),
+    };
+    let reference_label = the_light_core::reference::format_reference(&reference, lang);
+
+    // passage_text: VERBATIM do store (verses), numerado pela MESMA fn do nativo.
+    let passage_text =
+        the_light_core::ai::numbered_verses(verses.iter().map(|v| (v.number, v.text.as_str())));
+
+    // Fatos do store para o RAG (mesma superfície pura do nativo).
+    let passage = to_passage(&reference, &verses);
+    let verified_lexicon = to_verified_lexicon(&lexicon_entries, &lexicon_sources);
+    let web = to_web_sources(&web_sources);
+
+    let request = the_light_core::ai::study::StudyRequest {
+        reference,
+        reference_label: reference_label.clone(),
+        mode: mode.into(),
+        lens: lens.into(),
+        depth: depth.into(),
+        language: lang,
+        passage: Some(&passage),
+        cross_references: Vec::new(),
+        verified_lexicon,
+        web_sources: web,
+        brief: None,
+    };
+
+    // system + user EXATOS do estudo (ai-pure; a MESMA impl do nativo → zero drift).
+    let system = the_light_core::ai::prompts::system_prompt_in(
+        mode.into(),
+        lens.into(),
+        depth.into(),
+        lang,
+        None,
+    );
+    let user = the_light_core::ai::study::user_prompt(&request, &passage_text);
+
+    let model = model
+        .filter(|m| !m.trim().is_empty())
+        .unwrap_or_else(|| the_light_core::ai::default_model(&provider_name).to_string());
+
+    Ok(StudyWebRequest {
+        reference: reference.into(),
+        reference_label,
+        passage_text,
+        system,
+        user,
+        provider: provider_name,
+        model,
+    })
+}
+
+/// **Finaliza** um estudo profundo no web: aplica **verificação + citação + aparato em
+/// Rust** (`ai-pure`, mesma impl do nativo) sobre a resposta crua do `fetch` e monta o
+/// [`StudyResultOut`] (com `academic_markdown`), mantendo o `passage_text` do **store**
+/// separado da `interpretation` do LLM.
+///
+/// Pipeline (**cfg-free** — só `ai-pure`) que espelha `ai::study::study` **passo a passo**
+/// (zero drift):
+/// 1. reconstrói `reference`/`reference_label`/`VerifiedLexicon`/`Vec<WebSource>` (mesmos
+///    inputs do prepare);
+/// 2. `sections = study::split_sections(&raw)`;
+/// 3. `warnings = lexicon::verify(&raw, &vl).warnings` (quando `mode.wants_lexical()`) +
+///    `study::cited_web_indices` fora do intervalo (mesma regra anti-fabricação do `study()`);
+/// 4. `citations = CitationCollector{ from_verified_lexicon(&vl) + from_web_results(&ws) }
+///    .into_vec()` quando `mode.emits_apparatus()`, senão `[]` (do **banco/URLs**, nunca do
+///    modelo);
+/// 5. monta o `StudyResult` e mapeia para [`StudyResultOut`] (via o `From` cfg-free), cujo
+///    `academic_markdown` vem de `StudyResult::to_academic_markdown(lang)` — MESMA
+///    serialização SBL do core (F3.8).
+///
+/// Anti-alucinação **com zero drift**: `passage_text`/citações do store; `interpretation` só
+/// do LLM; verify/aparato do MESMO Rust `ai-pure`. Sem rede/store/`rusqlite` aqui.
+#[uniffi::export]
+#[allow(clippy::too_many_arguments)]
+pub fn study_web_finalize(
+    book: u8,
+    chapter: u16,
+    verse: Option<u16>,
+    mode: StudyMode,
+    lens: StudyLens,
+    depth: StudyDepth,
+    lang: String,
+    passage_text: String,
+    provider: String,
+    model: String,
+    raw_llm_response: String,
+    lexicon_entries: Vec<StudyLexEntryInput>,
+    lexicon_sources: Vec<String>,
+    web_sources: Vec<StudyWebSourceInput>,
+) -> Result<StudyResultOut, CoreError> {
+    let lang = lang
+        .parse::<the_light_core::model::Lang>()
+        .unwrap_or(the_light_core::model::Lang::Pt);
+    let reference = match verse {
+        Some(v) => the_light_core::model::Reference::single(book, chapter, v),
+        None => the_light_core::model::Reference::whole_chapter(book, chapter),
+    };
+    let reference_label = the_light_core::reference::format_reference(&reference, lang);
+    let mode_core: the_light_core::ai::StudyMode = mode.into();
+    let vl = to_verified_lexicon(&lexicon_entries, &lexicon_sources);
+    let ws = to_web_sources(&web_sources);
+    let raw = raw_llm_response;
+
+    // ── Espelha `ai::study::study` EXATAMENTE (zero drift). No web SEMPRE há passagem
+    //    (os verses vêm do store), logo o ramo `passage.is_some()` do nativo é constante. ──
+    let sections = the_light_core::ai::study::split_sections(&raw);
+
+    // Verificação anti-alucinação (Strong citado fora do acervo) — só nos modos com léxico.
+    let mut warnings = if mode_core.wants_lexical() {
+        the_light_core::ai::lexicon::verify(&raw, &vl).warnings
+    } else {
+        Vec::new()
+    };
+    // Fontes web citadas fora do intervalo (anti-fabricação de `[W:n]`).
+    if !ws.is_empty() {
+        for n in the_light_core::ai::study::cited_web_indices(&raw) {
+            if n == 0 || n > ws.len() {
+                warnings.push(format!(
+                    "Fonte web citada [W:{n}] fora do intervalo (há {} fonte(s))",
+                    ws.len()
+                ));
+            }
+        }
+    }
+
+    // Citações verificáveis (só no modo com aparato). Construídas do banco/URLs — nunca do
+    // modelo. `CitationCollector`/`from_verified_lexicon`/`into_vec` são puros; `from_web_results`
+    // é `ai-pure` (todos disponíveis no wasm, ADR-0030).
+    let citations = if mode_core.emits_apparatus() {
+        let mut c = the_light_core::ai::CitationCollector::new();
+        c.from_verified_lexicon(&vl);
+        c.from_web_results(&ws);
+        c.into_vec()
+    } else {
+        Vec::new()
+    };
+
+    let result = the_light_core::ai::study::StudyResult {
+        reference,
+        reference_label,
+        mode: mode_core,
+        lens: lens.into(),
+        depth: depth.into(),
+        language: lang,
+        passage_text,
+        interpretation: raw,
+        sections,
+        warnings,
+        citations,
+        provider,
+        model,
+    };
+    Ok(StudyResultOut::from(result))
 }
 
 #[cfg(test)]
@@ -5171,6 +5532,248 @@ mod study_tests {
             "citações do banco devem trazer a licença CC BY 4.0: {:?}",
             result.citations
         );
+    }
+
+    // ── F3.12a: PARIDADE nativo↔web do ESTUDO (study_web_prepare/study_web_finalize) ──
+    // Prova, no HOST, que o caminho web (prepare→finalize) produz passage_text / user /
+    // system / sections / warnings / citations / academic_markdown IDÊNTICOS ao nativo
+    // (`ai::study::study` + o `From`), para os MESMOS inputs (verses do store +
+    // VerifiedLexicon + a MESMA resposta crua). As funções web são cfg-free (ai-pure) →
+    // compilam iguais no wasm; este é o parity check nativo↔web (ZERO drift).
+
+    /// Provedor de teste que devolve uma resposta crua FIXA (a mesma alimentada ao
+    /// `study_web_finalize`), para que `study()` nativo e o finalize web partam do MESMO
+    /// texto do "LLM" e o parity check compare só a lógica pura (não o mock).
+    struct FixedProvider(String);
+    impl the_light_core::ai::LlmProvider for FixedProvider {
+        fn name(&self) -> &str {
+            "mock"
+        }
+        fn model(&self) -> &str {
+            "mock-1"
+        }
+        fn complete(&self, _system: &str, _user: &str) -> the_light_core::ai::Result<String> {
+            Ok(self.0.clone())
+        }
+    }
+
+    /// Léxico verificado in-memory (STEP CC-BY) de João 3:16 — os MESMOS inputs alimentam
+    /// o nativo (`VerifiedLexicon`) e o web (`StudyLexEntryInput` + `sources`).
+    fn john_lexicon_inputs() -> (Vec<StudyLexEntryInput>, Vec<String>) {
+        let sources = vec!["Credit it to 'STEP Bible' linked to www.STEPBible.org \
+             (data based on work at Tyndale House, Cambridge; CC BY 4.0)"
+            .to_string()];
+        let entries = vec![
+            StudyLexEntryInput {
+                strongs: "G0025".to_string(),
+                lemma: Some("ἀγαπάω".to_string()),
+                translit: Some("agapaō".to_string()),
+                gloss: Some("to love".to_string()),
+                occurrences: 1,
+                testament: "NT".to_string(),
+            },
+            StudyLexEntryInput {
+                strongs: "G2316".to_string(),
+                lemma: Some("θεός".to_string()),
+                translit: Some("theos".to_string()),
+                gloss: Some("God".to_string()),
+                occurrences: 1,
+                testament: "NT".to_string(),
+            },
+        ];
+        (entries, sources)
+    }
+
+    /// Resposta crua FIXA do "LLM": 2 seções (`## `) + âncoras `[V:…]` VÁLIDAS (no léxico).
+    const STUDY_RAW: &str = "## Contexto\nDeus amou ([V:G0025]) o mundo, pela lente reformada.\n## Análise\nO termo grego para Deus é θεός ([V:G2316]).";
+
+    #[test]
+    fn study_web_prepare_and_finalize_match_native_study_zero_drift() {
+        let (lex_entries, lex_sources) = john_lexicon_inputs();
+        let verses = vec![AiVerseInput {
+            number: 16,
+            text: JOHN_3_16_KJV.to_string(),
+        }];
+
+        // ── WEB: prepare → (raw FIXO) → finalize ─────────────────────────────────
+        let web_req = study_web_prepare(
+            43,
+            3,
+            Some(16),
+            StudyMode::Academic,
+            StudyLens::Presbyterian,
+            StudyDepth::Exegetical,
+            "en".to_string(),
+            "mock".to_string(),
+            None,
+            verses.clone(),
+            lex_entries.clone(),
+            lex_sources.clone(),
+            Vec::new(),
+        )
+        .expect("study_web_prepare");
+        let web_out = study_web_finalize(
+            43,
+            3,
+            Some(16),
+            StudyMode::Academic,
+            StudyLens::Presbyterian,
+            StudyDepth::Exegetical,
+            "en".to_string(),
+            web_req.passage_text.clone(),
+            "mock".to_string(),
+            "mock-1".to_string(),
+            STUDY_RAW.to_string(),
+            lex_entries.clone(),
+            lex_sources.clone(),
+            Vec::new(),
+        )
+        .expect("study_web_finalize");
+
+        // ── NATIVO: monta o MESMO StudyRequest e chama `ai::study::study` (raw FIXO). ─
+        let reference = the_light_core::model::Reference::single(43, 3, 16);
+        let reference_label = the_light_core::reference::format_reference(
+            &reference,
+            the_light_core::model::Lang::En,
+        );
+        let passage = to_passage(&reference, &verses);
+        let vl = to_verified_lexicon(&lex_entries, &lex_sources);
+        let native_req = the_light_core::ai::study::StudyRequest {
+            reference,
+            reference_label,
+            mode: StudyMode::Academic.into(),
+            lens: StudyLens::Presbyterian.into(),
+            depth: StudyDepth::Exegetical.into(),
+            language: the_light_core::model::Lang::En,
+            passage: Some(&passage),
+            cross_references: Vec::new(),
+            verified_lexicon: vl,
+            web_sources: Vec::new(),
+            brief: None,
+        };
+        let native_passage_text = the_light_core::ai::study::numbered_passage(&passage);
+        let native_user = the_light_core::ai::study::user_prompt(&native_req, &native_passage_text);
+        let native_out = StudyResultOut::from(
+            the_light_core::ai::study::study(&FixedProvider(STUDY_RAW.to_string()), &native_req)
+                .expect("ai::study::study nativo"),
+        );
+
+        // passage_text (store, numerado) IDÊNTICO nativo↔web.
+        assert_eq!(
+            web_req.passage_text, native_passage_text,
+            "passage_text web == nativo"
+        );
+        assert!(web_req
+            .passage_text
+            .contains("16 For God so loved the world"));
+        // user prompt (ai-pure) IDÊNTICO → bloco léxico [V:…] e rótulo entram igual.
+        assert_eq!(
+            web_req.user, native_user,
+            "user prompt web == nativo (zero drift)"
+        );
+        assert!(
+            web_req.user.contains("DADOS LÉXICOS"),
+            "modo Academic embute o bloco léxico verificado"
+        );
+        // system prompt (builtin ai-pure) == system do nativo (sem override em disco).
+        assert_eq!(
+            web_req.system,
+            the_light_core::ai::prompts::system_prompt(
+                StudyMode::Academic.into(),
+                StudyLens::Presbyterian.into(),
+                StudyDepth::Exegetical.into(),
+                the_light_core::model::Lang::En,
+            ),
+            "system web (system_prompt_in None) == system nativo (zero drift)"
+        );
+        // sections / warnings / citations / academic_markdown / passage_text IDÊNTICOS.
+        assert_eq!(
+            web_out.sections, native_out.sections,
+            "sections web == nativo"
+        );
+        assert_eq!(
+            web_out.warnings, native_out.warnings,
+            "warnings web == nativo"
+        );
+        assert_eq!(
+            web_out.citations, native_out.citations,
+            "citations web == nativo"
+        );
+        assert_eq!(
+            web_out.academic_markdown, native_out.academic_markdown,
+            "academic_markdown web == nativo (mesma serialização SBL do core)"
+        );
+        assert_eq!(
+            web_out.passage_text, native_out.passage_text,
+            "passage_text web == nativo"
+        );
+        assert_eq!(web_out.reference_label, native_out.reference_label);
+        assert_eq!(web_out.interpretation, native_out.interpretation);
+        assert_eq!(web_out.provider, "mock");
+        assert_eq!(web_out.model, "mock-1");
+
+        // Conteúdo: 2 seções; citação Source do léxico STEP CC-BY; markdown com a passagem
+        // do store + a atribuição STEP (anti-alucinação materializada).
+        assert_eq!(web_out.sections.len(), 2, "duas seções (## )");
+        assert!(
+            web_out.citations.iter().any(|c| c.kind == "Source"
+                && c.attribution
+                    .as_deref()
+                    .map(|a| a.contains("STEPBible"))
+                    .unwrap_or(false)),
+            "≥1 citação Source do léxico STEP CC-BY: {:?}",
+            web_out.citations
+        );
+        assert!(
+            web_out.academic_markdown.contains(JOHN_3_16_KJV),
+            "markdown acadêmico contém a passagem VERBATIM do store"
+        );
+        assert!(
+            web_out.academic_markdown.contains("STEPBible"),
+            "markdown acadêmico traz a atribuição STEP CC-BY"
+        );
+        // Anti-alucinação: interpretação (LLM) ≠ passagem (store); LLM não gera texto bíblico.
+        assert_ne!(web_out.passage_text, web_out.interpretation);
+        assert!(!web_out.interpretation.contains("For God so loved"));
+    }
+
+    #[test]
+    fn study_web_finalize_devotional_omits_apparatus_but_keeps_store_text() {
+        let (lex_entries, lex_sources) = john_lexicon_inputs();
+        // Modo Devotional NÃO emite aparato → citations vazio; mas o passage_text do store
+        // e o markdown seguem construídos (fonte única do core).
+        let out = study_web_finalize(
+            43,
+            3,
+            Some(16),
+            StudyMode::Devotional,
+            StudyLens::Baptist,
+            StudyDepth::Overview,
+            "en".to_string(),
+            format!("16 {JOHN_3_16_KJV}"),
+            "mock".to_string(),
+            "mock-1".to_string(),
+            "Uma reflexão devocional sobre o amor de Deus.".to_string(),
+            lex_entries,
+            lex_sources,
+            Vec::new(),
+        )
+        .expect("study_web_finalize (Devotional)");
+
+        assert!(
+            out.citations.is_empty(),
+            "Devotional não emite aparato → citations vazio: {:?}",
+            out.citations
+        );
+        assert!(
+            out.passage_text.contains(JOHN_3_16_KJV),
+            "passage_text é verbatim do store mesmo sem aparato"
+        );
+        assert!(
+            out.academic_markdown.contains(JOHN_3_16_KJV),
+            "markdown acadêmico ainda inclui a passagem do store"
+        );
+        assert_ne!(out.passage_text, out.interpretation);
     }
 }
 

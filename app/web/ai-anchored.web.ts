@@ -40,6 +40,19 @@ import { hasTranslation, queryChapter, type ChapterRow, type ReadingDb } from '.
  */
 export type AiFetch = typeof fetch;
 
+/**
+ * Partes mínimas de um request de LLM que o transporte web precisa: os prompts
+ * `system`/`user` (montados pelo Rust `ai-pure` — ZERO drift) + o `model` resolvido.
+ * Tanto `AiWebRequest` (ask, F2.7b) quanto `StudyWebRequest` (estudo, F3.12a) são
+ * estruturalmente compatíveis → o MESMO transporte (`webLlmTransport`) serve aos dois,
+ * sem espelhar prompt/citação em TS.
+ */
+export interface LlmRequestParts {
+  system: string;
+  user: string;
+  model: string;
+}
+
 // `DEFAULT_MAX_TOKENS` do core (providers.rs:29) — o corpo Gemini o inclui em
 // `generationConfig.maxOutputTokens`, espelhando `gemini_body`.
 const GEMINI_MAX_TOKENS = 8192;
@@ -92,7 +105,7 @@ function geminiExtract(raw: unknown): string {
 async function geminiComplete(
   fetchImpl: AiFetch,
   key: string,
-  request: AiWebRequest,
+  request: LlmRequestParts,
 ): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${request.model}:generateContent`;
   const body = {
@@ -114,15 +127,17 @@ async function geminiComplete(
 }
 
 /**
- * Despacha o transporte por provedor. `"mock"` = determinístico offline (sem rede/chave).
- * `"gemini"` = `fetch` real (MVP web, F2.6). Demais provedores reais são follow-up
- * (ADR-0025). A chave é exigida só para provedores de rede.
+ * Despacha o transporte por provedor (REUSADO por `ask` e `estudo`). `"mock"` =
+ * determinístico offline (sem rede/chave). `"gemini"` = `fetch` real (MVP web, F2.6).
+ * Demais provedores reais são follow-up (ADR-0025). A chave é exigida só para
+ * provedores de rede e vai SÓ no header do `fetch` (nunca na URL/log). É a ÚNICA rede
+ * em runtime da IA web (opt-in); o prompt/citação vêm do Rust `ai-pure` (parts).
  */
-async function webTransport(
+export async function webLlmTransport(
   fetchImpl: AiFetch,
   provider: string,
   key: string | undefined,
-  request: AiWebRequest,
+  parts: LlmRequestParts,
 ): Promise<string> {
   if (provider === 'mock') {
     return MOCK_INTERPRETATION;
@@ -132,7 +147,7 @@ async function webTransport(
       // Não vaza a chave (nem sua ausência de valor) — cita só o provedor.
       throw new Error('Configure a chave do provedor "gemini" para usar a IA no web.');
     }
-    return geminiComplete(fetchImpl, key, request);
+    return geminiComplete(fetchImpl, key, parts);
   }
   throw new Error(
     `Provedor "${provider}" ainda não tem transporte web (F2.7b MVP = Gemini). Use "gemini" ou "mock".`,
@@ -188,7 +203,7 @@ export async function askAnchoredOnHandle(
   const rows = await queryChapter(handle, translation, ref.book, ref.chapter);
   const verses = versesForReference(ref, rows);
   const request = aiWebPrepare(reference, question, provider, model, lang, verses);
-  const interpretation = await webTransport(fetchImpl, provider, key, request);
+  const interpretation = await webLlmTransport(fetchImpl, provider, key, request);
   return aiWebFinalize(
     reference,
     request.citedText,

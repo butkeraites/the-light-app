@@ -62,6 +62,7 @@ import { searchOnHandle } from './sqlite-search.web';
 import { crossRefsOnHandle } from './sqlite-xref.web';
 import { openReadingDbWeb } from './sqlite-reading-opfs.web';
 import { askAnchoredOnHandle, type AiFetch } from './ai-anchored.web';
+import { deepStudyOnHandle, lexicalEntriesOnHandle } from './study.web';
 import {
   addHighlightFs,
   deleteNoteFs,
@@ -353,43 +354,82 @@ export async function askAnchoredStream(
   return answer;
 }
 
-// ── ESTUDO PROFUNDO + LÉXICO (deep_study/lexical_entries) — STUB WEB (F3.12) ──────────
-// O estudo profundo (`deep_study`) e o léxico verificado (`lexical_entries`) NÃO estão
-// disponíveis no web nesta tarefa (F3.5 é só NATIVO). A superfície pesada do `ai::study`
-// e o store SQLite de léxico são `embedded`-only (nativo); a paridade web é a F3.12.
-// Aqui apenas lançamos um erro explícito (mesmo padrão do `crossRefs` pré-F1.15), mantendo
-// `tsc`/Metro web verdes e a camada `ai`/store FORA do bundle web. As assinaturas são
-// idênticas às do glue nativo (respeitando a ordem real dos argumentos da fronteira).
+// ── ESTUDO PROFUNDO + LÉXICO (deep_study/lexical_entries) — F3.12a (ADR-0031) ──────────
+// DESTUBADO: paridade web do estudo. O prompt/RAG/verify/citação/aparato vêm do Rust
+// `ai-pure` no wasm (`studyWebPrepare`/`studyWebFinalize`, ZERO drift nativo↔web) e o
+// transporte é `fetch` ao provedor (MVP = Gemini), delegado ao pipeline
+// `deepStudyOnHandle` (`study.web.ts`). O texto do versículo e o léxico verificado vêm do
+// STORE local (subset F1.13/F3.5, via `sqlite-reading.web`/`sqlite-lexicon.web`). Aqui só
+// abrimos o store web (OPFS) e passamos o `globalThis.fetch`. Anti-alucinação: texto/léxico
+// do store; o LLM só interpreta. BYOK/offline-first: sem chave, o app segue offline; a IA é
+// opt-in e só faz rede no `fetch` (a chave, session-only no `keystore.web`, vai só no header
+// — nunca logada). `researchBackend` é aceito por paridade mas IGNORADO (Wikipedia = F3.12b).
 
-/** STUB web: estudo profundo = F3.12. Assinatura idêntica ao nativo (`_` = não usados). */
+/**
+ * Estudo profundo no web: abre o store web (subset, F1.13/F3.5) e delega ao pipeline
+ * `deepStudyOnHandle` (wasm `ai-pure` + léxico do store + `fetch`). `_dbPath` é aceito por
+ * paridade de assinatura com o nativo; o store web abre o subset internamente. O
+ * `StudyResultOut` traz `passageText` (store, verbatim, numerado) SEPARADO da
+ * `interpretation` (LLM) + `sections`/`citations`/`warnings`/`academicMarkdown`.
+ */
 export async function deepStudy(
   _dbPath: string,
-  _translation: string,
-  _book: number,
-  _chapter: number,
-  _verse: number | undefined,
-  _mode: StudyMode,
-  _lens: StudyLens,
-  _depth: StudyDepth,
-  _lang: string,
-  _providerName: string,
-  _key: string | undefined,
-  _model: string | undefined,
-  _researchBackend?: string,
+  translation: string,
+  book: number,
+  chapter: number,
+  verse: number | undefined,
+  mode: StudyMode,
+  lens: StudyLens,
+  depth: StudyDepth,
+  lang: string,
+  providerName: string,
+  key: string | undefined,
+  model: string | undefined,
+  researchBackend?: string,
 ): Promise<StudyResultOut> {
-  throw new Error('estudo profundo no web = F3.12');
+  const handle = await openReadingDbWeb();
+  try {
+    return await deepStudyOnHandle(
+      handle,
+      defaultFetch,
+      translation,
+      book,
+      chapter,
+      verse,
+      mode,
+      lens,
+      depth,
+      lang,
+      providerName,
+      key,
+      model,
+      researchBackend,
+    );
+  } finally {
+    await handle.close();
+  }
 }
 
-/** STUB web: léxico verificado = F3.12. Assinatura idêntica ao nativo (sem `translation`). */
+/**
+ * Léxico verificado no web (independente de tradução): abre o store web (subset) e delega
+ * a `lexicalEntriesOnHandle` (SELECT + shaping do léxico do store — infra, ADR-0011). As
+ * entradas Strong + `sources` (atribuição STEP CC-BY) são VERBATIM do store; passagem sem
+ * cobertura → `{ entries: [], sources: [] }` (sem throw). `_dbPath` aceito por paridade.
+ */
 export async function lexicalEntries(
   _dbPath: string,
-  _book: number,
-  _chapter: number,
-  _verse: number | undefined,
+  book: number,
+  chapter: number,
+  verse: number | undefined,
   _lang: string,
-  _limit: number | undefined,
+  limit: number | undefined,
 ): Promise<VerifiedLexiconOut> {
-  throw new Error('léxico verificado no web = F3.12');
+  const handle = await openReadingDbWeb();
+  try {
+    return await lexicalEntriesOnHandle(handle, book, chapter, verse, limit);
+  } finally {
+    await handle.close();
+  }
 }
 
 // ── CONVERSA/FOLLOW-UP ANCORADO (ask_session_anchored) — STUB WEB (F3.12) ──────────────

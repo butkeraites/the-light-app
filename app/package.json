@@ -13,7 +13,10 @@
     "test:web:xref": "node web/__tests__/xref.web.test.mjs",
     "test:web:notes": "node web/__tests__/notes.web.test.mjs",
     "test:keystore": "node web/__tests__/keystore.test.mjs",
-    "test:web:ai": "node web/__tests__/askAnchored.web.test.mjs"
+    "test:web:ai": "node web/__tests__/askAnchored.web.test.mjs",
+    "test:web:study": "node web/__tests__/deepStudy.web.test.mjs",
+    "test:web:lexicon": "node web/__tests__/lexicalEntries.web.test.mjs",
+    "test:web:export": "node web/__tests__/export.web.test.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~56.0.15",

@@ -2427,3 +2427,89 @@ thiserror). Não-quebrante: `default` intacto; workspace verde (fmt 0, clippy `-
   nativo, **zero drift**. Transporte (LLM + Wikipedia) = `fetch`/TS (molde F2.7b).
 - Anti-alucinação (texto do versículo do store; LLM só interpreta), offline-first (IA
   opt-in) e BYOK preservados; `the-light` alterado só via PR + ADR.
+
+## ADR-0031 — F3.12a: paridade WEB do estudo profundo + léxico + export acadêmico (`ai-pure` prepare→fetch→finalize; zero drift) — fronteira web nova em `core/src/lib.rs` + recuperação de léxico TS (ADR-0011) + transporte `fetch` (ADR-0025)
+
+- **Data:** 2026-07-02 · **Status:** aceito · **Tarefa:** F3.12a · **Depende:** ADR-0030 (superfície `ai-pure` do estudo, rev **04b9b24**), ADR-0025/ADR-0024 (F2.7b prepare/fetch/finalize + chave web session-only), ADR-0011 (infra TS de store no web), ADR-0027 (léxico STEP no subset), ADR-0029 (D2: zero drift)
+
+### Contexto
+A F3.11 (ADR-0030) mesclou no `the-light` (@ `04b9b24`, re-pin já feito na linha WEB com
+`features = ["ai-pure"]`) a superfície **pura do estudo profundo**: `StudyRequest`/
+`StudyResult`/`to_academic_markdown`, `study::user_prompt` (o 1 `pub` novo),
+`split_sections`/`cited_web_indices`, e os tipos de `lexicon`/`citation`/`research` — todos
+compiláveis no `wasm32` sob `ai-pure`. Faltava **destubar** o estudo web (`deepStudy`), o
+léxico web (`lexicalEntries`) e o export acadêmico, **sem** espelhar em TS o anti-alucinação
+do estudo (proibido, ADR-0029) e **sem** tocar o `the-light` nem `core/Cargo.toml` (re-pin
+já feito).
+
+### Decisão
+**Padrão prepare → (fetch em TS) → finalize** (molde EXATO F2.7b/ADR-0025), com o
+anti-alucinação **100% em Rust `ai-pure`** (zero drift nativo↔web):
+- **Fronteira web nova** em `core/src/lib.rs` (única mudança em `core/`; **cfg-free**, só a
+  superfície `pub` do `ai-pure` — nenhum store/`rusqlite`/`reqwest`, grafo wasm segue puro):
+  - Records puros `StudyLexEntryInput`/`StudyWebSourceInput`/`StudyWebRequest`.
+  - `study_web_prepare(book, chapter, verse, mode, lens, depth, lang, provider, model?, verses,
+    lexicon_entries, lexicon_sources, web_sources) -> StudyWebRequest`: `passage_text =
+    ai::numbered_verses(verses)` (VERBATIM do store); monta `Passage` + `VerifiedLexicon` (dos
+    inputs recuperados do store) + `Vec<WebSource>` (**vazio na F3.12a**); `system =
+    prompts::system_prompt_in(mode,lens,depth,lang,None)`; `user = study::user_prompt(&req,
+    &passage_text)`. Referência **numérica** (`Reference::single`/`whole_chapter`, como
+    `deep_study`) → paridade exata da referência (o store web é chaveado por número).
+  - `study_web_finalize(..., passage_text, provider, model, raw_llm_response, lexicon_entries,
+    lexicon_sources, web_sources) -> StudyResultOut`: espelha `ai::study::study` passo a
+    passo — `split_sections` + `lexicon::verify().warnings` (se `wants_lexical`) +
+    `cited_web_indices` fora do intervalo + `CitationCollector{from_verified_lexicon +
+    from_web_results}.into_vec()` (se `emits_apparatus`) + `StudyResult` →
+    `to_academic_markdown(lang)` (F3.8). O `impl From<StudyResult> for StudyResultOut` deixou
+    de ser `#[cfg(not(wasm32))]` (agora `StudyResult`/`to_academic_markdown` são `ai-pure`) →
+    serve nativo E web com a MESMA serialização SBL.
+  - `web_sources` **vazio nesta fatia** (Wikipedia web = **F3.12b**, app-side apenas: o app
+    passa `web_sources` populado via `fetch`, sem re-tocar o Rust). O `fetched_at` do
+    `WebSource` usa `Default::default()` (época) porque `chrono` é dep **transitiva** do core
+    (não nomeável desta crate sem tocar `Cargo.toml`) — inerte com a lista vazia; a data de
+    acesso das citações web é refinamento da F3.12b.
+- **Recuperação de léxico no web = infra TS** (`app/web/sqlite-lexicon.web.ts`, precedente
+  ADR-0011 do passage/xref/search web): SELECT `original_tokens` + LEFT JOIN `lexicon`
+  (COALESCE da glosa) por book/chapter[/verse], agregado por **Strong base** ("H7225G"→
+  "H7225"), ordenado por ocorrência desc (desempate por Strong), truncado ao `limit`, +
+  atribuições (`scholarly_sources.attribution`, ordem por `source_id`) — **espelhando o shape**
+  de `ai::lexicon::verified_lexicon` (que é `embedded`-only/rusqlite, ausente no wasm). É
+  SELECT + shaping (infra sancionada); **o que NÃO vira TS** é prompt/verify/citação/aparato.
+  As glosas/lemas/Strong/atribuição são **VERBATIM do store** (STEP Bible / TBESH–TBESG,
+  CC-BY, do subset F3.5/ADR-0027).
+- **Glue web** (`app/web/study.web.ts`, par de `ai-anchored.web.ts`): `deepStudyOnHandle` =
+  léxico do store → `studyWebPrepare` (wasm) → **`fetch`** ao LLM (transporte REUSADO de
+  `webLlmTransport`, MVP Gemini; a chave **session-only** vai SÓ no header, nunca na URL/log)
+  → `studyWebFinalize` (wasm) → `StudyResultOut`. `reading.web.ts` **destuba** `deepStudy`/
+  `lexicalEntries` (abre o store OPFS + delega); `researchBackend` aceito mas **ignorado**
+  (F3.12b). Export web sai de graça: `buildStudyExport` (F3.8) já reusa `academicMarkdown`.
+
+### Prova (portões F3.12a)
+`study_web_prepare`/`study_web_finalize` nos bindings web (`gen-bindings-web.sh` exit 0);
+grafo wasm **puro** (`cargo tree` wasm sem `rusqlite`/`reqwest`/`wasm-bindgen`/`js-sys`);
+`cargo fmt`/`clippy -D warnings`/`test` (**65** = 63 + 2 host: **paridade** `study()` nativo
+== prepare+finalize web em passage_text/user/system/sections/warnings/citations/
+academic_markdown → zero drift; Devotional sem aparato). Provas **headless node** (fetch
+MOCK, sem rede/chave real): `deepStudy` web ponta a ponta (passage_text = João 3:16 KJV
+VERBATIM do store ≠ interpretation do mock; ≥1 citação `Source` do léxico STEP CC-BY;
+`academicMarkdown` > 0 com a passagem + atribuição STEP); `lexicalEntries` web (21 entradas
+Strong de João 3:16 + STEP CC-BY; sem cobertura → vazio; `limit`); export web
+(`buildStudyExport` sobre o retorno REAL). `tsc --noEmit` 0 + `expo export --platform web` 0;
+sem regressão web (reading/search/xref/notes/ask/keystore) nem nativa (`deep_study` + host).
+
+### Consequências
+- `the-light` **intacto** (`04b9b24`, working tree limpo) e `core/Cargo.toml`/`Cargo.lock`
+  **não** alterados — a fronteira web (`core/src/lib.rs`) é a única mudança em `core/`.
+- Anti-alucinação **com ZERO DRIFT**: prompt (`system_prompt_in`+`user_prompt`), verify,
+  citações e `to_academic_markdown` do MESMO Rust `ai-pure` no web e no nativo; `passage_text`
+  e léxico SEMPRE do store; o LLM só interpreta.
+- Offline-first/BYOK: sem chave/sessão, o app segue 100% offline; a IA web é **opt-in** e a
+  **única** rede em runtime é o `fetch` ao provedor (chave session-only, nunca em git/log). A
+  pesquisa web Wikipedia (rede opt-in) e a conversa ancorada web ficam para a **F3.12b**.
+- **Versionado nesta tarefa:** `core/src/lib.rs` (fronteira web + Records + 2 testes de
+  paridade), `app/web/{study,sqlite-lexicon}.web.ts` (novos), `app/web/reading.web.ts`
+  (destub), `app/web/ai-anchored.web.ts` (`webLlmTransport` reusável),
+  `app/web/{study,export}-selftest.web.ts` (destub), `app/web/__tests__/{deepStudy-headless-entry.ts,
+  deepStudy.web.test.mjs,lexicalEntries.web.test.mjs,export.web.test.mjs}` (novos),
+  `app/package.json` (scripts), `DECISIONS.md` (este ADR). **Gerado/IGNORADO:**
+  `app/web/generated/*` (bindings web).
