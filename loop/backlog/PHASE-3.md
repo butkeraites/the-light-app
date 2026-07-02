@@ -118,7 +118,27 @@ a feature `embedded` (nativo). Símbolos/arquivos citados:
    `tsc`/`eslint`) verde. Diante de conflito com qualquer regra: **HALT**, não
    improviso.
 
-## Decomposição (F3.1 → F3.13; paradas: **F3.9 gate estratégico (pesquisa web + web parity)**, **F3.10 validação real (gate)**, **F3.11 PR ao core (handoff, condicional)**, **F3.13 Marco 3 (gate)**)
+## Decomposição (F3.1 → F3.13; **RE-ESCOPADA per ADR-0028/ADR-0029** após o sign-off do gate F3.9)
+
+> **Gate F3.9 DECIDIDO (sign-off humano, 2026-07-02):**
+> - **D1 (ADR-0028):** pesquisa web assistida no estudo = **Wikipedia keyless, OPT-IN**
+>   (padrão desligado + aviso de privacidade; Tavily BYOK fica como opção futura). →
+>   nova tarefa **NÃO-BLOQUEANTE F3.9a** (fronteira nativa + MOCK).
+> - **D2 (ADR-0029):** paridade web do estudo/léxico/conversa = **PR `ai-pure` COMPLETO
+>   ao core** (fonte única, zero drift). → **F3.11 deixa de ser condicional** e vira o
+>   handoff **BLOQUEANTE** obrigatório (branch + merge humano + re-pin, molde F2.7).
+>   Espelhar o anti-alucinação do estudo em TS app-side está **PROIBIDO** (drift).
+> - **D3 (ADR-0029):** validação real do que é nativo (estudo + conversa + comparação
+>   multi-IA + **pesquisa web Wikipedia** se ligada) = **F3.10** (gate de chave real).
+>
+> **Ordem re-escopada (molde Fase 2: F2.6 validação real → F2.7 PR ai-pure → F2.7b web
+> → F2.8 marco):** **F3.9a** (D1-nativo, NÃO-BLOQUEANTE, semeada agora) → **F3.10**
+> (validação real do nativo, ⛔ gate/chave) → **F3.11** (PR `ai-pure` completo,
+> BLOQUEANTE, toca the-light) → re-pin → **F3.12** (paridade web, não-bloqueante) →
+> **F3.13** (Marco 3, ⛔ gate). Handoffs bloqueantes: **F3.10** (chave real) e **F3.11**
+> (PR + merge humano + re-pin).
+
+### Paradas (gates/handoffs): **F3.10 validação real (gate)**, **F3.11 PR ao core (handoff BLOQUEANTE)**, **F3.13 Marco 3 (gate)**
 
 Padrão de fase (herdado): **dados** (se preciso) → **fronteira nativa + teste de
 host com MOCK** → **UI nativa (MOCK)** → **gate estratégico** → **validação real
@@ -138,10 +158,11 @@ interpreta e é sinalizado se inventar Strong/fonte.
 | F3.6 | UI nativa: conversa com follow-up (`ask_session`, mantém âncora); **MOCK** | F3.4, F3.5 | não | não | não |
 | F3.7 | UI nativa: **modo comparação multi-IA** (Claude/GPT/Gemini lado a lado); **MOCK** | F3.5 | não | não (app-side) | não |
 | F3.8 | Exportação acadêmica (SBL): `to_academic_markdown` → Markdown + sidecar de citações; UI | F3.3, F3.5 | não | não | não |
-| **F3.9** | **⛔ GATE estratégico:** pesquisa web opt-in (surfacear? backend wikipedia/tavily? chave?) **+ estratégia de paridade web do estudo** (app-side vs PR ao core) | F3.3 | **gate** (decisão) | decisão | **gate:true** |
-| **F3.10** | **⛔ Validação real** com a chave do usuário: estudo profundo (+[pesquisa se F3.9]) real (Claude/GPT/Gemini) | F3.5 (+F3.9) | **SIM** (chave/rede) | não | **gate:true** |
-| **F3.11** | **PR ao `the-light-core`:** deep-study **puro em wasm** (`study`/`StudyResult`/`to_academic_markdown` ai-pure + estratégia de léxico web + research fetch) — **condicional** (só se F3.9 escolher a via PR) | F3.9, F3.10 | **SIM** (branch+merge humano+re-pin) | **SIM** | não |
-| F3.12 | Paridade web: estudo profundo + léxico + conversa + export no browser (per F3.9/F3.11) | F3.11, F3.5, F3.6, F3.8 | não (app-side) | não | não |
+| **F3.9** | **⛔ GATE estratégico** — pesquisa web opt-in + via de paridade web — **✅ DECIDIDO** (ADR-0028 D1 Wikipedia keyless · ADR-0029 D2 PR ai-pure completo · D3 validação F3.10) | F3.3 | gate (decidido) | decisão | ✅ gate |
+| **F3.9a** | **Fronteira nativa** — pesquisa web **Wikipedia (keyless, opt-in)** no `deep_study`: novo `research_backend: Option<String>` → `build_research_provider("wikipedia", None, lang)`→`search`→`web_sources`→`study()` (hoje `vec![]`); prova por **MockResearchProvider** (sem rede/chave); corpo `cfg(not wasm32)` + stub web; grafo wasm puro | F3.3, F3.9 | **não** | não | não ← **PRÓXIMA A SEMEAR** |
+| **F3.10** | **⛔ Validação real** com a chave do usuário: estudo profundo + conversa + comparação multi-IA + **pesquisa web Wikipedia** reais (Claude/GPT/Gemini) | F3.5, F3.9, F3.9a | **SIM** (chave/rede) | não | **gate:true** |
+| **F3.11** | **PR ao `the-light-core`** — ampliar `ai-pure` p/ **`study` + `verified_lexicon` + partes puras da pesquisa web** (wasm-safe), fonte única/zero drift — **INCONDICIONAL** (ADR-0029 D2) | F3.9, F3.10 | **SIM** (branch+merge humano+re-pin) | **SIM** | não |
+| F3.12 | Paridade web: estudo profundo + léxico + conversa + **pesquisa web (fetch Wikipedia)** + export no browser (per ADR-0029/F3.11 re-pinado) | F3.11, F3.5, F3.6, F3.8 | não (app-side) | não | não |
 | **F3.13** | **⛔ Marco 3:** plataforma de estudo profundo completa | F3.5, F3.6, F3.7, F3.8, F3.10, F3.12 | **SIM** gate | não | **gate:true** |
 
 > **Relação com o `IMPLEMENTATION_PLAN.md` (F3.1–F3.4 grossos):** o plano lista 4
@@ -289,83 +310,150 @@ CC-BY); citações **do banco**, nenhuma inventada; sidecar de citações gerado
 **Verificação:** conferência do arquivo gerado (host: `to_academic_markdown` sobre
 um `StudyResult` de fixture com léxico) + `tsc`/eslint. **Depende:** F3.3, F3.5.
 
-## F3.9 — ⛔ GATE estratégico: pesquisa web opt-in + estratégia de paridade web do estudo
-**Objetivo (decisão humana/arquitetural):** decidir, com evidência:
-1. **Pesquisa web assistida** (`ai::research`): **surfacear** na Fase 3? Qual
-   **backend** — **Wikipedia** (keyless, rede, sem chave) e/ou **Tavily** (BYOK
-   **chave** `research.tavily`)? Política de **chave** (secure-store nativo / web
-   session-only, molde ADR-0023 D3/ADR-0025) e de **privacidade** (cada consulta
-   explícita; mostrar o que sai da máquina). Rede **opt-in**; nunca essencial.
-   Anti-alucinação: `WebSource` citado `[W:n]` verbatim, sinalizado fora do intervalo.
-2. **Paridade web do estudo profundo:** como o **web** faz `study`/`StudyResult`
-   (hoje **embedded-only**, `user_prompt` privado) e a recuperação de
-   `verified_lexicon` (SQLite): **(a)** app-side, espelhando o léxico em TS (Opção
-   A/ADR-0011) + montando com as peças puras `pub` (molde F2.7b `ai_web_prepare`) —
-   **risco de drift** da estrutura de estudo; **ou (b)** **PR ao core** que torne a
-   superfície de `study` **`ai-pure`** (molde F2.7) — sem drift, mas handoff humano
-   (**F3.11**).
-**Aceite:** **ADR novo** registrando 1–2 com evidência; se a via (b)/PR for
-escolhida, abrir spec em `loop/proposals/` (núcleo só via **PR humano**). Se a
-pesquisa web exigir chave → registrar a política BYOK e mantê-la opt-in.
-**Verificação:** auditoria humana do ADR; gate de sign-off.
-**Depende:** F3.3. **gate: true** — o loop **PARA** aqui (decisão estratégica:
-rede opt-in + provedor/chave de pesquisa + via de paridade web). **Não** bloqueia a
-UI nativa (F3.5–F3.8, IDs adjacentes/menores completam antes/independentemente).
+## F3.9 — ⛔ GATE estratégico: pesquisa web opt-in + via de paridade web — ✅ DECIDIDO
+**Decisão (sign-off humano, 2026-07-02):**
+- **D1 (ADR-0028):** pesquisa web assistida = **Wikipedia keyless, OPT-IN** (padrão
+  desligado + aviso de privacidade; **Tavily BYOK** fica como opção futura). Rede
+  opt-in, nunca essencial; anti-alucinação: `WebSource` citado `[W:n]`, sinalizado
+  fora do intervalo, citações montadas **das URLs** (nunca do modelo).
+- **D2 (ADR-0029):** paridade web do estudo/léxico/conversa = **PR `ai-pure` COMPLETO
+  ao core** (fonte única, zero drift). Espelhar o estudo em TS app-side é **PROIBIDO**
+  (drift do anti-alucinação; `study`/`verified_lexicon`/`StudyResult` são
+  embedded-only e `user_prompt` é privado → não há entrada pública pura). A **conversa**
+  (`ask_session`/`refine_scope`/`parse_refinement`) **já é `ai-pure`** (F3.4).
+- **D3 (ADR-0029):** validação real do nativo (estudo + conversa + comparação multi-IA
+  + pesquisa web Wikipedia se ligada) = **F3.10** (gate de chave real).
 
-## F3.10 — ⛔ Validação real com a chave do usuário (estudo profundo + [pesquisa])
-**Objetivo:** validar um **estudo profundo real** (rede + chave do usuário) num
-provedor de verdade (Claude/GPT/Gemini) em ≥1 alvo nativo: modo/lente/profundidade,
-léxico Strong verificado do store, [pesquisa web se F3.9 aprovar], citações
-verificáveis. A chave vem do secure-store (F2.4), a chamada é rede opt-in, o texto
-citado e as glosas continuam do **store**, só a interpretação vem do modelo.
-**Aceite:** com a chave real, `deep_study(..., provider real)` devolve um estudo
-ancorado e citado; **nenhuma** alucinação de texto/léxico (vêm do store); Strong
-inventado é sinalizado; a chave não vaza em log.
+**Consequência de re-escopo:** nova **F3.9a** (D1-nativo, NÃO-BLOQUEANTE); **F3.11**
+deixa de ser condicional e vira o PR `ai-pure` **incondicional** (BLOQUEANTE, toca
+the-light). **Status:** ✅ aceito (gate de sign-off). **Depende:** F3.3.
+
+## F3.9a — Fronteira nativa: pesquisa web Wikipedia (keyless, opt-in) no `deep_study` · **PRÓXIMA A SEMEAR**
+**Objetivo (D1-nativo, ADR-0028):** ligar a **pesquisa web opt-in** ao `deep_study`
+(`core/src/lib.rs`): um novo parâmetro `research_backend: Option<String>` que, quando
+`Some(...)`, roda `the_light_core::ai::build_research_provider(backend, None, lang_code)`
++ `provider.search(query, limit)` → o `Vec<WebSource>` resultante é passado ao
+`StudyRequest.web_sources` (hoje **`vec![]`**), que `ai::study::study` injeta no prompt
+como "FONTES SECUNDÁRIAS" citáveis por `[W:n]` e transforma em citações **das URLs**
+(`CitationCollector::from_web_results`, nunca do modelo). `None` → mantém `vec![]`
+(comportamento atual, offline). **Backend padrão do usuário = `"wikipedia"`** (keyless,
+opt-in, rede real — validação humana na F3.10); a **prova determinística** usa
+`research_backend = Some("mock")` → `build_research_provider("mock", …)` =
+`MockResearchProvider::canned()` (2 fontes fixas, **sem rede/chave**).
+**Assinaturas REAIS (fonte `c8ecb2f`, só-leitura):**
+- `pub fn build_research_provider(backend:&str, key:Option<String>, lang:&str) ->
+  Result<Box<dyn ResearchProvider>>` (`ai/research.rs:268`) — `"mock"`→canned;
+  `"wikipedia"|"wiki"`→`WikipediaProvider::new(lang)` (chave ignorada);
+  `"tavily"`→exige chave; `other`→`UnknownProvider`. **`build_research_provider`/
+  `ResearchProvider`/`WebSource` são `pub` re-exportados em `ai::` sob
+  `#[cfg(feature="embedded")]`** (`ai/mod.rs:40`) → disponíveis no corpo nativo
+  (`embedded` ativo); `research` é **embedded-only** (reqwest) → NÃO compila em wasm.
+- `trait ResearchProvider { fn name(&self)->&str; fn search(&self, query:&str,
+  limit:usize)->Result<Vec<WebSource>>; }` (`research.rs:41`).
+- `MockResearchProvider::canned()` (`research.rs:101`): 2 `WebSource` fixos
+  (`https://example.org/grace`, `https://example.org/sola-gratia`), timestamp fixo.
+- `study()` (`study.rs:294`): `from_web_results` adiciona **1 citação `Web` por fonte**
+  (key `W1`/`W2`, `url`/`quote`/`accessed`/`attribution`) **quando `mode.emits_apparatus()`**
+  (Academic) — independe do modelo citar. `cited_web_indices` sinaliza `[W:n]` fora do
+  intervalo (anti-fabricação).
+**Gating (molde F3.3):** `deep_study` já tem corpo `cfg(not(target_arch="wasm32"))` +
+stub web. A busca web entra **dentro** do bloco nativo (research é embedded-only) → o
+grafo wasm segue **puro**; o novo param é aceito na assinatura de todos os alvos e o
+stub web só o adiciona ao `let _ = (...)` (busca web no browser = `fetch`, F3.12). Sem
+novo Record UniFFI (`WebSource` fica interno; não atravessa a fronteira).
+**Query da busca:** o `reference_label` já montado (ex.: `"John 3.16"`) — determinístico,
+sem modelo (o Mock ignora a query; a query real importa só na F3.10/Wikipedia). `limit`
+= um default local pequeno (ex.: `DEFAULT_LEXICON_LIMIT`/const própria).
+**Higiene TS (manter `tsc` verde, sem UI):** estender o wrapper `deepStudy` em
+`app/web/reading.ts` (l.296) e o stub `app/web/reading.web.ts` (l.365) com um param
+**opcional final** `researchBackend?: string` (default `undefined` = comportamento
+atual) e repassá-lo ao binding nativo; **regenerar bindings** (gerados, ignorados). Os
+self-tests/UI existentes (`study-selftest.ts`/`export-selftest.ts`/`ReaderStudyPanel`)
+**não mudam** (o param é opcional). UI de pesquisa web = F3.5 futura/F3.10 real (fora
+de escopo aqui).
+**Aceite:** (1) `deep_study(db,"kjv",43,3,Some(16),Academic,…,"mock",None,None,
+Some("mock"))` devolve `StudyResultOut.citations` com **≥1** citação `kind="Web"` cujo
+`url` contém `example.org` (prova que `web_sources` fluiu do research provider ao
+`study()`, vs. o `vec![]` de hoje) — **sem rede**; (2) com `research_backend=None`
+(ou omitido) **nenhuma** citação `Web` (comportamento atual preservado); (3)
+`passage_text` verbatim do store ≠ `interpretation` (mock) — anti-alucinação mantida;
+(4) grafo wasm **puro** (`cargo tree --target wasm32…` sem `reqwest`/`rusqlite`);
+`tsc`/eslint verdes.
+**Verificação:** `cargo test -p the-light-app-core` (host, `embedded`, MOCK) + `cargo
+tree --target wasm32-unknown-unknown` sem `reqwest`/`rusqlite` + `gen-bindings-web.sh` +
+`tsc --noEmit`. **Depende:** F3.3, F3.9 (ambas aceitas). **NÃO-BLOQUEANTE** (só mock,
+sem chave/rede). **NÃO exige PR** (`build_research_provider`/`ResearchProvider`/
+`WebSource`/`MockResearchProvider` já `pub` sob `embedded` em `c8ecb2f`). **Não toca
+`the-light`** (`c8ecb2f` intacto). Rede real via `"wikipedia"` = **opt-in do usuário**,
+validado na **F3.10**.
+
+## F3.10 — ⛔ Validação real com a chave do usuário (estudo + conversa + comparação + pesquisa web)
+**Objetivo (D3/ADR-0029):** validar o **nativo real** (rede + chave do usuário) em ≥1
+alvo: **estudo profundo** (modo×lente×profundidade, léxico Strong do store, citações
+verificáveis), **conversa** com follow-up, **comparação multi-IA** (Claude/GPT/Gemini)
+e a **pesquisa web Wikipedia** (`deep_study(..., research_backend=Some("wikipedia"))`,
+rede keyless opt-in) — tudo com provedor de verdade. A chave vem do secure-store (F2.4),
+a chamada é rede opt-in; o texto citado, as glosas e as URLs de `[W:n]` continuam do
+**store/da busca real**, só a interpretação vem do modelo. Harness molde F2.6
+(`ask_real.rs`) — **a chave NUNCA passa pelo loop** (o humano executa localmente).
+**Aceite:** com a chave real, `deep_study(..., provider real, research_backend=
+Some("wikipedia"))` devolve um estudo ancorado/citado com fontes web reais citadas
+`[W:n]`; **nenhuma** alucinação de texto/léxico/URL (vêm do store/da busca); Strong e
+`[W:n]` inventados são sinalizados; a chave não vaza em log.
 **Verificação:** teste manual documentado no device com a chave do humano (≥1
-provedor). **gate: true** — exige **chave real** (segredo) + rede → o loop **NÃO**
-roda isto sozinho (HALT p/ o humano). O MOCK (F3.3/F3.5) já provou o determinístico.
-**Depende:** F3.5 (+ F3.9 se pesquisa web).
+provedor). **gate: true** — exige **chave real** (segredo) + rede → o loop **NÃO** roda
+isto sozinho (HALT p/ o humano). O MOCK (F3.3/F3.5/F3.9a) já provou o determinístico.
+**Depende:** F3.5, F3.9, F3.9a. **BLOQUEANTE** (chave/rede).
 
-## F3.11 — PR ao `the-light-core`: deep-study puro em wasm (**condicional — só se F3.9 escolher a via PR**)
-**Objetivo:** *(só se o gate F3.9 decidir a via (b))* num **único PR ao
-`the-light`** (branch autorizado; **push/merge humano**; **re-pin** pelo Driver —
-molde F2.7/F0.6a), tornar a superfície de estudo **`ai-pure`** (compilável em
-`wasm32` sem `reqwest`/`rusqlite`): `study`/`StudyRequest`/`StudyResult`/
-`to_academic_markdown` + a estratégia de `verified_lexicon` no web + transporte de
-`research` por `fetch`. **Não-quebrante** (`default=["embedded"]` intacto). Prova
-**determinística por MOCK**; LLM real = F3.10.
-**Aceite:** no `the-light`, branch: `cargo test --workspace` verde + `cargo build
--p the-light-core --no-default-features --features ai-pure --target
-wasm32-unknown-unknown` compila a superfície de estudo pura + `cargo tree` sem
-`reqwest`/`rusqlite`; spec em `loop/proposals/` + **ADR novo**. Após **push/merge
-humano**, o Driver **re-pina** o rev e revalida a fronteira.
-**Verificação:** (no `the-light`) `cargo test`/`clippy -D warnings`/build wasm;
+## F3.11 — PR ao `the-light-core`: `ai-pure` completo (study + verified_lexicon + pesquisa web pura) — **INCONDICIONAL** (ADR-0029 D2)
+**Objetivo (D2/ADR-0029):** num **único PR sancionado ao `the-light`** (branch
+autorizado; **push/merge humano**; **re-pin** pelo Driver — molde F2.7/F0.6a/ADR-0024),
+**ampliar a feature `ai-pure`** para cobrir as **partes puras do estudo profundo** —
+tornar `study`/`StudyRequest`/`StudyResult`/`to_academic_markdown` e a recuperação/tipos
+de `verified_lexicon` **compiláveis em `wasm32`** sob `ai-pure` (sem `reqwest`/`rusqlite`)
+— e as **partes puras da pesquisa web** que a paridade web exigir (montagem do bloco
+`[W:n]`/citação de `WebSource`; o **transporte** LLM+Wikipedia fica em `fetch`/TS, molde
+F2.7b/ADR-0025). Provável escopo (molde exato F2.7/ADR-0024): expor sob `ai-pure` a
+superfície de `study` (hoje embedded-only) + tornar acessível o `user_prompt` (hoje
+privado) ou uma entrada pública equivalente de montagem; gatear por `embedded` só o que
+puxa SQLite (queries de `verified_lexicon`) / reqwest (research transporte). **Não-quebrante**
+(`default=["embedded"]` intacto, byte-a-byte). Prova **determinística por MOCK**; LLM
+real = F3.10.
+**Aceite:** no `the-light`, branch: `cargo test --workspace` + `clippy -D warnings`
+verdes + `cargo build -p the-light-core --no-default-features --features ai-pure
+--target wasm32-unknown-unknown` compila a superfície de estudo/léxico/pesquisa pura +
+`cargo tree` do grafo `ai-pure`/wasm **sem** `reqwest`/`rusqlite`/`chrono`/`directories`/
+`toml`; spec em `loop/proposals/` + **ADR novo**. Após **push/merge humano**, o Driver
+**re-pina** o rev e revalida a fronteira.
+**Verificação:** (no `the-light`) `cargo test`/`clippy -D warnings`/build wasm `ai-pure`;
 (na fronteira, pós re-pin) `cargo test -p the-light-app-core` + grafo wasm puro.
-**Depende:** F3.9, F3.10. **BLOQUEANTE** (implementa no branch, `blocked`/HALT no
-handoff = aguardando merge + re-pin). **Não** stubar/forkar/copiar. *(Se F3.9
-escolher a via (a) app-side, esta tarefa é **dispensada** e a paridade web vai
-direto para a F3.12, molde F2.7b.)*
+**Depende:** F3.9, F3.10. **BLOQUEANTE** (implementa no branch; `blocked`/HALT no
+handoff = aguardando push/merge humano + re-pin). **Toca `the-light`** (via PR + ADR).
+**Não** stubar/forkar/copiar; **não** espelhar o anti-alucinação do estudo em TS (drift
+PROIBIDO — ADR-0029).
 
-## F3.12 — Paridade web: estudo profundo + léxico + conversa + export
-**Objetivo:** com a decisão da F3.9 (app-side ai-pure/`ai_web_prepare` **ou** core
-re-pinado F3.11), destubar no web: **estudo profundo** (montagem/citação pela
-mesma impl Rust — zero drift), **léxico** (recuperação espelhada em TS sobre o
-store web `wa-sqlite`/OPFS, tipos/verificação do Rust), **conversa** (`ask_session`
-já pura) e **export acadêmico**, com transporte por `fetch` e o texto/léxico
-vindos do **store web** (F1.13–F1.16). Chave web session-only (ADR-0025).
-**Aceite:** estudo profundo + léxico + conversa + export no browser com o texto/
-glosas do store, separando citado/interpretação; prova **headless node** com
-**MOCK de `fetch`** (sem rede real); `expo export web` 0; anti-alucinação = mesma
-impl Rust.
+## F3.12 — Paridade web: estudo profundo + léxico + conversa + pesquisa web + export
+**Objetivo:** com o core **re-pinado** da F3.11 (feature `ai-pure` ampliada, ADR-0029),
+destubar no web: **estudo profundo** (montagem/citação pela **mesma impl Rust** — zero
+drift), **léxico** (recuperação sobre o store web `wa-sqlite`/OPFS, tipos/verificação
+do Rust), **conversa** (`ask_session` já pura, F3.4), **pesquisa web Wikipedia** (busca
+por `fetch` no browser → `WebSource` → mesma montagem `[W:n]` pura, molde F2.7b) e
+**export acadêmico**, com transporte por `fetch` e o texto/léxico vindos do **store web**
+(F1.13–F1.16). Chave web session-only (ADR-0025); pesquisa web opt-in (padrão desligado).
+**Aceite:** estudo profundo + léxico + conversa + pesquisa web + export no browser com o
+texto/glosas do store, separando citado/interpretação; prova **headless node** com
+**MOCK de `fetch`** (sem rede real); `expo export web` 0; anti-alucinação = mesma impl
+Rust.
 **Verificação:** prova headless node com MOCK + `expo export web` 0.
-**Depende:** F3.11 (se via PR), F3.5, F3.6, F3.8. **Não-bloqueante** (app-side).
+**Depende:** F3.11 (re-pinado), F3.5, F3.6, F3.8. **Não-bloqueante** (app-side).
 
 ## F3.13 — ⛔ Marco 3: plataforma de estudo profundo completa
 **Objetivo:** confirmar a **plataforma de estudo profundo** funcionando: estudo
 por **modo×lente×profundidade** com **léxico Strong verificado** e **citações
 verificáveis** (texto/glosas **do store**, anti-alucinação), **conversa** com
 follow-up, **comparação multi-IA** (Claude/GPT/Gemini), **export acadêmico** (SBL),
-**[pesquisa web opt-in per F3.9]**; IA opt-in (o app segue 100% offline sem IA);
+**pesquisa web Wikipedia opt-in** (keyless, padrão desligado — ADR-0028); IA opt-in
+(o app segue 100% offline sem IA);
 chave em armazenamento seguro (nunca em git/log); atribuições (STEP CC-BY, OpenBible
 CC-BY) visíveis; `the-light` consumido pinado (PRs registrados + re-pin). Atualizar
 `PROGRESS.md`; consolidar ADRs.
