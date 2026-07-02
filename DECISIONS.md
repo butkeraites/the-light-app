@@ -2513,3 +2513,94 @@ sem regressão web (reading/search/xref/notes/ask/keystore) nem nativa (`deep_st
   deepStudy.web.test.mjs,lexicalEntries.web.test.mjs,export.web.test.mjs}` (novos),
   `app/package.json` (scripts), `DECISIONS.md` (este ADR). **Gerado/IGNORADO:**
   `app/web/generated/*` (bindings web).
+
+## ADR-0032 — F3.12b: paridade WEB da **conversa ancorada** + **pesquisa Wikipedia** (opt-in, keyless) + **comparação multi-IA** — 1 fronteira web nova (`session_web_prepare` via `CaptureProvider`, zero drift) + `fetch` Wikipedia em TS (ADR-0028) + reuso de `askAnchored`
+
+- **Data:** 2026-07-02 · **Status:** aceito · **Tarefa:** F3.12b · **Depende:** ADR-0031 (F3.12a: fronteira web do estudo `study_web_*`, que **já aceita** `web_sources`), ADR-0025/ADR-0024 (F2.7b prepare/fetch/finalize + chave web session-only), ADR-0028 (pesquisa web Wikipedia keyless opt-in), ADR-0011 (infra TS de store no web), ADR-0029 (D2: zero drift)
+
+### Contexto
+A F3.12a entregou a fronteira web do estudo (`study_web_prepare`/`study_web_finalize`, que
+**já aceita** `web_sources: Vec<StudyWebSourceInput>`, vazio na F3.12a). Faltava fechar a
+paridade web do estudo profundo em 3 frentes, **sem** espelhar em TS o anti-alucinação
+(prompt/citação/`[W:n]`/verify/aparato — proibido, ADR-0029) e **sem** tocar o `the-light`
+(@ `04b9b24`) nem `core/Cargo.toml`: (1) **conversa ancorada web** (`askSessionAnchored`,
+stub desde F3.6), (2) **pesquisa web Wikipedia** (rede opt-in, ADR-0028), (3) **comparação
+multi-IA web** (`askAnchored` já web-ok desde F2.7b; só faltava un-SKIP do self-test).
+
+### Decisão
+**Fonte única em Rust `ai-pure` / ZERO DRIFT** — só a recuperação de store (SELECT léxico,
+ADR-0011) e o transporte (`fetch` ao LLM/Wikipedia, ADR-0025/ADR-0028) são infra TS:
+
+1. **Conversa web = 1 fronteira web nova** em `core/src/lib.rs` (única mudança em `core/`;
+   **cfg-free**, só a superfície `pub` do `ai-pure` — nenhum store/`rusqlite`/`reqwest`, grafo
+   wasm segue puro): `session_web_prepare(book, chapter, verse, lang, turns, study_mode?,
+   study_lens?, provider, model?, verses, related) -> AiWebRequest`. **NÃO** reusa
+   `ai_web_prepare` (aquele usa `ai::ask` → `ask_system_prompt` + `user` de 1 turno; a conversa
+   usa `ai::ask_session` → `study_followup`/`ask_system` + o `context` do 1º turno + o
+   **transcript dobrado**). A menor via zero-drift: dirigir `ai::ask_session(&cap, lang,
+   &context, &messages, study)` por um **`CaptureProvider`** (reuso da F2.7b, sobrescreve **só**
+   `complete`) — o `chat` **default** dobra o transcript e chama `complete(system, user)`,
+   capturando o par EXATO que o nativo (`ask_session_anchored`) enviaria. `cited_text =
+   ai::numbered_verses(verses)` (VERBATIM do store web); `context = ai::ask_context(label,
+   cited_text, related)`. Devolve o **mesmo `AiWebRequest`** do `ask`. O **finalize é REUSO PURO
+   de `ai_web_finalize`** (F2.7b — `rewrite_anchors` com válidas vazio → limpa âncoras espúrias;
+   idêntico ao `ask` sem citações léxicas): **nenhum finalize novo**.
+   - **Glue** `app/web/session.web.ts` (par de `ai-anchored.web.ts`): `askSessionAnchoredOnHandle`
+     = `hasTranslation` → `queryChapter` + recorte → `verses`; `session_web_prepare` (wasm,
+     `related = []` no MVP — ver abaixo) → `webLlmTransport` (`fetch`, chave só no header) →
+     `aiWebFinalize` (wasm) → `AiAnswer`. `reading.web.ts` **destuba** `askSessionAnchored`. O
+     `ReaderChatPanel` (F3.6) passa a funcionar no web só por este glue.
+   - **Decisão MVP `related = []`:** o `related` (RAG leve = rótulos de xref do store web) fica
+     **vazio** no web nesta fatia. Não é drift do anti-alucinação (o prompt/contexto é do MESMO
+     Rust `ai::ask_context`; `related` é **recuperação** de store — infra TS, ADR-0011). Popular
+     `related` via `crossRefsOnHandle` é follow-up (exige formatar rótulos, hoje só em Rust).
+2. **Pesquisa Wikipedia web = `fetch` TS keyless (opt-in), SEM Rust** (ADR-0028): novo
+   `app/web/research.web.ts::wikipediaSearch(fetchImpl, query, lang, limit) ->
+   StudyWebSourceInput[]` — `fetch` à API pública (`/w/api.php?action=query&list=search&
+   format=json&origin=*&srsearch=…`, **keyless**), mapeia `search[]` → `{title, url (artigo),
+   snippet (sem HTML), site, fetchedAt}`. `study.web.ts::deepStudyOnHandle` passa a resolver
+   `web_sources` quando `researchBackend === 'wikipedia'` (query = rótulo da passagem, como o
+   nativo `deep_study`) e os repassa a `study_web_prepare`/`study_web_finalize` (que **já
+   aceitam**). O bloco `[W:n]` no prompt, as citações `kind="Web"` (das URLs, `from_web_results`)
+   e o `verify`/aparato vêm do **MESMO Rust `ai-pure`** — **nunca** do modelo. Sem backend (ou
+   `undefined`) → `[]` (offline por padrão, comportamento F3.12a); backend desconhecido → erro
+   explícito (espelha `build_research_provider`). **UI:** `ReaderStudyPanel` ganha um **toggle
+   opt-in DESLIGADO por padrão** + **aviso de privacidade** (a rede Wikipedia só ocorre quando o
+   usuário liga; keyless, sem segredo).
+3. **Comparação web = reuso puro de `askAnchored`** (já destubada, F2.7b): **nenhum** glue/
+   fronteira nova; só **un-SKIP** de `compare-selftest.web.ts` (2× `askAnchored` `"mock"`, mesma
+   âncora → `cited_match`) e `chat-selftest.web.ts` (conversa de 2 turnos), agora provas reais
+   pela fronteira web.
+
+### Prova (portões F3.12b)
+`session_web_prepare` nos bindings web (`gen-bindings-web.sh` exit 0, `sessionWebPrepare`
+presente); grafo wasm **puro** (`cargo tree` wasm sem `rusqlite`/`reqwest`/`wasm-bindgen`/
+`js-sys`); `cargo fmt`/`clippy -D warnings`/`test` (**68** = 65 + 3 host: **paridade** conversa
+nativo↔web — `(system,user)` capturado idêntico ao `ask_session` nativo → zero drift; system
+de follow-up de estudo ≠ `ask` simples; `related` entra no contexto). Provas **headless node**
+(fetch MOCK, sem rede/chave real): `askSession.web` ponta a ponta (citedText = João 3:16 KJV
+VERBATIM do store ≠ interpretation do mock; multi-turno sem panic; user ancora no citedText 1×
++ transcript; provider gemini, chave só no header, 1 fetch; "mock" = 0 fetch); `research.web`
+(estudo Acadêmico com `researchBackend="wikipedia"` + fetch MOCK Wikipedia+LLM → ≥1 citação
+`kind="Web"` com URL wikipedia + `academicMarkdown` cita `[W`; SEM `researchBackend` → 0 citação
+Web; Wikipedia keyless, chave do LLM só no header); `compare.web` (2× `askAnchored` mock, mesma
+âncora, `cited_match=true`, 0 fetch). `tsc --noEmit` 0 + `expo export --platform web` 0 (`.wasm`
+empacotado); sem regressão web (reading/search/xref/notes/ask/study/léxico/export) nem nativa.
+
+### Consequências
+- `the-light` **intacto** (`04b9b24`; consumido como dependência git pinada) e
+  `core/Cargo.toml`/`Cargo.lock` **não** alterados — a fronteira web da conversa
+  (`session_web_prepare` em `core/src/lib.rs`) é a única mudança em `core/`.
+- Anti-alucinação **com ZERO DRIFT**: conversa (`ask_session`+`ask_context`+transcript dobrado),
+  `[W:n]`/citações web (`from_web_results`) e verify/aparato do MESMO Rust `ai-pure` no web e no
+  nativo; `citedText`/glosas SEMPRE do store; `interpretation` só do LLM.
+- Offline-first/BYOK: sem chave/sessão, o app segue 100% offline; a IA web (conversa/estudo) é
+  **opt-in** e a chave é session-only (só no header, nunca em git/log). A **pesquisa Wikipedia**
+  é a única rede além do LLM, **KEYLESS** e **opt-in** (padrão OFF + aviso de privacidade).
+- **Versionado nesta tarefa:** `core/src/lib.rs` (fronteira `session_web_prepare` + 3 testes de
+  paridade/host), `app/web/{session,research}.web.ts` (novos), `app/web/{study,reading}.web.ts`
+  (wire Wikipedia + destub conversa), `app/web/{chat,compare}-selftest.web.ts` (un-SKIP),
+  `app/components/ReaderStudyPanel.tsx` (toggle opt-in + aviso de privacidade),
+  `app/web/__tests__/{askSession-headless-entry.ts,askSession.web.test.mjs,research.web.test.mjs,
+  compare.web.test.mjs}` (novos), `app/package.json` (scripts), `DECISIONS.md` (este ADR).
+  **Gerado/IGNORADO:** `app/web/generated/*` (bindings web).

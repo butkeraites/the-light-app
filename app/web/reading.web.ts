@@ -63,6 +63,7 @@ import { crossRefsOnHandle } from './sqlite-xref.web';
 import { openReadingDbWeb } from './sqlite-reading-opfs.web';
 import { askAnchoredOnHandle, type AiFetch } from './ai-anchored.web';
 import { deepStudyOnHandle, lexicalEntriesOnHandle } from './study.web';
+import { askSessionAnchoredOnHandle } from './session.web';
 import {
   addHighlightFs,
   deleteNoteFs,
@@ -432,28 +433,56 @@ export async function lexicalEntries(
   }
 }
 
-// ── CONVERSA/FOLLOW-UP ANCORADO (ask_session_anchored) — STUB WEB (F3.12) ──────────────
-// A conversa multi-turno ancorada (`ask_session_anchored`) NÃO está disponível no web nesta
-// tarefa (F3.6 é só NATIVO). A superfície da camada `ai` (contexto/conversa) e o store são
-// `embedded`-only (nativo); a paridade web é a F3.12. Aqui apenas lançamos um erro explícito
-// (mesmo padrão do `deepStudy` acima), mantendo `tsc`/Metro web verdes e a camada `ai`/store
-// FORA do bundle web. A assinatura é idêntica à do glue nativo (respeitando a ordem real dos
-// argumentos: `lang` ANTES de `turns`; `studyMode`/`studyLens` DEPOIS de `turns`).
+// ── CONVERSA/FOLLOW-UP ANCORADO (ask_session_anchored) — F3.12b (ADR-0032) ─────────────
+// DESTUBADO: paridade web da CONVERSA multi-turno. O prompt/RAG/conversa/citação vêm do Rust
+// `ai-pure` no wasm (`sessionWebPrepare` + reuso de `aiWebFinalize`, ZERO drift nativo↔web) e
+// o transporte é `fetch` ao provedor (MVP = Gemini), delegado ao pipeline
+// `askSessionAnchoredOnHandle` (`session.web.ts`). O texto do versículo (âncora) vem do STORE
+// local (subset F1.13, via `sqlite-reading.web`). Aqui só abrimos o store web (OPFS) e
+// passamos o `globalThis.fetch`. Anti-alucinação: o `citedText` (âncora) vem SEMPRE do store;
+// o LLM só conversa/interpreta. BYOK/offline-first: sem chave, o app segue offline; a IA é
+// opt-in e só faz rede no `fetch` (a chave, session-only no `keystore.web`, vai só no header —
+// nunca logada). A assinatura é idêntica à do glue nativo (`lang` ANTES de `turns`;
+// `studyMode`/`studyLens` DEPOIS de `turns`).
 
-/** STUB web: conversa ancorada = F3.12. Assinatura idêntica ao nativo (`_` = não usados). */
+/**
+ * Conversa/follow-up ancorado no web: abre o store web (subset, F1.13) e delega ao pipeline
+ * `askSessionAnchoredOnHandle` (wasm `ai-pure` + `fetch`). `_dbPath` é aceito por paridade de
+ * assinatura com o nativo; o store web abre o subset internamente. O `AiAnswer` traz o
+ * `citedText` (âncora, store, verbatim) SEPARADO de cada `interpretation` (LLM).
+ */
 export async function askSessionAnchored(
   _dbPath: string,
-  _translation: string,
-  _book: number,
-  _chapter: number,
-  _verse: number | undefined,
-  _lang: string,
-  _turns: ChatTurn[],
-  _studyMode: StudyMode | undefined,
-  _studyLens: StudyLens | undefined,
-  _providerName: string,
-  _key: string | undefined,
-  _model: string | undefined,
+  translation: string,
+  book: number,
+  chapter: number,
+  verse: number | undefined,
+  lang: string,
+  turns: ChatTurn[],
+  studyMode: StudyMode | undefined,
+  studyLens: StudyLens | undefined,
+  providerName: string,
+  key: string | undefined,
+  model: string | undefined,
 ): Promise<AiAnswer> {
-  throw new Error('conversa ancorada no web = F3.12');
+  const handle = await openReadingDbWeb();
+  try {
+    return await askSessionAnchoredOnHandle(
+      handle,
+      defaultFetch,
+      translation,
+      book,
+      chapter,
+      verse,
+      lang,
+      turns,
+      studyMode,
+      studyLens,
+      providerName,
+      key,
+      model,
+    );
+  } finally {
+    await handle.close();
+  }
 }

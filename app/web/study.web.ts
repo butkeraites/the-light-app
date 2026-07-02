@@ -22,19 +22,62 @@
 // `.wasm` como asset): o mesmo singleton wasm; a prova headless (esbuild/node) instancia o
 // wasm manualmente. No browser o wasm já está inicializado por `useWasmReady()`.
 import {
+  listBooks,
   studyWebFinalize,
   studyWebPrepare,
+  type Book,
   type StudyLexEntryInput,
   type StudyResultOut,
   type StudyDepth,
   type StudyLens,
   type StudyMode,
+  type StudyWebSourceInput,
   type VerifiedLexiconOut,
   type AiVerseInput,
 } from './generated/the_light_app_core';
 import { webLlmTransport, type AiFetch } from './ai-anchored.web';
 import { hasTranslation, queryChapter, type ChapterRow, type ReadingDb } from './sqlite-reading.web';
 import { DEFAULT_LEXICON_LIMIT, queryVerifiedLexicon } from './sqlite-lexicon.web';
+import { DEFAULT_WIKIPEDIA_LIMIT, wikipediaSearch } from './research.web';
+
+/** Backend de pesquisa web SUPORTADO no web (rede opt-in, KEYLESS). */
+const WIKIPEDIA_BACKEND = 'wikipedia';
+
+/**
+ * Consulta de pesquisa web = rótulo da passagem (`<Livro> <cap>[:<verso>]`, nome EN do
+ * cânon PURO do Rust via `listBooks`), espelhando o `query = reference_label` do nativo
+ * (`deep_study`). Determinística; o mock a ignora, só a Wikipedia a usa.
+ */
+function researchQuery(book: number, chapter: number, verse: number | undefined): string {
+  const found = listBooks().find((b: Book) => b.number === book);
+  const name = found ? found.nameEn : `Book ${book}`;
+  return verse == null ? `${name} ${chapter}` : `${name} ${chapter}:${verse}`;
+}
+
+/**
+ * Resolve as FONTES WEB (opt-in) para o estudo. `undefined`/vazio → `[]` (comportamento
+ * F3.12a, OFFLINE por padrão). `"wikipedia"` → `fetch` KEYLESS à Wikipedia (a única rede
+ * além do LLM; só quando o usuário liga). Qualquer outro backend → erro explícito (espelha
+ * a rejeição do nativo `build_research_provider`), sem rede. As citações/`[W:n]` são do
+ * Rust `ai-pure` (das URLs); aqui só RECUPERAMOS as fontes.
+ */
+async function resolveWebSources(
+  fetchImpl: AiFetch,
+  researchBackend: string | undefined,
+  book: number,
+  chapter: number,
+  verse: number | undefined,
+  lang: string,
+): Promise<StudyWebSourceInput[]> {
+  if (researchBackend == null || researchBackend.trim().length === 0) {
+    return [];
+  }
+  if (researchBackend !== WIKIPEDIA_BACKEND) {
+    throw new Error(`backend de pesquisa web desconhecido no web: ${researchBackend}`);
+  }
+  const query = researchQuery(book, chapter, verse);
+  return wikipediaSearch(fetchImpl, query, lang, DEFAULT_WIKIPEDIA_LIMIT);
+}
 
 /**
  * Léxico verificado de uma passagem, do STORE local (subset) — infra TS (ADR-0011). É o
@@ -75,10 +118,13 @@ function versesForPassage(verse: number | undefined, rows: ChapterRow[]): AiVers
  *   5) transporte TS (`fetch`) → `interpretation` (a única rede, opt-in, com a chave);
  *   6) `studyWebFinalize` (wasm) → `StudyResultOut` (verify/citação/aparato/markdown em
  *      Rust; `passageText` do store SEPARADO da `interpretation`).
- * `researchBackend` é ACEITO por paridade de assinatura, mas IGNORADO nesta fatia
- * (pesquisa web Wikipedia = F3.12b, app-side): `web_sources` segue `[]`.
+ * `researchBackend === 'wikipedia'` (F3.12b, opt-in): `resolveWebSources` faz um `fetch`
+ * KEYLESS à Wikipedia → `web_sources` alimenta prepare/finalize → o estudo ganha as
+ * citações `[W:n]`/`kind="Web"` (do Rust `ai-pure`, das URLs — NUNCA do modelo). Sem
+ * backend (ou `undefined`) → `web_sources` `[]` (comportamento F3.12a, OFFLINE por padrão).
  * Anti-alucinação COM ZERO DRIFT: texto/léxico do store; prompt+verify+citação+aparato do
- * MESMO Rust `ai-pure` no web e no nativo.
+ * MESMO Rust `ai-pure` no web e no nativo; só a recuperação (léxico/Wikipedia) e o
+ * transporte (`fetch`) são infra TS.
  */
 export async function deepStudyOnHandle(
   handle: ReadingDb,
@@ -94,7 +140,7 @@ export async function deepStudyOnHandle(
   provider: string,
   key: string | undefined,
   model: string | undefined,
-  _researchBackend?: string,
+  researchBackend?: string,
 ): Promise<StudyResultOut> {
   if (!(await hasTranslation(handle, translation))) {
     // Espelha `SourceError::UnknownTranslation` propagado pelo nativo.
@@ -114,7 +160,10 @@ export async function deepStudyOnHandle(
     testament: e.testament,
   }));
 
-  // (4) prepare (wasm) — prompt/RAG do Rust `ai-pure`. web_sources = [] (F3.12a).
+  // Pesquisa web OPT-IN (Wikipedia keyless) — a única rede além do LLM; padrão OFF ([]).
+  const webSources = await resolveWebSources(fetchImpl, researchBackend, book, chapter, verse, lang);
+
+  // (4) prepare (wasm) — prompt/RAG/[W:n] do Rust `ai-pure`. web_sources = Wikipedia|[].
   const request = studyWebPrepare(
     book,
     chapter,
@@ -128,7 +177,7 @@ export async function deepStudyOnHandle(
     verses,
     lexEntries,
     lex.sources,
-    [],
+    webSources,
   );
 
   // (5) transporte (`fetch`) — a chave vai SÓ no header (nunca logada/na URL).
@@ -153,6 +202,6 @@ export async function deepStudyOnHandle(
     interpretation,
     lexEntries,
     lex.sources,
-    [],
+    webSources,
   );
 }

@@ -16,7 +16,10 @@
     "test:web:ai": "node web/__tests__/askAnchored.web.test.mjs",
     "test:web:study": "node web/__tests__/deepStudy.web.test.mjs",
     "test:web:lexicon": "node web/__tests__/lexicalEntries.web.test.mjs",
-    "test:web:export": "node web/__tests__/export.web.test.mjs"
+    "test:web:export": "node web/__tests__/export.web.test.mjs",
+    "test:web:session": "node web/__tests__/askSession.web.test.mjs",
+    "test:web:research": "node web/__tests__/research.web.test.mjs",
+    "test:web:compare": "node web/__tests__/compare.web.test.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~56.0.15",

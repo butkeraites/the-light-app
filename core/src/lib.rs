@@ -2671,6 +2671,112 @@ pub fn ai_web_finalize(
     })
 }
 
+/// **Prepara** uma CONVERSA ANCORADA (follow-up multi-turno) para o transporte web
+/// (`fetch`), delegando a montagem de prompt/RAG/conversa às partes **puras** do `ai`
+/// do `the-light-core` (feature `ai-pure`) — a MESMA impl do nativo
+/// (`ask_session_anchored` → `ai::ask_session`), logo **zero drift** (F3.12b, ADR-0032).
+///
+/// A conversa **NÃO** reusa [`ai_web_prepare`]: aquele usa `ai::ask` (pergunta única →
+/// `ask_system_prompt` + `user` de 1 turno). A conversa usa `ai::ask_session`
+/// (`study_followup_system_prompt` quando há estudo, ou `ask_system_prompt`; o `context`
+/// embutido só no 1º turno de usuário; o transcript **dobrado** num único `user` pelo
+/// `chat` default). Por isso a fronteira nova — mas o **finalize é reuso puro** de
+/// [`ai_web_finalize`] (conjunto de âncoras válidas vazio → limpa âncoras espúrias, o
+/// mesmo do `ask`), logo **nenhum** finalize novo.
+///
+/// Pipeline (**cfg-free** — só a superfície `pub` do `ai-pure`; **nenhum**
+/// store/`rusqlite`/`reqwest`, então o grafo wasm segue puro), espelhando
+/// `ask_session_anchored` (passos 2–6; a âncora vem do store **web** via `verses`):
+/// 1. `reference` = `Reference::single`/`whole_chapter`; `lang.parse::<Lang>()` (default `Pt`);
+/// 2. `cited_text = ai::numbered_verses(verses)` — **verbatim do store web**, numerado pela
+///    **mesma** fn do nativo (`numbered_passage` chama `numbered_verses`);
+/// 3. `label = format_reference(&ref, lang)`; `context = ai::ask_context(&label,
+///    &cited_text, &related)` (o `related` = rótulos de xref do store web — RAG leve — ou
+///    `[]` no MVP; monta o MESMO contexto ancorado do nativo);
+/// 4. `study = study_mode.zip(study_lens).map(|(m,l)| (m.into(), l.into()))`;
+/// 5. `messages = turns.into_iter().map(Into::into).collect()` (`Vec<ChatMessage>`);
+///    `model` = o informado (não-vazio) ou `ai::default_model(provider)`;
+/// 6. **system+user EXATOS** via um [`CaptureProvider`] dirigido por
+///    `ai::ask_session(&cap, lang, &context, &messages, study)` — o `chat` **default** dobra
+///    o transcript e chama `complete(system, user)`, que grava o par EXATO que o nativo
+///    enviaria (o `ask_user_prompt`/dobra do core são privados).
+///
+/// Anti-alucinação **com zero drift**: `cited_text` do store; prompt/conversa/citação do
+/// MESMO Rust `ai-pure` no web e no nativo. Devolve o MESMO [`AiWebRequest`] do `ask`
+/// (reuso); o transporte (`fetch` com o histórico + a chave session-only) fica no TS
+/// (ADR-0025). Sem rede aqui.
+#[uniffi::export]
+#[allow(clippy::too_many_arguments)]
+pub fn session_web_prepare(
+    book: u8,
+    chapter: u16,
+    verse: Option<u16>,
+    lang: String,
+    turns: Vec<ChatTurn>,
+    study_mode: Option<StudyMode>,
+    study_lens: Option<StudyLens>,
+    provider_name: String,
+    model: Option<String>,
+    verses: Vec<AiVerseInput>,
+    related: Vec<String>,
+) -> Result<AiWebRequest, CoreError> {
+    // 1) Idioma (default Pt) + referência (single ou capítulo inteiro), como o nativo.
+    let lang = lang
+        .parse::<the_light_core::model::Lang>()
+        .unwrap_or(the_light_core::model::Lang::Pt);
+    let reference = match verse {
+        Some(v) => the_light_core::model::Reference::single(book, chapter, v),
+        None => the_light_core::model::Reference::whole_chapter(book, chapter),
+    };
+
+    // 2) cited_text: VERBATIM do store web (verses), numerado pela MESMA fn do nativo.
+    let cited_text =
+        the_light_core::ai::numbered_verses(verses.iter().map(|v| (v.number, v.text.as_str())));
+
+    // 3) Contexto ancorado: rótulo + numerado + rótulos de xref (RAG leve; `[]` no MVP).
+    let label = the_light_core::reference::format_reference(&reference, lang);
+    let context = the_light_core::ai::ask_context(&label, &cited_text, &related);
+
+    // 4) Estudo (modo + lente) só quando ambos presentes → prompt de follow-up de estudo.
+    let study = study_mode
+        .zip(study_lens)
+        .map(|(m, l)| (m.into(), l.into()));
+
+    // 5) Histórico → mensagens do core + modelo resolvido (default do provedor).
+    let messages: Vec<the_light_core::ai::ChatMessage> =
+        turns.into_iter().map(Into::into).collect();
+    let model = model
+        .filter(|m| !m.trim().is_empty())
+        .unwrap_or_else(|| the_light_core::ai::default_model(&provider_name).to_string());
+
+    // 6) system+user EXATOS via `ask_session` sobre um CaptureProvider: o `chat` default
+    //    dobra o transcript e chama `complete(system, user)`, gravando o par EXATO que o
+    //    nativo enviaria (o `ask_user_prompt`/dobra do core são privados → esta é a única
+    //    rota pública que rende o par sem drift).
+    let cap = CaptureProvider {
+        provider: provider_name.clone(),
+        model: model.clone(),
+        captured: std::cell::RefCell::new(None),
+    };
+    let _ = the_light_core::ai::ask_session(&cap, lang, &context, &messages, study);
+    let (system, user) = cap
+        .captured
+        .into_inner()
+        .ok_or_else(|| CoreError::Generic {
+            message: "falha ao capturar o prompt da conversa ancorada (session_web_prepare)"
+                .to_string(),
+        })?;
+
+    Ok(AiWebRequest {
+        reference: reference.into(),
+        cited_text,
+        system,
+        user,
+        provider: provider_name,
+        model,
+    })
+}
+
 // ── F3.12a: fronteira WEB do ESTUDO PROFUNDO (study_web_prepare/study_web_finalize) ──────
 //
 // Molde EXATO da F2.7b (`ai_web_prepare`/`ai_web_finalize`, ADR-0025): corpo **cfg-free**
@@ -6027,6 +6133,211 @@ mod session_tests {
             "a interpretação do mock não depende do texto bíblico"
         );
         assert_eq!(a16.interpretation, mock_fixed_response());
+    }
+
+    // ── F3.12b: PARIDADE nativo↔web da CONVERSA (session_web_prepare) ─────────────
+    // Prova, no HOST, que a fronteira web da conversa (`session_web_prepare`, cfg-free)
+    // captura o MESMO `(system, user)` que a `ai::ask_session` enviaria no caminho
+    // nativo (`ask_session_anchored`), para os MESMOS inputs (verses do store + related +
+    // turns). Como a fn é cfg-free (ai-pure), compila igual no wasm → ZERO drift. O
+    // `CaptureProvider` (private no módulo pai) é acessível ao teste (submódulo).
+
+    #[test]
+    fn session_web_prepare_matches_native_ask_session_zero_drift() {
+        use the_light_core::source::BibleSource;
+
+        let db = build_kjv_fixture();
+        let lang = the_light_core::model::Lang::En;
+        let reference = the_light_core::model::Reference::single(43, 3, 16);
+
+        // ── NATIVO: monta o MESMO contexto ancorado que `ask_session_anchored` (store) e
+        //    captura, via CaptureProvider, o par (system, user) que `ask_session` enviaria. ──
+        let store = the_light_core::store::Store::open(db.path()).expect("abrir fixture");
+        let source = the_light_core::source::EmbeddedSource::new(&store);
+        let translation_id = the_light_core::model::TranslationId::new("kjv");
+        let passage = source
+            .passage(&reference, &translation_id)
+            .expect("passagem João 3:16 do store");
+        let native_cited = the_light_core::ai::numbered_passage(&passage);
+        let label = the_light_core::reference::format_reference(&reference, lang);
+        let related = the_light_core::xref::passage_labels(
+            store.conn(),
+            &reference,
+            &[],
+            lang,
+            the_light_core::xref::DEFAULT_LIMIT,
+        );
+        let context = the_light_core::ai::ask_context(&label, &native_cited, &related);
+        let messages = vec![
+            the_light_core::ai::ChatMessage {
+                role: the_light_core::ai::ChatRole::User,
+                content: "What does this mean?".to_string(),
+            },
+            the_light_core::ai::ChatMessage {
+                role: the_light_core::ai::ChatRole::Assistant,
+                content: "It speaks of God's love.".to_string(),
+            },
+            the_light_core::ai::ChatMessage {
+                role: the_light_core::ai::ChatRole::User,
+                content: "How so?".to_string(),
+            },
+        ];
+        let cap = CaptureProvider {
+            provider: "gemini".to_string(),
+            model: "gemini-2.5-flash".to_string(),
+            captured: std::cell::RefCell::new(None),
+        };
+        let _ = the_light_core::ai::ask_session(&cap, lang, &context, &messages, None);
+        let (native_system, native_user) =
+            cap.captured.into_inner().expect("capturou o prompt nativo");
+
+        // ── WEB: session_web_prepare com os MESMOS verses (store) + related + turns. ──
+        let req = session_web_prepare(
+            43,
+            3,
+            Some(16),
+            "en".to_string(),
+            vec![
+                ChatTurn {
+                    role: ChatRole::User,
+                    content: "What does this mean?".to_string(),
+                },
+                ChatTurn {
+                    role: ChatRole::Assistant,
+                    content: "It speaks of God's love.".to_string(),
+                },
+                ChatTurn {
+                    role: ChatRole::User,
+                    content: "How so?".to_string(),
+                },
+            ],
+            None,
+            None,
+            "gemini".to_string(),
+            None,
+            vec![AiVerseInput {
+                number: 16,
+                text: JOHN_3_16_KJV.to_string(),
+            }],
+            related.clone(),
+        )
+        .expect("session_web_prepare");
+
+        // ZERO drift: cited_text/system/user idênticos ao nativo (mesma impl ai-pure).
+        assert_eq!(
+            req.cited_text, native_cited,
+            "cited_text idêntico ao nativo"
+        );
+        assert_eq!(
+            req.system, native_system,
+            "system idêntico ao nativo (zero drift)"
+        );
+        assert_eq!(
+            req.user, native_user,
+            "user idêntico ao nativo (transcript dobrado no chat default)"
+        );
+        assert!(
+            req.cited_text.contains(JOHN_3_16_KJV),
+            "cited_text é o versículo verbatim do store: {}",
+            req.cited_text
+        );
+        assert_eq!(req.provider, "gemini");
+        assert_eq!(req.model, "gemini-2.5-flash");
+    }
+
+    #[test]
+    fn session_web_prepare_study_followup_and_cited_text_verbatim() {
+        // Com study_mode+study_lens, o system é o de follow-up de ESTUDO (≠ ask simples);
+        // o cited_text é o versículo VERBATIM do store e o user ancora nele (contexto do
+        // 1º turno) exatamente 1×.
+        let verses = vec![AiVerseInput {
+            number: 16,
+            text: JOHN_3_16_KJV.to_string(),
+        }];
+        let turns = vec![ChatTurn {
+            role: ChatRole::User,
+            content: "Explique a lente reformada.".to_string(),
+        }];
+
+        let plain = session_web_prepare(
+            43,
+            3,
+            Some(16),
+            "pt".to_string(),
+            turns.clone(),
+            None,
+            None,
+            "gemini".to_string(),
+            None,
+            verses.clone(),
+            Vec::new(),
+        )
+        .expect("session_web_prepare (sem estudo)");
+
+        let study = session_web_prepare(
+            43,
+            3,
+            Some(16),
+            "pt".to_string(),
+            turns.clone(),
+            Some(StudyMode::Academic),
+            Some(StudyLens::Presbyterian),
+            "gemini".to_string(),
+            None,
+            verses.clone(),
+            Vec::new(),
+        )
+        .expect("session_web_prepare (estudo)");
+
+        // cited_text VERBATIM do store, numerado.
+        assert!(study.cited_text.contains(JOHN_3_16_KJV));
+        assert!(study.cited_text.contains("16 For God so loved the world"));
+
+        // O user ancora no cited_text (contexto do 1º turno) exatamente 1×.
+        assert_eq!(
+            study.user.matches(JOHN_3_16_KJV).count(),
+            1,
+            "âncora do versículo aparece 1× no user (invariante do 1º turno)"
+        );
+
+        // system de follow-up de estudo ≠ system do ask simples (prompt distinto).
+        assert_ne!(
+            plain.system, study.system,
+            "estudo (modo+lente) muda o system prompt da conversa"
+        );
+    }
+
+    #[test]
+    fn session_web_prepare_embeds_related_labels_in_context() {
+        // O `related` (RAG leve de rótulos de xref do store web) entra no contexto
+        // ancorado (embutido no user do 1º turno pela `ask_context` — mesma fn do nativo).
+        let req = session_web_prepare(
+            43,
+            3,
+            Some(16),
+            "en".to_string(),
+            vec![ChatTurn {
+                role: ChatRole::User,
+                content: "q".to_string(),
+            }],
+            None,
+            None,
+            "mock".to_string(),
+            None,
+            vec![AiVerseInput {
+                number: 16,
+                text: JOHN_3_16_KJV.to_string(),
+            }],
+            vec!["Romans 5.8".to_string()],
+        )
+        .expect("session_web_prepare (related)");
+        assert!(
+            req.user.contains("Romans 5.8"),
+            "o rótulo relacionado entra no contexto ancorado (user): {}",
+            req.user
+        );
+        // provider mock → default_model do mock (resolvido em ai-pure).
+        assert_eq!(req.provider, "mock");
     }
 
     #[test]

@@ -50,6 +50,12 @@ import {
 // único provedor desta entrega (a chave real + rede são a F3.10).
 const MOCK_PROVIDER = 'mock';
 
+// Backend de pesquisa web OPT-IN (Wikipedia keyless, ADR-0028/ADR-0032): a única rede além
+// do LLM, DESLIGADA por padrão. Quando o usuário liga, o estudo (modo Acadêmico) ganha
+// citações `[W:n]`/`kind="Web"` das URLs buscadas — montadas pelo Rust `ai-pure`, nunca pelo
+// modelo. Sem liga → `undefined` (offline, comportamento F3.12a).
+const WIKIPEDIA_BACKEND = 'wikipedia';
+
 /**
  * Atribuição STEP CC-BY CANÔNICA (ADR-0026) — string verbatim de
  * `scholarly_sources.attribution`. A UI exibe as `sources` REAIS do retorno (não esta
@@ -126,6 +132,9 @@ export function ReaderStudyPanel({
   const [mode, setMode] = useState<StudyMode>(StudyMode.Academic);
   const [lens, setLens] = useState<StudyLens>(StudyLens.Presbyterian);
   const [depth, setDepth] = useState<StudyDepth>(StudyDepth.Exegetical);
+  // Pesquisa web OPT-IN (Wikipedia keyless) — padrão DESLIGADO (offline por padrão). É uma
+  // PREFERÊNCIA do usuário: persiste entre passagens (não é resultado; não reseta no useEffect).
+  const [webResearch, setWebResearch] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<StudyResultOut | null>(null);
   const [lexicon, setLexicon] = useState<VerifiedLexiconOut | null>(null);
@@ -168,6 +177,8 @@ export function ReaderStudyPanel({
           MOCK_PROVIDER,
           undefined,
           undefined,
+          // Pesquisa web opt-in (Wikipedia keyless) — só quando o usuário liga; senão offline.
+          webResearch ? WIKIPEDIA_BACKEND : undefined,
         ),
         lexicalEntries(dbPath, book, chapter, verse ?? undefined, lang, undefined),
       ]);
@@ -284,6 +295,33 @@ export function ReaderStudyPanel({
               );
             })}
           </View>
+
+          {/* ── PESQUISA WEB (opt-in, Wikipedia keyless) — ADR-0028/ADR-0032 ─────
+              Padrão DESLIGADO. Quando ligada, é a ÚNICA rede além do LLM: faz um `fetch`
+              à Wikipedia (keyless, sem chave/segredo) e o estudo Acadêmico ganha citações
+              [W:n] das URLs (do Rust, nunca do modelo). Aviso de privacidade abaixo. */}
+          <Text style={styles.sectionTitle}>Pesquisa web (opcional)</Text>
+          <View style={styles.chips}>
+            <Pressable
+              style={[styles.chip, webResearch ? styles.chipActive : null]}
+              onPress={() => setWebResearch((v) => !v)}
+              disabled={busy}
+              testID="study-web-research-toggle"
+              accessibilityRole="switch"
+              accessibilityState={{ checked: webResearch }}
+            >
+              <Text style={[styles.chipText, webResearch ? styles.chipTextActive : null]}>
+                Wikipedia {webResearch ? '✓ ligada' : '· desligada'}
+              </Text>
+            </Pressable>
+          </View>
+          {webResearch ? (
+            <Text style={styles.hint} testID="study-web-research-privacy">
+              Privacidade: ligada, esta opção consulta a Wikipedia (rede) para citar fontes.
+              É a única rede além da IA e nenhuma chave/segredo é enviada (Wikipedia é keyless).
+              O texto bíblico e as glosas continuam vindo do seu acervo local.
+            </Text>
+          ) : null}
 
           {/* Provedor fixo "mock" nesta entrega (offline; sem chave/rede). */}
           <Text style={styles.hint}>Provedor: mock (offline, sem chave/rede — F3.10 traz BYOK).</Text>
