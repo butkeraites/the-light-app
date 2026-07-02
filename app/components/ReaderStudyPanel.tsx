@@ -27,11 +27,13 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 
+import { buildStudyExport } from '../lib/studyExport';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import {
   deepStudy,
@@ -128,12 +130,14 @@ export function ReaderStudyPanel({
   const [result, setResult] = useState<StudyResultOut | null>(null);
   const [lexicon, setLexicon] = useState<VerifiedLexiconOut | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   // Ao trocar de passagem ou fechar, limpa o resultado (nunca persiste texto entre refs).
   useEffect(() => {
     setResult(null);
     setLexicon(null);
     setError(null);
+    setExportError(null);
   }, [book, chapter, verse, visible]);
 
   const studyDisabled = busy || dbPath == null;
@@ -173,6 +177,23 @@ export function ReaderStudyPanel({
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
+    }
+  }
+
+  // EXPORTAÇÃO ACADÊMICA (F3.8): o Markdown SBL vem INTEIRO do core
+  // (`result.academicMarkdown` — fonte única, zero drift); o sidecar só AGREGA as
+  // citações/atribuições já retornadas (molde F1.11 `buildNotesExport`). Nada de
+  // serialização SBL reimplementada aqui. Compartilha pelo Share nativo (F1.11).
+  async function onExportAcademic() {
+    if (result == null) {
+      return;
+    }
+    setExportError(null);
+    try {
+      const exp = buildStudyExport(result, sourceLabel, lexicon?.sources ?? []);
+      await Share.share({ message: exp.message, title: `Estudo — ${sourceLabel}` });
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -385,6 +406,23 @@ export function ReaderStudyPanel({
                 interpreta.
               </Text>
             </View>
+          ) : null}
+
+          {/* ── EXPORTAÇÃO ACADÊMICA (F3.8) ──────────────────────────────────
+              Markdown SBL (do core) + sidecar de citações, compartilhados pelo Share
+              nativo (molde F1.11). Habilitado quando há resultado. */}
+          {result ? (
+            <>
+              <Pressable
+                style={[styles.btn, styles.btnPrimary]}
+                onPress={onExportAcademic}
+                testID="study-export-academic"
+                accessibilityRole="button"
+              >
+                <Text style={styles.btnText}>Exportar (acadêmico)</Text>
+              </Pressable>
+              {exportError ? <Text style={styles.error}>{exportError}</Text> : null}
+            </>
           ) : null}
         </ScrollView>
       </View>

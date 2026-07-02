@@ -42,6 +42,10 @@ import { runChatSelfTest } from './chat-selftest';
 // "mock", sem chave/rede). Par nativo/web por extensão — no web, `compare-selftest.web.ts`
 // é um SKIP (comparação web = F3.12), mantendo o bundle web sem a camada `ai`/store/o banco.
 import { runCompareSelfTest } from './compare-selftest';
+// F3.8: prova de EXPORTAÇÃO ACADÊMICA no device (marcador TLA_EXPORT, provider="mock", sem
+// chave/rede). Par nativo/web por extensão — no web, `export-selftest.web.ts` é um SKIP
+// (export web = F3.12), mantendo o bundle web sem a camada `ai`/store/o banco bundled.
+import { runExportSelfTest } from './export-selftest';
 
 // Marcador (prefixo grep-ável). console.error garante o nível alto no log
 // unificado; console.log o complementa. O script assere o texto exato.
@@ -111,5 +115,11 @@ export async function runReferenceSelfTest(): Promise<void> {
   // (2 AiAnswer com o MESMO citedText do store — âncora comum, cited_match=true — provando
   // o WIRING de N provedores; a diferença de respostas reais é a F3.10).
   await runCompareSelfTest();
+  // F3.8: prova de EXPORTAÇÃO ACADÊMICA (deep_study → academicMarkdown do core +
+  // buildStudyExport app-side) via a fronteira `deep_study`/`lexical_entries` com o
+  // provedor "mock" (offline, sem chave). Emite TLA_EXPORT (md_len do Markdown SBL do
+  // core; has_passage = o Markdown traz o texto do store verbatim; has_attribution = o
+  // Markdown traz a atribuição STEP CC-BY das sources — anti-alucinação/licença).
+  await runExportSelfTest();
   console.log(`${MARK} DONE`);
 }

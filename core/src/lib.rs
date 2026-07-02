@@ -843,7 +843,7 @@ const DEFAULT_LEXICON_LIMIT: usize = 32;
 /// Uma **entrada léxica verificada** (número de Strong + lema/transliteração/glosa),
 /// na fronteira UniFFI.
 ///
-/// Espelha `the_light_core::ai::LexicalEntry` (tipo **puro**/`ai-pure` do core, presente
+/// Espelha `the_light_core::ai::LexicalEntry` (tipo **puro** /`ai-pure` do core, presente
 /// em **todos** os alvos, ADR-0024). Os campos vêm **verbatim do léxico local
 /// verificado** (STEP Bible / TBESH–TBESG, CC-BY, populado na F3.1) — a fronteira nunca
 /// gera nem infere dado léxico (anti-alucinação): apenas **entrega** o que o acervo
@@ -871,7 +871,7 @@ pub struct LexEntry {
 /// Dados léxicos verificados de uma passagem + fontes (atribuição obrigatória CC-BY),
 /// na fronteira UniFFI.
 ///
-/// Espelha `the_light_core::ai::VerifiedLexicon` (tipo **puro**/`ai-pure`). As
+/// Espelha `the_light_core::ai::VerifiedLexicon` (tipo **puro** /`ai-pure`). As
 /// [`sources`](Self::sources) são as **atribuições verbatim** das fontes usadas (lidas
 /// de `scholarly_sources.attribution`), que a **UI da F3.5 exibe obrigatoriamente**
 /// (CC-BY). Construído **somente** via [`From`].
@@ -990,7 +990,7 @@ pub fn lexical_entries(
 
 /// **Modo** de estudo (molda estrutura/tom da saída), na fronteira UniFFI.
 ///
-/// Espelha `the_light_core::ai::StudyMode` (enum **puro**/`ai-pure`, presente em todos
+/// Espelha `the_light_core::ai::StudyMode` (enum **puro** /`ai-pure`, presente em todos
 /// os alvos, ADR-0024). Enum **sem dados** (como [`Testament`]); os [`From`] em ambos os
 /// sentidos são **cfg-free** (o tipo-fonte existe também no wasm). Usado para **montar**
 /// o `StudyRequest` (fronteira → core) e para **espelhar** o `StudyResult` (core →
@@ -1033,7 +1033,7 @@ impl From<the_light_core::ai::StudyMode> for StudyMode {
 
 /// **Lente** denominacional (voz hermenêutica) do estudo, na fronteira UniFFI.
 ///
-/// Espelha `the_light_core::ai::Denomination` (enum **puro**/`ai-pure`). Nome distinto
+/// Espelha `the_light_core::ai::Denomination` (enum **puro** /`ai-pure`). Nome distinto
 /// (`StudyLens`) para deixar o papel explícito na API da fronteira; os [`From`] mapeiam
 /// 1:1 para/de `Denomination` (cfg-free). A voz teológica de cada lente vive no core.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -1082,7 +1082,7 @@ impl From<the_light_core::ai::Denomination> for StudyLens {
 
 /// **Profundidade** do estudo, na fronteira UniFFI.
 ///
-/// Espelha `the_light_core::ai::StudyDepth` (enum **puro**/`ai-pure`). [`From`] cfg-free
+/// Espelha `the_light_core::ai::StudyDepth` (enum **puro** /`ai-pure`). [`From`] cfg-free
 /// em ambos os sentidos.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum StudyDepth {
@@ -1119,7 +1119,7 @@ impl From<the_light_core::ai::StudyDepth> for StudyDepth {
 /// Uma **seção** estruturada da interpretação (cabeçalho `## ` + corpo), na fronteira
 /// UniFFI.
 ///
-/// Espelha `the_light_core::ai::StudySection` (tipo **puro**/`ai-pure`, presente em todos
+/// Espelha `the_light_core::ai::StudySection` (tipo **puro** /`ai-pure`, presente em todos
 /// os alvos). O fatiamento por `## ` é feito **pelo core** (`split_sections`) — a
 /// fronteira só **adapta** o tipo. Vazio quando o modelo não usou cabeçalhos.
 /// [`From`] **cfg-free** (como [`LexEntry`]).
@@ -1143,7 +1143,7 @@ impl From<the_light_core::ai::StudySection> for StudySection {
 /// Uma **citação** verificável do aparato acadêmico (léxico/fonte/web), na fronteira
 /// UniFFI.
 ///
-/// Espelha `the_light_core::ai::Citation` (tipo **puro**/`ai-pure`). Invariante
+/// Espelha `the_light_core::ai::Citation` (tipo **puro** /`ai-pure`). Invariante
 /// anti-alucinação do core: **o LLM nunca produz uma `Citation`** — elas são construídas
 /// **do banco** (léxico verificado) ou de URLs realmente buscadas. O [`kind`](Self::kind)
 /// é a **representação canônica** do `CitationKind` do core (via `Debug` do enum: o
@@ -1246,6 +1246,19 @@ pub struct StudyResultOut {
     pub provider: String,
     /// Modelo usado (ex.: `"mock-1"`), via `LlmProvider::model()`.
     pub model: String,
+    /// **Markdown acadêmico (SBL)** do estudo, produzido pela **mesma impl do core**
+    /// (`StudyResult::to_academic_markdown`, `pub` porém `embedded`-only → callável na
+    /// fronteira **nativa**). Fonte única / **zero drift**: a fronteira **não**
+    /// reimplementa a serialização SBL/proveniência (F3.8). Inclui bloco YAML
+    /// (`title`/`author`/`lang`), `## Texto (acervo local)` (= [`passage_text`](Self::passage_text)
+    /// verbatim do store), `## Análise` (âncoras `[V:Strong]`/`[W:n]` **validadas e
+    /// reescritas** deterministicamente pelo core), `## Notas`/`## Bibliografia` (SBL) e o
+    /// **rodapé de procedência** que separa o **verificável** (acervo local + atribuição
+    /// **STEP CC-BY** das citações `Source`) do **gerado por IA** ("…podem conter erros —
+    /// confira sempre as fontes primárias"). No **web** o Record nunca é construído (o
+    /// stub de `deep_study` retorna [`CoreError`]); o `From` que popula este campo é
+    /// `#[cfg(not(target_arch = "wasm32"))]` (grafo wasm puro).
+    pub academic_markdown: String,
 }
 
 // O tipo-fonte `study::StudyResult` é `embedded`-only (superfície pesada do `ai`); este
@@ -1255,6 +1268,11 @@ pub struct StudyResultOut {
 #[cfg(not(target_arch = "wasm32"))]
 impl From<the_light_core::ai::study::StudyResult> for StudyResultOut {
     fn from(r: the_light_core::ai::study::StudyResult) -> Self {
+        // Markdown acadêmico (SBL) produzido pela MESMA impl do core (fonte única, zero
+        // drift): `StudyResult::to_academic_markdown` é `pub` (só `embedded`-gated, OK na
+        // fronteira nativa). Computado ANTES de mover os campos de `r` (`&self`; `language`
+        // é `Copy`). A fronteira NÃO reimplementa SBL/proveniência (F3.8).
+        let academic_markdown = r.to_academic_markdown(r.language);
         StudyResultOut {
             reference: r.reference.into(),
             reference_label: r.reference_label,
@@ -1269,6 +1287,7 @@ impl From<the_light_core::ai::study::StudyResult> for StudyResultOut {
             citations: r.citations.into_iter().map(StudyCitation::from).collect(),
             provider: r.provider,
             model: r.model,
+            academic_markdown,
         }
     }
 }
@@ -1430,7 +1449,7 @@ pub fn deep_study(
 
 /// Papel de um turno de conversa (`user`/`assistant`), na fronteira UniFFI.
 ///
-/// Espelha `the_light_core::ai::ChatRole` (enum **puro**/`ai-pure`, presente em **todos**
+/// Espelha `the_light_core::ai::ChatRole` (enum **puro** /`ai-pure`, presente em **todos**
 /// os alvos, sem `cfg`). Enum sem dados (como [`StudyMode`]); o [`From`] para o tipo-fonte
 /// é **cfg-free** (o alvo existe também no wasm). Usado só como **entrada** (o histórico da
 /// conversa), via [`ChatTurn`].
@@ -1454,7 +1473,7 @@ impl From<ChatRole> for the_light_core::ai::ChatRole {
 
 /// Um **turno** do histórico de conversa (papel + conteúdo), na fronteira UniFFI.
 ///
-/// Record de **entrada** que espelha `the_light_core::ai::ChatMessage` (tipo **puro**/
+/// Record de **entrada** que espelha `the_light_core::ai::ChatMessage` (tipo **puro** /
 /// `ai-pure`). O [`From`] para `ChatMessage` é **cfg-free**. O [`content`](Self::content)
 /// é **texto do usuário/modelo** (não bíblico) — a âncora com o texto do versículo é
 /// montada **pela fronteira, do store**, e injetada como `context` pelo core (invariante:
@@ -4803,6 +4822,160 @@ mod study_tests {
             "interpretation do mock invariante ao corpus"
         );
         assert!(!result.interpretation.contains("For God so loved"));
+    }
+
+    /// Constrói o fixture KJV **com léxico** para João 3:16 (NT): verso verbatim +
+    /// `scholarly_sources`/`original_tokens`/`lexicon` (espelhando o `seeded()` do core,
+    /// `ai/lexicon.rs`, adaptado ao grego de Jo 3:16). Assim `verified_lexicon` retorna
+    /// entradas + atribuição **STEP CC-BY**, e o modo Academic emite o aparato de citações
+    /// → o Markdown acadêmico traz o rodapé de procedência com a atribuição. Colunas
+    /// **exatas** do rev pinado; nenhum schema escrito à mão; lemas gregos sem aspas
+    /// simples → seguros inline.
+    fn build_kjv_lexicon_fixture() -> TmpDb {
+        let path = unique_tmp_db();
+        let _ = std::fs::remove_file(&path);
+
+        {
+            let store =
+                the_light_core::store::Store::open(&path).expect("abrir/migrar fixture KJV+léxico");
+            let conn = store.conn();
+
+            conn.execute(
+                "INSERT INTO translations(id,abbrev,name,language,license,embeddable) \
+                 VALUES ('kjv','KJV','King James Version','en','public-domain',1)",
+                [],
+            )
+            .expect("inserir tradução kjv");
+            let sql = format!(
+                "INSERT INTO verses(translation_id,book_number,chapter,verse,text) \
+                 VALUES ('kjv',43,3,16,'{JOHN_3_16_KJV}')"
+            );
+            conn.execute(&sql, []).expect("inserir João 3:16");
+
+            // Fontes (atribuição CC-BY verbatim): tokens gregos usam 'tagnt', léxico 'tbesg'.
+            for (id, name) in [("tagnt", "TAGNT"), ("tbesg", "TBESG")] {
+                let sql = format!(
+                    "INSERT INTO scholarly_sources(id,name,license,embeddable,attribution,url,version) \
+                     VALUES ('{id}','{name}','cc-by',1,'STEP Bible (CC BY 4.0)','u','v')"
+                );
+                conn.execute(&sql, []).expect("popular scholarly_sources");
+            }
+
+            // João 3:16 (book=43, NT): (word_index, strongs, lemma grego).
+            let toks = [
+                (1i64, "G0025", "ἀγαπάω"),
+                (2, "G2889", "κόσμος"),
+                (3, "G5207", "υἱός"),
+            ];
+            for (wi, st, lemma) in toks {
+                let sql = format!(
+                    "INSERT INTO original_tokens(testament,book_number,chapter,verse,word_index,\
+                     surface,lemma,strongs,strongs_raw,source_id) \
+                     VALUES ('NT',43,3,16,{wi},'{lemma}','{lemma}','{st}','{st}','tagnt')"
+                );
+                conn.execute(&sql, []).expect("popular original_tokens");
+            }
+            for (st, gloss) in [("G0025", "to love"), ("G2889", "world"), ("G5207", "son")] {
+                let sql = format!(
+                    "INSERT INTO lexicon(strongs,lemma,gloss,source_id) \
+                     VALUES ('{st}','x','{gloss}','tbesg')"
+                );
+                conn.execute(&sql, []).expect("popular lexicon");
+            }
+        } // `store`/`conn` fecham aqui (flush no arquivo).
+
+        TmpDb(path)
+    }
+
+    #[test]
+    fn academic_markdown_from_core_cites_store_and_step_attribution() {
+        // F3.8: o Markdown acadêmico (SBL) vem da MESMA impl do core
+        // (`StudyResult::to_academic_markdown`) via a fronteira (campo `academic_markdown`).
+        // A fronteira NÃO reimplementa SBL/proveniência — apenas expõe o que o core formata.
+        let db = build_kjv_lexicon_fixture();
+
+        let result = deep_study(
+            db.path(),
+            "kjv".to_string(),
+            43,
+            3,
+            Some(16),
+            StudyMode::Academic,
+            StudyLens::Presbyterian,
+            StudyDepth::Exegetical,
+            "en".to_string(),
+            "mock".to_string(),
+            None, // BYOK: sem chave (mock não faz rede)
+            None,
+        )
+        .expect("deep_study (Academic, mock) deve retornar Ok");
+
+        let md = &result.academic_markdown;
+
+        // Bloco YAML do paper acadêmico (formato do core, não reimplementado no app).
+        assert!(
+            md.starts_with("---\ntitle:"),
+            "Markdown acadêmico deve abrir com o bloco YAML do core: {md:.80}"
+        );
+
+        // (a) Texto citado VERBATIM do store (anti-alucinação): João 3:16 KJV.
+        assert!(
+            md.contains(JOHN_3_16_KJV),
+            "Markdown acadêmico deve conter o texto do store verbatim (Jo 3:16 KJV): {md}"
+        );
+        assert!(
+            md.contains("## Texto (acervo local)"),
+            "seção de texto do acervo local (do core) ausente: {md}"
+        );
+
+        // (b) Atribuição STEP CC-BY no rodapé de procedência (do léxico verificado).
+        assert!(
+            md.contains("STEP Bible"),
+            "rodapé de procedência deve trazer a atribuição STEP Bible: {md}"
+        );
+        assert!(
+            md.contains("CC BY 4.0"),
+            "rodapé de procedência deve trazer a licença CC BY 4.0: {md}"
+        );
+
+        // (c) Rótulo de interpretação GERADA POR IA (separação verificável × modelo).
+        assert!(
+            md.contains("**Gerado por IA:**"),
+            "Markdown acadêmico deve rotular a análise como gerada por IA: {md}"
+        );
+        assert!(
+            md.contains("confira sempre as fontes primárias"),
+            "o rodapé de IA deve orientar a conferir as fontes primárias: {md}"
+        );
+        // O texto bíblico NÃO é produzido pelo modelo (a interpretação do mock não o contém).
+        assert!(
+            !result.interpretation.contains("For God so loved"),
+            "o LLM/mock NÃO gera texto bíblico: {}",
+            result.interpretation
+        );
+
+        // (d) Citações vêm do BANCO (léxico verificado) — nenhuma inventada pelo modelo.
+        assert!(
+            !result.citations.is_empty(),
+            "Academic com léxico semeado → citations do banco não-vazias"
+        );
+        assert!(
+            result
+                .citations
+                .iter()
+                .any(|c| c.author.as_deref() == Some("STEP Bible")),
+            "citações do banco devem trazer o autor STEP Bible (do léxico verificado): {:?}",
+            result.citations
+        );
+        // A atribuição do Markdown reflete AS citações retornadas (mesma fonte, zero drift).
+        assert!(
+            result
+                .citations
+                .iter()
+                .any(|c| c.license.as_deref() == Some("CC BY 4.0")),
+            "citações do banco devem trazer a licença CC BY 4.0: {:?}",
+            result.citations
+        );
     }
 }
 
