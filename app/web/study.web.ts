@@ -122,8 +122,10 @@ function versesForPassage(verse: number | undefined, rows: ChapterRow[]): AiVers
  * KEYLESS à Wikipedia → `web_sources` alimenta prepare/finalize → o estudo ganha as
  * citações `[W:n]`/`kind="Web"` (do Rust `ai-pure`, das URLs — NUNCA do modelo). Sem
  * backend (ou `undefined`) → `web_sources` `[]` (comportamento F3.12a, OFFLINE por padrão).
- * Anti-alucinação COM ZERO DRIFT: texto/léxico do store; prompt+verify+citação+aparato do
- * MESMO Rust `ai-pure` no web e no nativo; só a recuperação (léxico/Wikipedia) e o
+ * `researchKey` (BYOK Tavily) é aceito por paridade de assinatura mas IGNORADO aqui: a
+ * pesquisa Tavily web (`fetch` + chave session-only + toggle na UI) é a F4.4; a chave nunca
+ * é logada. Anti-alucinação COM ZERO DRIFT: texto/léxico do store; prompt+verify+citação+
+ * aparato do MESMO Rust `ai-pure` no web e no nativo; só a recuperação (léxico/Wikipedia) e o
  * transporte (`fetch`) são infra TS.
  */
 export async function deepStudyOnHandle(
@@ -141,7 +143,10 @@ export async function deepStudyOnHandle(
   key: string | undefined,
   model: string | undefined,
   researchBackend?: string,
+  researchKey?: string,
 ): Promise<StudyResultOut> {
+  // `researchKey` (BYOK Tavily) é aceito por paridade e IGNORADO aqui (Tavily web = F4.4).
+  void researchKey;
   if (!(await hasTranslation(handle, translation))) {
     // Espelha `SourceError::UnknownTranslation` propagado pelo nativo.
     throw new Error(`versão desconhecida: ${translation}`);

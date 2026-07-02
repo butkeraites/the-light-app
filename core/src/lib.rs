@@ -1330,17 +1330,21 @@ impl From<the_light_core::ai::study::StudyResult> for StudyResultOut {
 /// **interpreta**. `brief` é `None` (foco temático é fora de escopo aqui — sempre uma
 /// passagem concreta).
 ///
-/// **Pesquisa web opt-in (ADR-0028, F3.9a):** `research_backend` liga a busca de **fontes
-/// secundárias** citáveis por `[W:n]`. Padrão **desligado**: `None` (ou omitido) → nenhuma
-/// rede, `web_sources = vec![]` (comportamento offline anterior). Com `Some(backend)`, a
-/// fronteira delega a `ai::build_research_provider(backend, None, lang)` + `provider.search`
-/// e injeta o `Vec<WebSource>` no `StudyRequest`; o `study()` monta as citações `Web`
-/// **das URLs realmente buscadas** (`CitationCollector::from_web_results`, **nunca do
-/// modelo**) e sinaliza `[W:n]` fora do intervalo — anti-alucinação embutida. Backends:
-/// `"mock"` (fontes canônicas, **sem rede** — a prova headless), `"wikipedia"|"wiki"`
-/// (**keyless**, rede opt-in do usuário, validada na F3.10). A chave é **sempre `None`**
-/// aqui (Wikipedia é keyless; Tavily/BYOK é futuro). O módulo `research` é `embedded`-only
-/// (`reqwest`) → a busca vive **só** no bloco nativo (grafo wasm puro).
+/// **Pesquisa web opt-in (ADR-0028, F3.9a; BYOK Tavily ADR-0035, F4.3):** `research_backend`
+/// liga a busca de **fontes secundárias** citáveis por `[W:n]`. Padrão **desligado**: `None`
+/// (ou omitido) → nenhuma rede, `web_sources = vec![]` (comportamento offline anterior). Com
+/// `Some(backend)`, a fronteira delega a `ai::build_research_provider(backend, research_key,
+/// lang)` + `provider.search` e injeta o `Vec<WebSource>` no `StudyRequest`; o `study()` monta
+/// as citações `Web` **das URLs realmente buscadas** (`CitationCollector::from_web_results`,
+/// **nunca do modelo**) e sinaliza `[W:n]` fora do intervalo — anti-alucinação embutida.
+/// Backends: `"mock"` (fontes canônicas, **sem rede** — a prova headless), `"wikipedia"|"wiki"`
+/// (**keyless**, rede opt-in do usuário, validada na F4.5), `"tavily"` (**BYOK**, rede opt-in,
+/// validada na F4.5). `research_key: Option<String>` é a **chave de pesquisa opt-in** repassada
+/// **direto** ao core: `"mock"`/`"wikipedia"` a **ignoram** (keyless); `"tavily"` a **exige**
+/// (`None` → `CoreError` espelhando `NoKey`, **antes de qualquer HTTP**). A chave **nunca é
+/// logada** aqui — só encaminhada; ela só entra no corpo do `fetch` Tavily, dentro do core. O
+/// módulo `research` é `embedded`-only (`reqwest`) → a busca vive **só** no bloco nativo (grafo
+/// wasm puro).
 ///
 /// **BYOK / offline-first:** com `provider_name = "mock"` e `key = None` (esta tarefa)
 /// não há rede nem chave; nenhuma chave é logada. A chave real do usuário e a rede opt-in
@@ -1366,6 +1370,7 @@ pub fn deep_study(
     key: Option<String>,
     model: Option<String>,
     research_backend: Option<String>,
+    research_key: Option<String>,
 ) -> Result<StudyResultOut, CoreError> {
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -1425,20 +1430,26 @@ pub fn deep_study(
                 }
             })?;
 
-        // 5b) Pesquisa web OPT-IN (ADR-0028): desligada por padrão. Com `research_backend =
-        //     Some(backend)`, delega a `ai::build_research_provider` (chave SEMPRE `None` —
-        //     Wikipedia é keyless) + `provider.search`; o `study()` monta as citações `Web`
-        //     DAS URLs buscadas (nunca do modelo). `"mock"` não faz rede (prova headless);
-        //     `"wikipedia"` é rede opt-in do usuário (F3.10). Sem backend → `vec![]` (offline,
-        //     comportamento anterior). Query = `reference_label` (determinístico; o mock a
-        //     ignora, só o Wikipedia a usa).
+        // 5b) Pesquisa web OPT-IN (ADR-0028/ADR-0035): desligada por padrão. Com
+        //     `research_backend = Some(backend)`, delega a `ai::build_research_provider`
+        //     encaminhando a `research_key` BYOK (por valor, só quando há backend) +
+        //     `provider.search`; o `study()` monta as citações `Web` DAS URLs buscadas
+        //     (nunca do modelo). Semântica da chave (no core): `"mock"` a IGNORA (sem rede,
+        //     prova headless); `"wikipedia"|"wiki"` a IGNORA (keyless, rede opt-in do
+        //     usuário, F4.5); `"tavily"` a EXIGE (BYOK → `NoKey` se `None`, ANTES de qualquer
+        //     HTTP). Sem backend → `vec![]` (offline, comportamento anterior; `research_key`
+        //     não é sequer consultada). Query = `reference_label` (determinístico; o mock a
+        //     ignora, só o Wikipedia/Tavily a usam). A chave NUNCA é logada aqui.
         let web_sources = match research_backend {
             Some(backend) => {
-                let research =
-                    the_light_core::ai::build_research_provider(&backend, None, lang.code())
-                        .map_err(|e| CoreError::Generic {
-                            message: e.to_string(),
-                        })?;
+                let research = the_light_core::ai::build_research_provider(
+                    &backend,
+                    research_key,
+                    lang.code(),
+                )
+                .map_err(|e| CoreError::Generic {
+                    message: e.to_string(),
+                })?;
                 research
                     .search(&reference_label, DEFAULT_RESEARCH_LIMIT)
                     .map_err(|e| CoreError::Generic {
@@ -1478,8 +1489,9 @@ pub fn deep_study(
         // Stub web: a superfície pesada do `ai` (`study`/`StudyRequest`/`StudyResult`) e o
         // store são `embedded`-only (nativo). O estudo web é a F3.12; até lá, falha
         // explícita — sem tocar `ai::study`/store/`rusqlite`/`reqwest` (grafo wasm puro).
-        // `research_backend` também ignorado: a pesquisa web no browser é `fetch` (F3.12),
-        // não `reqwest::blocking` (embedded-only). O grafo wasm segue puro.
+        // `research_backend`/`research_key` também ignorados: a pesquisa web no browser é
+        // `fetch` + chave session-only (F4.4), não `reqwest::blocking` (embedded-only). A
+        // `research_key` NUNCA é logada. O grafo wasm segue puro.
         let _ = (
             db_path,
             translation,
@@ -1494,6 +1506,7 @@ pub fn deep_study(
             key,
             model,
             research_backend,
+            research_key,
         );
         Err(CoreError::Generic {
             message: "estudo profundo indisponível no alvo web (F3.12)".to_string(),
@@ -5152,6 +5165,7 @@ mod study_tests {
             None, // BYOK: sem chave (mock não faz rede)
             None,
             None, // research OFF (padrão): sem web (comportamento F3.3 preservado)
+            None, // research_key: irrelevante com research OFF
         )
         .expect("deep_study com o mock deve retornar Ok");
 
@@ -5232,7 +5246,7 @@ mod study_tests {
         // comportamento offline da F3.3 fica preservado (padrão desligado).
         let db = build_kjv_fixture();
 
-        let run = |research: Option<String>| -> StudyResultOut {
+        let run = |research: Option<String>, research_key: Option<String>| -> StudyResultOut {
             deep_study(
                 db.path(),
                 "kjv".to_string(),
@@ -5246,13 +5260,14 @@ mod study_tests {
                 "mock".to_string(),
                 None, // BYOK: sem chave LLM (mock não faz rede)
                 None,
-                research, // pesquisa web opt-in (None = OFF; Some("mock") = sem rede)
+                research,     // pesquisa web opt-in (None = OFF; Some("mock") = sem rede)
+                research_key, // BYOK de pesquisa: o mock IGNORA (None OU fictícia — invariante)
             )
             .expect("deep_study com o mock deve retornar Ok")
         };
 
         // ── Research LIGADO (mock): as citações `Web` fluem do provider ao `study()`. ──
-        let with_web = run(Some("mock".to_string()));
+        let with_web = run(Some("mock".to_string()), None);
         let web_citations: Vec<&StudyCitation> = with_web
             .citations
             .iter()
@@ -5287,8 +5302,28 @@ mod study_tests {
             "interpretation é a resposta fixa do mock (não citou [W:n]) — invariante à web"
         );
 
+        // ── F4.3: a `research_key` NÃO altera o mock (keyless). Uma chave fictícia produz
+        //    EXATAMENTE as mesmas citações Web que `None` — prova o threading sem tocar a
+        //    semântica keyless (a chave nunca é uma chave Tavily real; só um placeholder). ──
+        let with_web_keyed = run(
+            Some("mock".to_string()),
+            Some("ignored-by-mock".to_string()),
+        );
+        let keyed_web_urls: Vec<Option<String>> = with_web_keyed
+            .citations
+            .iter()
+            .filter(|c| c.kind == "Web")
+            .map(|c| c.url.clone())
+            .collect();
+        let unkeyed_web_urls: Vec<Option<String>> =
+            web_citations.iter().map(|c| c.url.clone()).collect();
+        assert_eq!(
+            keyed_web_urls, unkeyed_web_urls,
+            "mock IGNORA research_key: as citações Web são idênticas com ou sem chave"
+        );
+
         // ── Research DESLIGADO (None): comportamento offline da F3.3 preservado. ──────
-        let without_web = run(None);
+        let without_web = run(None, None);
         assert!(
             without_web.citations.iter().all(|c| c.kind != "Web"),
             "com research=None NÃO deve haver citação Web (offline por padrão): {:?}",
@@ -5320,9 +5355,43 @@ mod study_tests {
             None,
             None,
             Some("definitely-not-a-backend".to_string()),
+            None, // research_key: irrelevante (falha antes de consultar a chave)
         )
         .expect_err("backend de pesquisa desconhecido deve falhar");
         assert!(matches!(err, CoreError::Generic { .. }));
+    }
+
+    #[test]
+    fn deep_study_tavily_without_research_key_errors_without_network() {
+        // F4.3 (BYOK Tavily, ADR-0035): `research_backend = Some("tavily")` EXIGE a
+        // `research_key`. Sem ela (`None`), o core devolve `AiError::NoKey("research.tavily")`
+        // já em `build_research_provider` — ANTES de instanciar o `TavilyProvider` ou tocar a
+        // rede. A fronteira espelha isso como `CoreError::Generic` — sem panic e SEM HTTP
+        // (nenhuma chamada a `api.tavily.com`). Esta é a prova NEGATIVA offline da tarefa: o
+        // caminho Tavily real (com a chave do usuário) é a F4.5. Nenhuma chave real aqui.
+        let db = build_kjv_fixture();
+
+        let err = deep_study(
+            db.path(),
+            "kjv".to_string(),
+            43,
+            3,
+            Some(16),
+            StudyMode::Academic,
+            StudyLens::Presbyterian,
+            StudyDepth::Exegetical,
+            "en".to_string(),
+            "mock".to_string(),
+            None,
+            None,
+            Some("tavily".to_string()),
+            None, // research_key ausente → NoKey ANTES de qualquer rede
+        )
+        .expect_err("tavily sem research_key deve falhar (NoKey), sem rede");
+        assert!(
+            matches!(err, CoreError::Generic { .. }),
+            "tavily sem chave deve virar CoreError (espelha NoKey): {err:?}"
+        );
     }
 
     #[test]
@@ -5345,6 +5414,7 @@ mod study_tests {
             None,
             None,
             Some("mock".to_string()),
+            None, // research_key: o mock IGNORA
         )
         .expect("deep_study (Devotional, research=mock) deve retornar Ok");
         assert!(
@@ -5380,6 +5450,7 @@ mod study_tests {
                 None,
                 None,
                 None, // research OFF (padrão)
+                None, // research_key: irrelevante com research OFF
             )
             .expect("deep_study deve retornar Ok")
         };
@@ -5422,6 +5493,7 @@ mod study_tests {
             None,
             None,
             None, // research OFF
+            None, // research_key: irrelevante
         )
         .expect_err("provedor desconhecido deve falhar");
         assert!(matches!(err, CoreError::Generic { .. }));
@@ -5442,6 +5514,7 @@ mod study_tests {
             None,
             None,
             None, // research OFF
+            None, // research_key: irrelevante
         )
         .expect_err("db_path = diretório deve falhar no Store::open");
         assert!(matches!(err, CoreError::Generic { .. }));
@@ -5470,6 +5543,7 @@ mod study_tests {
             None,
             None,
             None, // research OFF
+            None, // research_key: irrelevante
         )
         .expect("deep_study de João 3:16 no bible.sqlite");
         assert!(
@@ -5569,6 +5643,7 @@ mod study_tests {
             None, // BYOK: sem chave (mock não faz rede)
             None,
             None, // research OFF (este teste foca no Markdown SBL, não na pesquisa web)
+            None, // research_key: irrelevante com research OFF
         )
         .expect("deep_study (Academic, mock) deve retornar Ok");
 

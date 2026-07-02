@@ -370,7 +370,8 @@ export async function askAnchoredStream(
 // abrimos o store web (OPFS) e passamos o `globalThis.fetch`. Anti-alucinação: texto/léxico
 // do store; o LLM só interpreta. BYOK/offline-first: sem chave, o app segue offline; a IA é
 // opt-in e só faz rede no `fetch` (a chave, session-only no `keystore.web`, vai só no header
-// — nunca logada). `researchBackend` é aceito por paridade mas IGNORADO (Wikipedia = F3.12b).
+// — nunca logada). `researchBackend`/`researchKey` são aceitos por paridade mas IGNORADOS
+// aqui (a pesquisa web + chave Tavily session-only no browser é a F4.4). A chave nunca é logada.
 
 /**
  * Estudo profundo no web: abre o store web (subset, F1.13/F3.5) e delega ao pipeline
@@ -393,6 +394,7 @@ export async function deepStudy(
   key: string | undefined,
   model: string | undefined,
   researchBackend?: string,
+  researchKey?: string,
 ): Promise<StudyResultOut> {
   const handle = await openReadingDbWeb();
   try {
@@ -411,6 +413,7 @@ export async function deepStudy(
       key,
       model,
       researchBackend,
+      researchKey,
     );
   } finally {
     await handle.close();

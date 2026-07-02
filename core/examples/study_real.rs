@@ -12,14 +12,18 @@
 //! Para incluir pesquisa web (Wikipedia, keyless, opt-in):
 //!   ... AI_RESEARCH=wikipedia cargo run ... --example study_real
 //!
+//! Para pesquisa web Tavily (BYOK, opt-in — a chave de pesquisa fica só na env var):
+//!   ... AI_RESEARCH=tavily AI_RESEARCH_KEY="<sua-chave-tavily>" cargo run ... --example study_real
+//!
 //! Env vars:
 //!   AI_PROVIDER   (obrig.)  anthropic | openai | gemini | ollama
-//!   AI_API_KEY    (obrig. p/ nuvem)   — a chave BYOK; NUNCA impressa
+//!   AI_API_KEY    (obrig. p/ nuvem)   — a chave BYOK do LLM; NUNCA impressa
 //!   AI_MODEL      (opc.)    ex.: gemini-2.5-flash
 //!   AI_MODE       (opc.)    academic | devotional | introductory | sermon   (default academic)
 //!   AI_LENS       (opc.)    baptist | presbyterian | lutheran | pentecostal | catholic | orthodox
 //!   AI_DEPTH      (opc.)    overview | exegetical | wordstudy   (default exegetical)
 //!   AI_RESEARCH   (opc.)    wikipedia | tavily | mock  — liga a pesquisa web (opt-in)
+//!   AI_RESEARCH_KEY (opc.)  chave BYOK de pesquisa (exigida só por tavily); NUNCA impressa
 //!   AI_REF_BOOK/AI_REF_CHAPTER/AI_REF_VERSE  (opc.)  default 43/3/16 (João 3:16)
 //!   AI_TRANSLATION (opc.)   default kjv    · AI_LANG (opc.) default en
 //!   TLA_DB        (opc.)    caminho do .sqlite; default = assets/data/bible.sqlite (tem léxico da F3.1)
@@ -71,6 +75,7 @@ fn main() {
     let lens = parse_lens(&env("AI_LENS").unwrap_or_default());
     let depth = parse_depth(&env("AI_DEPTH").unwrap_or_else(|| "exegetical".into()));
     let research = env("AI_RESEARCH");
+    let research_key = env("AI_RESEARCH_KEY");
     let book: u8 = env("AI_REF_BOOK")
         .and_then(|v| v.parse().ok())
         .unwrap_or(43);
@@ -101,8 +106,13 @@ fn main() {
         }
     );
     eprintln!(
-        "mode={mode:?} lens={lens:?} depth={depth:?} research={}",
-        research.as_deref().unwrap_or("(off)")
+        "mode={mode:?} lens={lens:?} depth={depth:?} research={} research_key={}",
+        research.as_deref().unwrap_or("(off)"),
+        if research_key.is_some() {
+            "(presente — não exibida)"
+        } else {
+            "(ausente)"
+        }
     );
     eprintln!("ref={book}/{chapter}/{verse:?}  translation={translation}  lang={lang}  db={db}");
     eprintln!(
@@ -128,6 +138,7 @@ fn main() {
         key,
         model,
         research,
+        research_key,
     ) {
         Ok(s) => {
             println!("PROVIDER   : {}", s.provider);

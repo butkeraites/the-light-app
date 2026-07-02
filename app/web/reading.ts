@@ -295,8 +295,13 @@ export async function askAnchoredStream(
  *
  * `researchBackend` (ADR-0028/F3.9a) liga a PESQUISA WEB opt-in de fontes secundárias
  * (`[W:n]`): `undefined` (padrão) = desligado, sem rede; `"wikipedia"` = keyless, rede
- * opt-in do usuário (validada na F3.10); `"mock"` = fontes canônicas sem rede (prova). O
- * core cita as URLs REALMENTE buscadas, nunca o modelo (anti-alucinação). Só NATIVO.
+ * opt-in do usuário (validada na F4.5); `"mock"` = fontes canônicas sem rede (prova);
+ * `"tavily"` = BYOK, rede opt-in (F4.5). O core cita as URLs REALMENTE buscadas, nunca o
+ * modelo (anti-alucinação). Só NATIVO.
+ *
+ * `researchKey` (ADR-0035/F4.3) é a chave BYOK de pesquisa, repassada DIRETO ao core:
+ * `"mock"`/`"wikipedia"` a IGNORAM (keyless); `"tavily"` a EXIGE (sem ela → erro, antes de
+ * qualquer rede). NUNCA logada/persistida aqui; a UI de Tavily web é a F4.4.
  */
 export async function deepStudy(
   dbPath: string,
@@ -312,6 +317,7 @@ export async function deepStudy(
   key: string | undefined,
   model: string | undefined,
   researchBackend?: string,
+  researchKey?: string,
 ): Promise<StudyResultOut> {
   return deepStudyNative(
     dbPath,
@@ -327,6 +333,7 @@ export async function deepStudy(
     key,
     model,
     researchBackend,
+    researchKey,
   );
 }
 
