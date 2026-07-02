@@ -1,0 +1,35 @@
+# ⛔ HALT — aguardando sign-off humano do MARCO 3 (F3.13)
+
+Escrito pelo Driver em 2026-07-02. Motivo: **marco** (`gate: true`) — encerramento da
+Fase 3 precisa de **aprovação humana**, não de execução autônoma.
+
+## O que travou
+**A Fase 3 (estudo profundo assistido por IA) está FUNCIONALMENTE COMPLETA e verde** —
+nativo + web. F3.1–F3.12b aceitas e revisadas. A próxima é o **Marco 3 (F3.13)**, que o
+PROTOCOL manda **PARAR** para sign-off. Relatório: `loop/queue/F3.13-marco-3.task.md`.
+
+## Resumo (estudo profundo BYOK, opt-in, anti-alucinação, nativo + web)
+- **Léxico Strong** (STEP Bible CC-BY): dados F3.1 + fronteira F3.2 + inline na UI (F3.5) + web (F3.12a).
+- **Estudo profundo** (modos × lentes × profundidades): F3.3 + UI F3.5 + web F3.12a (zero-drift).
+- **Conversa/refinamento** ancorado: F3.4 + UI F3.6 + web F3.12b (zero-drift).
+- **Comparação multi-IA**: F3.7 + web F3.12b. **Export acadêmico SBL** + sidecar: F3.8.
+- **Pesquisa web** (Wikipedia keyless, opt-in): F3.9a (nativo) + F3.12b (web fetch).
+- **Validação REAL (F3.10):** estudo real do Gemini + Wikipedia; **26 citações de fontes
+  locais/verificadas, `WARNINGS: []`** (zero âncoras inventadas) — anti-alucinação provada.
+
+## Regras não negociáveis — mantidas
+Anti-alucinação **zero-drift** (léxico/texto/citações do store; LLM só interpreta; core
+descarta âncoras inválidas; mesma impl Rust ai-pure nativo↔web, provada por `assert_eq!`);
+BYOK (chave nunca em git/log); offline-first (IA/pesquisa opt-in); **`the-light` só via
+PR+ADR (3 PRs sancionados, nunca forkado, em `04b9b24`; wasm sempre puro)**; STEP CC-BY /
+OpenBible CC-BY / domínio público com atribuição. ADRs 0026–0032.
+
+## O que o sign-off decide
+1. Aprovar a Fase 3 (estudo profundo assistido por IA, multiplataforma)?
+2. Próximo rumo: **Fase 4** (refino/polimento, distribuição/lojas) · comparação multi-IA
+   real (chaves) · corpus completo web (~59 MB) · streaming web real · outra prioridade?
+
+## Como retomar
+Aprovar → o Driver registra o sign-off, arquiva a F3.13, **remove este `loop/HALT`** e o
+`planner` decompõe a próxima fase. Enquanto não houver sign-off, o loop permanece PARADO.
+Nada foi improvisado.
