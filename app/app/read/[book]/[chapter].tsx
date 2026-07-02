@@ -20,6 +20,7 @@ import { ReaderVersePanel } from '../../../components/ReaderVersePanel';
 import { ReaderAskPanel } from '../../../components/ReaderAskPanel';
 import { ReaderStudyPanel } from '../../../components/ReaderStudyPanel';
 import { ReaderChatPanel } from '../../../components/ReaderChatPanel';
+import { ReaderComparePanel } from '../../../components/ReaderComparePanel';
 import { ensureReadingDb } from '../../../lib/db';
 import { ensureUserDataDir } from '../../../lib/userdata';
 import { resolveHighlightColor } from '../../../lib/highlightColors';
@@ -78,6 +79,9 @@ export default function ChapterScreen() {
   // F3.6: versículo alvo do painel de "Conversa" (IA multi-turno). Separado de
   // `selectedVerse` pelo mesmo motivo — a âncora não se perde ao fechar o painel.
   const [chatVerse, setChatVerse] = useState<number | null>(null);
+  // F3.7: versículo alvo do painel de "Comparar" (IA — N provedores lado a lado).
+  // Separado de `selectedVerse` pelo mesmo motivo — a âncora não se perde ao fechar.
+  const [compareVerse, setCompareVerse] = useState<number | null>(null);
 
   // F1.9: versículo selecionado + painel de referências cruzadas (xref). Os dados
   // vêm SEMPRE da fronteira `cross_refs` (F1.8) — sem SQL/ordenação/filtro em TS.
@@ -405,6 +409,12 @@ export default function ChapterScreen() {
           setChatVerse(selectedVerse);
           setSelectedVerse(null);
         }}
+        onCompare={() => {
+          // F3.7: abre a comparação multi-IA (N provedores) ancorada na MESMA passagem;
+          // fecha o painel por-versículo preservando a âncora no `compareVerse`.
+          setCompareVerse(selectedVerse);
+          setSelectedVerse(null);
+        }}
         onChanged={() => void refreshUserData()}
         onClose={() => setSelectedVerse(null)}
       />
@@ -464,6 +474,29 @@ export default function ChapterScreen() {
         translation={translation}
         lang="pt"
         onClose={() => setChatVerse(null)}
+      />
+
+      {/* F3.7: comparação multi-IA (N provedores lado a lado) ancorada na passagem. Cada
+          coluna faz UMA chamada independente à fronteira `ask_anchored` (F2.1/F2.3a) com
+          seu provedor, sobre a MESMA `reference` (âncora). O `citedText` (verbatim do
+          store) é IDÊNTICO em todas → exibido UMA vez, SEPARADO das N interpretações (LLM)
+          — anti-alucinação visível. Provedores reais usam a chave do cofre (BYOK); a
+          comparação de respostas reais (diferentes) é a F3.10. A referência vai como
+          string canônica EN (`bookNameEn`), como no `ReaderAskPanel`. */}
+      <ReaderComparePanel
+        visible={compareVerse != null}
+        sourceLabel={
+          compareVerse != null ? `${bookNamePt(bookNumber)} ${chapterNumber}:${compareVerse}` : ''
+        }
+        reference={
+          compareVerse != null
+            ? `${bookNameEn(bookNumber)} ${chapterNumber}:${compareVerse}`
+            : ''
+        }
+        dbPath={dbPath}
+        translation={translation}
+        lang="pt"
+        onClose={() => setCompareVerse(null)}
       />
     </View>
   );

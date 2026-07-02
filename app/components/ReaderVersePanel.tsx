@@ -77,6 +77,7 @@ export function ReaderVersePanel({
   onAsk,
   onStudy,
   onChat,
+  onCompare,
   onChanged,
   onClose,
 }: {
@@ -102,6 +103,8 @@ export function ReaderVersePanel({
   onStudy?: () => void;
   /** Abre a conversa/follow-up (IA) ancorada nesta passagem (F3.6). Opcional. */
   onChat?: () => void;
+  /** Abre a comparação multi-IA (N provedores lado a lado) desta passagem (F3.7). Opcional. */
+  onCompare?: () => void;
   /** Avisa a tela após criar/editar/remover nota ou highlight (re-lista indicadores). */
   onChanged: () => void;
   onClose: () => void;
@@ -323,6 +326,19 @@ export function ReaderVersePanel({
               accessibilityLabel="Conversar (IA) sobre esta passagem"
             >
               <Text style={styles.btnText}>Conversa (IA)</Text>
+            </Pressable>
+          ) : null}
+
+          {/* ── COMPARAÇÃO MULTI-IA (IA) — F3.7 ──────────────────────────── */}
+          {onCompare ? (
+            <Pressable
+              style={[styles.btn, styles.btnAsk]}
+              onPress={onCompare}
+              testID="verse-compare"
+              accessibilityRole="button"
+              accessibilityLabel="Comparar respostas de várias IAs sobre esta passagem"
+            >
+              <Text style={styles.btnText}>Comparar (IA)</Text>
             </Pressable>
           ) : null}
 
