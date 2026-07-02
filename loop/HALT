@@ -1,0 +1,40 @@
+# ⛔ HALT — aguardando sign-off humano do GATE F3.9 (pesquisa web + paridade web do estudo)
+
+Escrito pelo Driver em 2026-07-02. Motivo: **gate estratégico** (`gate: true`) — precisa
+de DECISÃO HUMANA, não de execução autônoma.
+
+## O que travou
+**Todas as capacidades NATIVAS da Fase 3 (F3.1–F3.8) estão aceitas e verdes** no device:
+léxico Strong (STEP CC-BY), fronteira de léxico, estudo profundo, conversa/refinamento,
+UI de estudo (léxico inline + citações + atribuição), conversa/follow-up, comparação
+multi-IA e export acadêmico SBL. A próxima é o **GATE F3.9**. Brief completo em
+`loop/queue/F3.9-gate-pesquisa-web-paridade.task.md`.
+
+## Contexto (investigação do core `c8ecb2f`)
+- `ai::research` é **embedded-only** (reqwest); backends: **Wikipedia = keyless** (rede,
+  API pública), **Tavily = BYOK** (chave), **mock** (sem rede). `study()` já aceita
+  `web_sources: Vec<WebSource>` (hoje a fronteira passa `vec![]`) e cita `[W:n]` com
+  anti-alucinação embutida (valida índices, monta citações das URLs, não do modelo).
+- **Paridade web do estudo** exige um **PR `ai-pure` ao core** (study/verified_lexicon
+  são embedded-only; `user_prompt` privado) — molde F2.7/ADR-0024. A **conversa**
+  (`ask_session`/`refine_scope`/`parse_refinement`) JÁ é ai-pure (F3.4) → roda no web sem PR.
+
+## As 3 decisões (recomendação do Planner em **negrito**)
+- **D1 — Pesquisa web assistida (opt-in):** **(A) Wikipedia keyless** (rede opt-in, sem
+  chave, fontes citadas; padrão DESLIGADO + UI de privacidade) · (B) Tavily BYOK (melhor
+  busca, exige chave) · (C) adiar · (D) Wikipedia default + Tavily opt-in.
+- **D2 — Paridade web do estudo/léxico:** (A) **PR `ai-pure` ao core** (zero drift; refactor
+  pesado, molde F2.7) · (B) adiar (estudo web nativo-only) · **(C+A) subir a CONVERSA web
+  já** (já ai-pure, zero PR) **e** adotar o PR ai-pure p/ o estudo profundo quando quiser
+  paridade total. **Nunca** espelhar o anti-alucinação do estudo em TS.
+- **D3 — Validação real (F3.10):** confirmar como o **gate de chave real** (estudo +
+  conversa + comparação multi-IA reais, + pesquisa web se D1 aprovar), molde F2.6/`ask_real.rs`.
+
+## Como retomar
+Decida D1/D2/D3 → registra-se ADR(s) (0028+) → o Driver re-escopa/semeia **F3.10**
+(validação real), **F3.11** (PR core ai-pure se D2=A), **F3.12** (paridade web per D2),
+**F3.13** (Marco 3) → remove este `loop/HALT`. F3.10–F3.13 **dependem desta decisão**.
+
+Regras intactas: offline-first (pesquisa/estudo web = opt-in aditivo; nativo segue offline);
+anti-alucinação (fatos/citações de fontes locais + web citada verificada; LLM só interpreta);
+BYOK (chave nunca em git/log); `the-light` só via PR+ADR. Nada foi improvisado.
