@@ -1,0 +1,44 @@
+HALT — gate F4.6 (PR ao the-light: streaming NATIVO real por provedor) · 2026-07-02 20:40 UTC
+
+MOTIVO (regra não-negociável): a F4.6 MODIFICA o `the-light` (override de
+LlmProvider::complete_stream com SSE/NDJSON por provedor). Por CLAUDE.md, mudanças
+no the-light só via PR + ADR + merge humano — o loop NÃO modifica o the-light. O
+executor preparou toda a proposta SEM tocar o the-light; agora o loop PARA para você
+revisar/mergear o PR e fornecer o novo rev.
+
+O QUE FOI PREPARADO (commit 269b8fe, só no app repo):
+- loop/proposals/the-light-PR-native-sse-streaming.md — proposta COMPLETA (645 linhas):
+    * parsers de delta PUROS/un-gated (só serde_json; testáveis por fixture Cursor, sem rede),
+    * stream_reader genérico sobre std::io::BufRead + stream_response #[cfg(embedded)],
+    * override de complete_stream nos 4 provedores sob #[cfg(feature="embedded")]:
+        - Anthropic SSE  (content_block_delta → delta.text; refusal → BadResponse)
+        - OpenAI   SSE  (choices[0].delta.content; [DONE] ignorado)
+        - Gemini   SSE  (:streamGenerateContent?alt=sse; candidates[0].content.parts[].text)
+        - Ollama   NDJSON (stream:true; message.content por linha)
+    * testes do core propostos (concat==complete por fixture; parse SSE/NDJSON por provedor; default preservado).
+- DECISIONS.md — ADR-0035 (decisão do PR: embedded-only, não-quebrante, zero-drift; web segue transporte TS de F4.1/F4.2).
+
+GARANTIAS (documentadas na proposta e no ADR):
+- Não-quebrante: o default de complete_stream (mod.rs:378, emite 1×) permanece; complete intacto; default=["embedded"] byte-a-byte.
+- Zero-drift (anti-alucinação): streaming muda SÓ o transporte nativo; concat dos deltas == complete; cited_text/citações seguem do store/ai-pure.
+- Embedded-only: override usa reqwest::blocking (BufReader::lines(), sem feature async) → nada entra no grafo ai-pure/wasm; o web continua com o transporte TS.
+- Assinatura de complete_stream INALTERADA → fronteira (ask_anchored_stream) e bindings UniFFI/JSI (AiTokenCallback) NÃO mudam; só passam a receber N tokens reais em vez de 1. Sem regenerar bindings.
+
+COMO EXECUTAR O PR (você, no the-light):
+  1. Revise loop/proposals/the-light-PR-native-sse-streaming.md.
+  2. No the-light: crie o branch feat/native-sse-streaming a partir de 04b9b24a99…,
+     aplique as mudanças em crates/the-light-core/src/ai/{mod.rs,providers.rs} + testes.
+  3. Rode: cargo fmt --check · cargo clippy --workspace -D warnings · cargo test --workspace.
+     (Ajustes mecânicos de fmt/clippy que o compilador exigir são esperados — o código foi
+      confirmado byte-a-byte em 04b9b24 mas NÃO compilado no repo do app.)
+  4. Mergeie na main e me informe o NOVO rev (SHA).
+
+COMO RETOMAR (Driver, após o merge): re-pinar core/Cargo.toml (2 linhas: web ai-pure +
+nativo embedded) para o novo rev; confirmar que ask_anchored_stream emite tokens reais SEM
+mudança de assinatura/bindings; tsc/expo export web/self-tests nativos verdes; grafo wasm
+puro. Validação REAL de streaming nativo com a sua chave (opcional, fora do loop). Então:
+arquivar F4.6 e seguir para F4.7 (Marco 4 — Polimento da IA completo).
+
+Alternativa (se preferir NÃO fazer este PR agora): pode-se pular F4.6 e ir direto ao
+Marco 4 (F4.7) com o streaming nativo no default (emite 1×) — o web já tem streaming real
+(F4.1/F4.2). Basta avisar e o Driver reordena.
