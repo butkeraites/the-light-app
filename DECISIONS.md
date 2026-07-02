@@ -2319,3 +2319,49 @@ fronteira Rust (`deep_study`/`lexical_entries`) **já existe** (F3.2/F3.3); F3.5
   vêm SEMPRE do store local, verbatim; o LLM só interpreta.
 - **Escopo:** estudo/léxico **web = F3.12** (`reading.web.ts` = stub); **BYOK real +
   rede + streaming de estudo = F3.10** (gate). Não antecipados aqui.
+
+## ADR-0028 — Gate F3.9 / D1: pesquisa web assistida no estudo = **Wikipedia keyless, OPT-IN** (padrão desligado + aviso de privacidade); Tavily BYOK futuro
+
+- **Data:** 2026-07-02 · **Status:** aceito (sign-off humano no gate F3.9) · **Tarefa:** F3.9 · **Depende:** ADR-0023 (BYOK/rede opt-in), ADR-0026 (fontes/atribuição) · **Habilita:** integração de `ai::research` no `deep_study` (nativo) + paridade web (F3.12)
+
+### Decisão
+O estudo profundo pode, **opcionalmente**, enriquecer a análise com **pesquisa web via
+Wikipedia** (`ai::research::WikipediaProvider`, **KEYLESS** — API pública, sem chave). É
+**opt-in, padrão DESLIGADO**, com **aviso de privacidade** obrigatório antes da 1ª busca
+(rede opt-in). As fontes viram `WebSource` citadas `[W:n]`; o core **valida os índices**
+(`cited_web_indices`) e monta as citações **das URLs** (nunca do modelo) — anti-alucinação
+embutida. **Tavily (BYOK)** fica registrado como opção futura (melhor busca, exige chave).
+`ai::research` é embedded-only (reqwest) → no nativo é direto; no **web** a busca Wikipedia
+é `fetch` (TS), integrada na paridade web (F3.12), sem quebrar offline-first (opt-in).
+
+### Consequências
+Nova capacidade: `deep_study` ganha a opção de passar `web_sources` (hoje `vec![]`) obtidos
+de `build_research_provider("wikipedia", None, lang)`. Prova por **MockResearchProvider**
+(sem rede) no CI; rede real = opt-in do usuário (validação humana na F3.10). Offline-first,
+anti-alucinação e atribuição preservados.
+
+## ADR-0029 — Gate F3.9 / D2: paridade WEB do estudo profundo = **PR `ai-pure` COMPLETO agora** (study + léxico + conversa wasm-safe), fonte única / zero drift
+
+- **Data:** 2026-07-02 · **Status:** aceito (sign-off humano no gate F3.9) · **Tarefa:** F3.9 · **Depende:** ADR-0024 (precedente feature `ai-pure`), ADR-0011/0025 (infra TS + prepare/fetch/finalize web) · **Habilita:** F3.11 (PR core) → F3.12 (paridade web)
+
+### Decisão
+Levar o **estudo profundo, o léxico e a conversa** ao web com **fonte única em Rust**
+(zero drift do anti-alucinação), via um **PR ao `the-light-core`** que amplie a feature
+`ai-pure` (ADR-0024) para cobrir as partes puras de `study`/`verified_lexicon` (montagem de
+prompt/RAG/citação + a superfície de estudo), mantendo o transporte HTTP (LLM + Wikipedia)
+em TS (`fetch`, molde F2.7b/ADR-0025). Hoje `study()`/`verified_lexicon`/`StudyResult` são
+`embedded`-only e `user_prompt` é privado → **não há entrada pública pura**; por isso o PR
+é necessário (molde exato F2.7/ADR-0024). A **conversa** (`ask_session`/`refine_scope`/
+`parse_refinement`) JÁ é `ai-pure` (F3.4) → parte da paridade web sai sem depender do PR.
+**NUNCA** espelhar o anti-alucinação do estudo em TS (drift proibido).
+
+### Consequências / re-escopo
+- **F3.11 = PR sancionado ao `the-light`** (branch + push/merge humano + re-pin, molde
+  F2.7): expor as partes puras de estudo/léxico sob `ai-pure` (+ o que a pesquisa web pura
+  exigir) — **handoff BLOQUEANTE**.
+- **F3.10 = validação real** (D3) com a chave do usuário (estudo/conversa/comparação reais
+  + pesquisa web se ligada), molde F2.6/`ask_real.rs` — **gate/bloqueante** (chave/segredo).
+- **F3.12 = paridade web** (estudo/léxico/conversa/pesquisa) após o merge do F3.11 +
+  re-pin (liga `ai-pure` estendido na linha web), molde F2.7b.
+- **F3.13 = Marco 3.**
+- Anti-alucinação, offline-first (opt-in), BYOK e `the-light`-só-via-PR+ADR preservados.
