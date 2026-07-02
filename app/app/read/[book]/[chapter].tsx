@@ -19,6 +19,7 @@ import { ReaderVersionPicker } from '../../../components/ReaderVersionPicker';
 import { ReaderVersePanel } from '../../../components/ReaderVersePanel';
 import { ReaderAskPanel } from '../../../components/ReaderAskPanel';
 import { ReaderStudyPanel } from '../../../components/ReaderStudyPanel';
+import { ReaderChatPanel } from '../../../components/ReaderChatPanel';
 import { ensureReadingDb } from '../../../lib/db';
 import { ensureUserDataDir } from '../../../lib/userdata';
 import { resolveHighlightColor } from '../../../lib/highlightColors';
@@ -74,6 +75,9 @@ export default function ChapterScreen() {
   // F3.5: versículo alvo do painel de "Estudo" (IA profundo). Separado de `selectedVerse`
   // pelo mesmo motivo — a referência não se perde ao fechar o painel por-versículo.
   const [studyVerse, setStudyVerse] = useState<number | null>(null);
+  // F3.6: versículo alvo do painel de "Conversa" (IA multi-turno). Separado de
+  // `selectedVerse` pelo mesmo motivo — a âncora não se perde ao fechar o painel.
+  const [chatVerse, setChatVerse] = useState<number | null>(null);
 
   // F1.9: versículo selecionado + painel de referências cruzadas (xref). Os dados
   // vêm SEMPRE da fronteira `cross_refs` (F1.8) — sem SQL/ordenação/filtro em TS.
@@ -395,6 +399,12 @@ export default function ChapterScreen() {
           setStudyVerse(selectedVerse);
           setSelectedVerse(null);
         }}
+        onChat={() => {
+          // F3.6: abre a conversa/follow-up ancorada na MESMA passagem; fecha o painel
+          // por-versículo preservando a âncora no `chatVerse`.
+          setChatVerse(selectedVerse);
+          setSelectedVerse(null);
+        }}
         onChanged={() => void refreshUserData()}
         onClose={() => setSelectedVerse(null)}
       />
@@ -435,6 +445,25 @@ export default function ChapterScreen() {
         translation={translation}
         lang="pt"
         onClose={() => setStudyVerse(null)}
+      />
+
+      {/* F3.6: conversa/follow-up (IA) multi-turno ancorada na passagem. Cada follow-up
+          chama a fronteira `ask_session_anchored` (F3.4) com o MESMO book/chapter/verse
+          (âncora preservada); o `citedText` (verbatim do store) é exibido SEPARADO de cada
+          interpretação (LLM) — anti-alucinação visível. Provedor "mock" nesta entrega
+          (offline, sem chave/rede; BYOK = F3.10). A passagem vai NUMÉRICA. */}
+      <ReaderChatPanel
+        visible={chatVerse != null}
+        sourceLabel={
+          chatVerse != null ? `${bookNamePt(bookNumber)} ${chapterNumber}:${chatVerse}` : ''
+        }
+        book={bookNumber}
+        chapter={chapterNumber}
+        verse={chatVerse}
+        dbPath={dbPath}
+        translation={translation}
+        lang="pt"
+        onClose={() => setChatVerse(null)}
       />
     </View>
   );

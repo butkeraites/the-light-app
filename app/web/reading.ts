@@ -27,6 +27,7 @@ import {
   askAnchoredStream as askAnchoredStreamNative,
   deepStudy as deepStudyNative,
   lexicalEntries as lexicalEntriesNative,
+  askSessionAnchored as askSessionAnchoredNative,
 } from './native-generated/src/index';
 import type {
   Book,
@@ -43,11 +44,13 @@ import type {
   StudyCitation,
   VerifiedLexiconOut,
   LexEntry,
+  ChatTurn,
 } from './native-generated/bindings/the_light_app_core';
 import {
   StudyMode,
   StudyLens,
   StudyDepth,
+  ChatRole,
 } from './native-generated/bindings/the_light_app_core';
 
 export type {
@@ -64,8 +67,9 @@ export type {
   StudyCitation,
   VerifiedLexiconOut,
   LexEntry,
+  ChatTurn,
 };
-export { StudyMode, StudyLens, StudyDepth };
+export { StudyMode, StudyLens, StudyDepth, ChatRole };
 
 /** 66 livros canônicos (PURO — `reference::BOOKS`, independe do banco). */
 export function listBooks(): Book[] {
@@ -336,4 +340,62 @@ export async function lexicalEntries(
   limit: number | undefined,
 ): Promise<VerifiedLexiconOut> {
   return lexicalEntriesNative(dbPath, book, chapter, verse, lang, limit);
+}
+
+// ── CONVERSA/FOLLOW-UP ANCORADO (ask_session_anchored) — F3.6, fronteira F3.4 ────────
+// Glue NATIVO da fronteira de CONVERSA multi-turno (`ask_session_anchored`): delega ao
+// binding gerado → JSI → a camada `ai` do the-light-core. NÃO reimplementa prompt/RAG/
+// contexto/conversa em TS — TODO o pipeline (passagem VERBATIM do store → âncora montada
+// pelo core, injetada SÓ no 1º turno de usuário → provedor BYOK → interpretação) vive no
+// core (uma fonte da verdade). O `AiAnswer` retornado SEPARA `citedText` (texto bíblico,
+// verbatim do store — anti-alucinação) da `interpretation` (saída do LLM/mock); o texto
+// do versículo NUNCA vem do modelo. A conversa mantém a ÂNCORA porque a UI passa SEMPRE o
+// mesmo `book/chapter/verse` do store a cada follow-up.
+//
+// BYOK/offline-first: a `key` é ARGUMENTO (lida sob demanda do keystore pela UI) e NUNCA é
+// logada aqui; com `provider="mock"` não há chave nem rede (prova headless). A paridade web
+// da conversa é a F3.12 (`reading.web.ts` = stub). Síncrono no JSI; embrulhado em Promise
+// p/ assinatura uniforme com o web.
+//
+// ATENÇÃO à ordem REAL dos argumentos da fronteira (contra alucinação): `lang` vem ANTES
+// de `turns`; `studyMode`/`studyLens` vêm DEPOIS de `turns` e ANTES de `providerName`; a
+// passagem é `book/chapter/verse` NUMÉRICOS (não uma string "John 3:16").
+
+/**
+ * Conversa/follow-up ancorado numa passagem: cada chamada envia o HISTÓRICO de turnos
+ * (`turns`: `ChatTurn[]` User/Assistant) e recebe o `AiAnswer` do turno corrente. Delega
+ * ao binding gerado `askSessionAnchored` → JSI → `the_light_core::ai`. `studyMode`/
+ * `studyLens` `undefined` no fluxo simples; `key`/`model` `undefined` no mock (o core usa
+ * o default e não faz rede). O `AiAnswer` traz `citedText` (store, verbatim — a âncora)
+ * SEPARADO de `interpretation` (LLM); NÃO há campo `turns` no retorno (o histórico vive na
+ * UI). Anti-alucinação: o texto bíblico e a âncora vêm do store, não do modelo.
+ */
+export async function askSessionAnchored(
+  dbPath: string,
+  translation: string,
+  book: number,
+  chapter: number,
+  verse: number | undefined,
+  lang: string,
+  turns: ChatTurn[],
+  studyMode: StudyMode | undefined,
+  studyLens: StudyLens | undefined,
+  providerName: string,
+  key: string | undefined,
+  model: string | undefined,
+): Promise<AiAnswer> {
+  return askSessionAnchoredNative(
+    dbPath,
+    translation,
+    book,
+    chapter,
+    verse,
+    lang,
+    turns,
+    studyMode,
+    studyLens,
+    providerName,
+    key,
+    model,
+  );
 }

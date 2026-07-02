@@ -76,6 +76,7 @@ export function ReaderVersePanel({
   onSelectXref,
   onAsk,
   onStudy,
+  onChat,
   onChanged,
   onClose,
 }: {
@@ -99,6 +100,8 @@ export function ReaderVersePanel({
   onAsk?: () => void;
   /** Abre o estudo profundo (IA) ancorado nesta passagem (F3.5). Opcional. */
   onStudy?: () => void;
+  /** Abre a conversa/follow-up (IA) ancorada nesta passagem (F3.6). Opcional. */
+  onChat?: () => void;
   /** Avisa a tela após criar/editar/remover nota ou highlight (re-lista indicadores). */
   onChanged: () => void;
   onClose: () => void;
@@ -307,6 +310,19 @@ export function ReaderVersePanel({
               accessibilityLabel="Estudo profundo (IA) desta passagem"
             >
               <Text style={styles.btnText}>Estudo (IA)</Text>
+            </Pressable>
+          ) : null}
+
+          {/* ── CONVERSA/FOLLOW-UP (IA) — F3.6 ───────────────────────────── */}
+          {onChat ? (
+            <Pressable
+              style={[styles.btn, styles.btnAsk]}
+              onPress={onChat}
+              testID="verse-chat"
+              accessibilityRole="button"
+              accessibilityLabel="Conversar (IA) sobre esta passagem"
+            >
+              <Text style={styles.btnText}>Conversa (IA)</Text>
             </Pressable>
           ) : null}
 

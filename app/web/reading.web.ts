@@ -48,8 +48,9 @@ import type {
   StudyCitation,
   VerifiedLexiconOut,
   LexEntry,
+  ChatTurn,
 } from './generated/the_light_app_core';
-import { StudyMode, StudyLens, StudyDepth } from './generated/the_light_app_core';
+import { StudyMode, StudyLens, StudyDepth, ChatRole } from './generated/the_light_app_core';
 import {
   composeChapterPassage,
   hasTranslation,
@@ -86,8 +87,9 @@ export type {
   StudyCitation,
   VerifiedLexiconOut,
   LexEntry,
+  ChatTurn,
 };
-export { StudyMode, StudyLens, StudyDepth };
+export { StudyMode, StudyLens, StudyDepth, ChatRole };
 
 /**
  * 66 livros canônicos (PURO — `reference::BOOKS`), do RUST (wasm). SÍNCRONO, como
@@ -387,4 +389,30 @@ export async function lexicalEntries(
   _limit: number | undefined,
 ): Promise<VerifiedLexiconOut> {
   throw new Error('léxico verificado no web = F3.12');
+}
+
+// ── CONVERSA/FOLLOW-UP ANCORADO (ask_session_anchored) — STUB WEB (F3.12) ──────────────
+// A conversa multi-turno ancorada (`ask_session_anchored`) NÃO está disponível no web nesta
+// tarefa (F3.6 é só NATIVO). A superfície da camada `ai` (contexto/conversa) e o store são
+// `embedded`-only (nativo); a paridade web é a F3.12. Aqui apenas lançamos um erro explícito
+// (mesmo padrão do `deepStudy` acima), mantendo `tsc`/Metro web verdes e a camada `ai`/store
+// FORA do bundle web. A assinatura é idêntica à do glue nativo (respeitando a ordem real dos
+// argumentos: `lang` ANTES de `turns`; `studyMode`/`studyLens` DEPOIS de `turns`).
+
+/** STUB web: conversa ancorada = F3.12. Assinatura idêntica ao nativo (`_` = não usados). */
+export async function askSessionAnchored(
+  _dbPath: string,
+  _translation: string,
+  _book: number,
+  _chapter: number,
+  _verse: number | undefined,
+  _lang: string,
+  _turns: ChatTurn[],
+  _studyMode: StudyMode | undefined,
+  _studyLens: StudyLens | undefined,
+  _providerName: string,
+  _key: string | undefined,
+  _model: string | undefined,
+): Promise<AiAnswer> {
+  throw new Error('conversa ancorada no web = F3.12');
 }
