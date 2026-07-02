@@ -1,0 +1,35 @@
+# ⛔ HALT — F3.10: validação REAL do estudo profundo precisa da SUA chave BYOK (segredo + rede)
+
+Escrito pelo Driver em 2026-07-02. Motivo: **tarefa que precisa de segredo + rede opt-in**
+(`gate: true`, `needs_secret: true`). A chave da IA é um **segredo** — NUNCA pode entrar no
+chat, git ou log. A validação é **sua**, com a chave numa **env var** do seu terminal; o
+loop recebe só o **resultado**.
+
+## O que já está pronto
+Toda a cadeia NATIVA de estudo profundo (F3.1–F3.9a) está implementada e provada por MOCK:
+léxico Strong (STEP CC-BY), fronteiras de léxico/estudo/conversa, UI de estudo/conversa/
+comparação, export acadêmico SBL, e pesquisa web Wikipedia opt-in no `deep_study`. Harness
+de host `core/examples/study_real.rs` — compila offline, fmt/clippy limpos, **não imprime a chave**.
+
+## O que você faz (a chave fica só na env var)
+No repo `/Users/butkeraites/Documents/the-light-app` (rode com `! <cmd>` ou no seu terminal):
+```
+AI_PROVIDER=gemini AI_MODEL=gemini-2.5-flash AI_API_KEY="<sua-chave>" \
+  cargo run --manifest-path core/Cargo.toml --example study_real
+```
+(com `AI_RESEARCH=wikipedia` p/ incluir a pesquisa web; ou anthropic/openai.)
+
+Confirme:
+1. Vem uma **interpretação REAL** do provedor (não a do mock).
+2. O **PASSAGE_TEXT** é **João 3:16 verbatim do STORE** (anti-alucinação).
+3. As **CITATIONS** vêm do léxico STEP/web (não do modelo); **ACADEMIC_MARKDOWN** > 0.
+4. Nenhum erro; a chave não apareceu no output.
+
+## Como retomar
+Me reporte: **provedor/modelo + "funcionou"** (e, se quiser, um trecho) — **sem colar a
+chave**. Aí marco F3.10 aceita e sigo para **F3.11** (PR `ai-pure` ao the-light p/ a
+paridade web do estudo — ADR-0029; handoff de merge). Se der erro, me passe a **mensagem**
+(o harness não imprime a chave) que eu ajusto.
+
+Regras intactas: chave nunca em git/log; anti-alucinação; offline-first (IA/pesquisa opt-in);
+`the-light` só via PR+ADR. Nada foi improvisado.
