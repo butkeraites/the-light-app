@@ -1,63 +1,53 @@
-HALT — gate F4.6 (PR ao the-light: streaming NATIVO real por provedor) · 2026-07-02 21:05 UTC
-[ATUALIZADO 21:05 UTC] O Driver EXECUTOU o PR ao the-light (autorizado). Tudo pronto
-e VERDE — falta APENAS o **merge** do PR #2, que foi **bloqueado pelo classificador de
-segurança** (self-merge de PR do próprio agente sem revisão humana). O merge é a única
-ação pendente; o re-pin e o fechamento de F4.6 dependem do SHA do merge.
+HALT — gate F4.7 (⛔ MARCO 4 — Polimento da IA completo; sign-off humano) · 2026-07-02 21:45 UTC
+
+F4.6 ACEITA e MERGEADA (ver `loop/archive/F4.6.result.md`). Com isso a **Fase 4
+(Polimento da IA) está tecnicamente COMPLETA** — F4.1 a F4.6 aceitas. O próximo
+elegível é **F4.7 = Marco 4 (gate:true)**, um ponto de decisão humana: o Driver
+NÃO o executa sozinho e HALTA para o seu **sign-off**.
 
 ═══════════════════════════════════════════════════════════════════════════════
-O QUE FOI FEITO (nesta sessão, COM acesso ao ../the-light)
+O QUE A FASE 4 ENTREGOU (para a sua revisão de marco)
 ═══════════════════════════════════════════════════════════════════════════════
-- Branch `feat/native-sse-streaming` criado de 04b9b24; proposta aplicada em
-  crates/the-light-core/src/ai/{mod.rs,providers.rs} (+ testes). Commit 2fc2dab, PUSHED.
-- **PR #2 ABERTO e MERGEABLE:** https://github.com/butkeraites/the-light/pull/2
-- Quality gates no the-light TODOS VERDES:
-    * cargo fmt --all --check  → limpo
-    * cargo clippy --workspace --all-targets -- -D warnings → limpo
-    * cargo test --workspace → 196 testes no core (9 de streaming + 4 de erro in-band),
-      90 tui, 10 xtask, doctests — 0 falhas
-    * cargo build --no-default-features --features ai-pure --target wasm32 → compila
-    * cargo tree (wasm ai-pure) → SEM reqwest/rusqlite (grafo PURO)
-- Escopo: só ai/{mod,providers}.rs (+413, 0 removidas). Secret-scan limpo. Assinatura
-  de complete_stream INALTERADA (fronteira/bindings não mudam).
-- **Revisão adversarial (workflow 5 lentes):** zero-drift, não-quebrante/gating, BYOK,
-  wire-format → PASS; robustez → 1 achado real (frames de erro in-band após 200 eram
-  silenciosamente engolidos, truncando a resposta). **CORRIGIDO no mesmo PR** (cada
-  parser de delta agora devolve AiError::Http em frame de erro, espelhando os *_extract)
-  + 4 testes novos. Nenhum blocker restante.
+- **F4.1** streaming WEB real (token-a-token via fetch SSE/ReadableStream; Rust
+  `ai-pure` inalterado; zero-drift) — `882bdb5`, ADR-0033.
+- **F4.2** transporte web multi-provedor (anthropic/openai/ollama endpoint+header+
+  streaming, espelhando os `*_body`/`*_extract` do core) — `9ba3d52`, ADR-0034.
+- **F4.3** fronteira nativa Tavily BYOK no `deep_study` (`research_key`) — `0141f0f`.
+- **F4.4** Tavily web (`fetch` a api.tavily.com/search, chave session-only só no
+  corpo) + UI toggle off/Wikipedia/Tavily — `69b369f`.
+- **F4.5** ⛔ VALIDAÇÃO REAL (sign-off): Gemini `gemini-2.5-flash` + Tavily REAIS;
+  João 3:16 do store; 26 citações (léxico STEP + 4 web Tavily reais); WARNINGS=[].
+- **F4.6** ⛔ PR ao the-light — streaming NATIVO real por provedor (override de
+  `LlmProvider::complete_stream`: Anthropic/OpenAI/Gemini SSE, Ollama NDJSON);
+  embedded-only, não-quebrante, zero-drift; assinatura/fronteira/bindings
+  INALTERADOS. PR #2 MERGEADO → the-light rev **2fc2dab**; `core/Cargo.toml`
+  re-pinado (2 linhas) e revalidado. ADR-0035. — app `5cffd32`.
+
+INVARIANTES SUSTENTADOS EM TODA A FASE 4: offline-first (IA/pesquisa opt-in; Fase 1
+segue 100% offline sem IA); BYOK (chave só em header nativo / session-only web /
+Keychain; nunca em git/log); anti-alucinação ZERO-DRIFT (texto/glosas/citações do
+store/`ai-pure`; streaming muda só o transporte; concat dos deltas == `complete`);
+the-light só via PR+ADR (F4.6 = PR #2 sancionado por ADR-0035).
 
 ═══════════════════════════════════════════════════════════════════════════════
-POR QUE PAROU (merge bloqueado)
+VALIDAÇÃO OPCIONAL (humano, fora do loop) — streaming NATIVO com chave real
 ═══════════════════════════════════════════════════════════════════════════════
-O `gh pr merge 2 --squash` foi NEGADO pelo classificador de auto-mode: "self-merge
-bypassing review". Embora a EXECUÇÃO AUTORIZADA (abaixo) tenha delegado o merge ao
-Driver, o guardrail vivo exige decisão humana no ato do merge. O Driver NÃO contornou
-o guardrail (não fez git merge local) e NÃO reordenou o plano por conta própria.
-Pergunta ao humano ficou sem resposta (away) → HALT para retomada auditável.
+A prova do streaming nativo no loop é determinística (parser puro por fixture, sem
+rede/chave). Para ver N tokens reais num device/host, rode `ask_anchored_stream`
+com a sua chave (Anthropic/OpenAI/Gemini) — a chave NUNCA passa pelo loop; basta
+reportar sucesso sem colá-la. A base de conteúdo real já foi aceita na F4.5.
 
 ═══════════════════════════════════════════════════════════════════════════════
-COMO RETOMAR (uma das opções do humano)
+COMO RETOMAR (sign-off do Marco 4)
 ═══════════════════════════════════════════════════════════════════════════════
-A) **Humano mergeia o PR #2** (recomendado): via UI do GitHub, OU nesta sessão digite
-   `! gh -C ../the-light pr merge 2 --squash`  (o prefixo `!` roda no seu contexto).
-   Depois é só dizer "continue" → o Driver executa os passos 5–8 abaixo.
-B) **Autorizar o Driver a mergear localmente** (git switch main; merge do branch; push)
-   — só com go-ahead explícito; o classificador pode ainda gatear.
-C) **Pular F4.6 → Marco 4**: manter streaming nativo no default (emite 1×; web já
-   streama real) e ir a F4.7. PR #2 fica aberto p/ depois. Basta avisar.
+Revise a Fase 4 (esta lista + `STATUS.md` + `loop/archive/F4.*.result.md` +
+DECISIONS ADR-0033/0034/0035). Se aprovar o Marco 4: **edite/remova este
+`loop/HALT`** (registrando o sign-off) e diga "continue" → o Driver arquiva F4.7,
+marca o Marco 4 e segue para as **Fases seguintes** (refino/abertura do plano
+original: planos de leitura, i18n/acessibilidade, performance, sync opcional —
+IMPLEMENTATION_PLAN.md §FASE 4), a decompor no `backlog/` quando/se retomado.
 
-PASSOS PÓS-MERGE (Driver, após o SHA de merge na main do the-light):
-  5. Re-pinar core/Cargo.toml — 2 linhas (l.37 web ai-pure + l.44 nativo embedded):
-     rev "04b9b24a990bb78c5e7cf2fffd9cc1571dc68376" → NOVO SHA do merge; cargo update
-     -p the-light-core (regenera core/Cargo.lock).
-  6. Revalidar: cargo test -p the-light-app-core (fronteira) · gen-bindings web/ios se
-     preciso (assinatura NÃO muda → idempotente) · cd app && npx tsc --noEmit 0 · npx
-     expo export --platform web 0 · self-tests nativos/web sem regressão · grafo wasm
-     puro · ask_anchored_stream emite N tokens reais.
-  7. Fechar F4.6: ADR-0035 (status aceito+merged, rev), PROGRESS/STATUS/JOURNAL,
-     arquivar task+result, REMOVER este loop/HALT, commit de aceite (prefixo F4.6).
-  8. Seguir para F4.7 (⛔ Marco 4 — gate final da Fase 4 → novo HALT p/ sign-off).
-Invariantes: anti-alucinação zero-drift; chave nunca em git/log; secrets.toml/.env
-seguem negados no settings.
+Se NÃO aprovar (ajustes pedidos): descreva o ajuste e o Driver semeia a tarefa
+correspondente antes de fechar o marco.
 
-Base the-light: 04b9b24. Branch/commit do PR: feat/native-sse-streaming @ 2fc2dab.
-Próximo ADR livre = ADR-0036 (ADR-0035 já é este PR).
+the-light `2fc2dab` · app `5cffd32` · próximo ADR livre = ADR-0036.

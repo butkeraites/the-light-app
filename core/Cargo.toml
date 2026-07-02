@@ -26,7 +26,11 @@ thiserror = "2.0.18"
 # UniFFI delega a `the_light_core::reference` (regra "uma fonte da verdade").
 # Nunca forkar/copiar/vendorizar — mudanças no core só via PR + ADR.
 #
-# rev 04b9b24: rev c8ecb2f + feature `ai-pure` ESTENDIDA p/ a superfície pura do ESTUDO
+# rev 2fc2dab: rev 04b9b24 + streaming NATIVO real por provedor (override de
+# `LlmProvider::complete_stream` com SSE p/ anthropic/openai/gemini e NDJSON p/ ollama;
+# embedded-only, não-quebrante, zero-drift; PR F4.6/ADR-0035). Assinatura de
+# `complete_stream` INALTERADA → fronteira/bindings não mudam (só N tokens reais).
+# Anterior — rev 04b9b24: rev c8ecb2f + feature `ai-pure` ESTENDIDA p/ a superfície pura do ESTUDO
 # (study prompt/citação/to_academic_markdown/WebSource compiláveis em wasm; PR F3.11/ADR-0030).
 # Anterior — rev c8ecb2f: feature `ai-pure` (partes PURAS do `ai` compiláveis em
 # wasm) + fix `default_model` gemini→2.5-flash (PR sancionado da F2.7 / ADR-0024).
@@ -34,11 +38,11 @@ thiserror = "2.0.18"
 # a montagem de prompt/RAG + `ask` ancorado + `citation` (anti-alucinação) em Rust —
 # SEM arrastar rusqlite/reqwest (só a chamada HTTP no web é `fetch`, F2.7b). No nativo,
 # a feature `embedded` (que inclui `ai-pure`) é religada no bloco [target...] abaixo.
-the-light-core = { git = "https://github.com/butkeraites/the-light", rev = "04b9b24a990bb78c5e7cf2fffd9cc1571dc68376", package = "the-light-core", default-features = false, features = ["ai-pure"] }
+the-light-core = { git = "https://github.com/butkeraites/the-light", rev = "2fc2dabbe1e8ea14d9aab07ba774221595b65b7d", package = "the-light-core", default-features = false, features = ["ai-pure"] }
 
 # Matriz de features por alvo (ADR-0005). No NATIVO (não-wasm), habilita a feature
 # `embedded` do core (store SQLite + rede), necessária quando a fronteira passar a
 # expor store/IA. No WEB (wasm32), fica puro (bloco acima, sem `embedded`) — sem
 # arrastar rusqlite/reqwest, permitindo o build wasm.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-the-light-core = { git = "https://github.com/butkeraites/the-light", rev = "04b9b24a990bb78c5e7cf2fffd9cc1571dc68376", package = "the-light-core", default-features = false, features = ["embedded"] }
+the-light-core = { git = "https://github.com/butkeraites/the-light", rev = "2fc2dabbe1e8ea14d9aab07ba774221595b65b7d", package = "the-light-core", default-features = false, features = ["embedded"] }
