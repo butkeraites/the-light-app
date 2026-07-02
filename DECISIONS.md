@@ -2676,3 +2676,85 @@ compare/lexicon/export) nem do caminho não-streaming (`test:web:ai`).
   askAnchoredStream.web.test.mjs}` (novos), `DECISIONS.md` (este ADR).
   **Gerado/IGNORADO:** `app/web/generated/*` (bindings web, inalterados — nenhum símbolo novo de
   fronteira).
+
+## ADR-0034 — F4.2: transporte web MULTI-PROVEDOR (anthropic/openai/ollama) = **só o transporte TS** despacha por provedor (endpoint/headers/body/extract + streaming SSE/NDJSON); `ai_web_prepare`/`ai_web_finalize` (Rust `ai-pure`) INALTERADOS
+
+- **Data:** 2026-07-02 · **Status:** aceito · **Tarefa:** F4.2 · **Depende:** ADR-0033 (F4.1: streaming web = só transporte TS via `ReadableStream`), ADR-0025 (F2.7b: prepare/fetch/finalize web + `*_body`/`*_extract` espelham os PRIVADOS do core; chave session-only; MVP Gemini com os demais provedores adiados como follow-up), ADR-0029 (D2: zero drift). **NÃO** toca o `the-light` (@ `04b9b24`) nem `core/**`.
+
+### Contexto
+A F2.7b (ADR-0025) entregou a paridade web de IA com o transporte `fetch` só para `gemini`+`mock`
+(MVP) e deixou os demais provedores — `anthropic`/`openai`/`ollama`, que **já existem no core**
+(`ai::PROVIDERS`, nativo já funciona) — a lançar *"ainda não tem transporte web"*. A F4.1
+(ADR-0033) adicionou o streaming token-a-token (SSE) para o Gemini. Esta tarefa completa a
+matriz de provedores web, mantendo tudo app-side (transporte TS), sem tocar a fronteira Rust nem
+o core (o `LlmRequestParts` do `ai_web_prepare` — `system`/`user`/`model` resolvido por provedor
+— é suficiente).
+
+### Decisão
+**O multi-provedor muda SÓ o transporte TS.** A fronteira Rust `ai-pure`
+(`ai_web_prepare`/`ai_web_finalize`) permanece **inalterada** — `cited_text` (numerado, VERBATIM
+do store) sai do `prepare` (SEPARADO) e a `interpretation` COMPLETA (não-streaming: `*_extract`;
+streaming: concatenação dos deltas) passa pela MESMA `ai_web_finalize` (`rewrite_anchors`, Rust).
+Em `app/web/ai-anchored.web.ts` (transporte, versionado), para CADA provedor, ESPELHANDO os
+`*_body`/`*_extract` PRIVADOS do core (`providers.rs`) — transporte = infra, ADR-0023/0025:
+
+1. **Helpers compartilhados:** `postJson` (`POST` genérico: monta headers/body, erra citando o
+   provedor + status HTTP — nunca a chave); `readLineStream` (esqueleto de leitura de
+   `ReadableStream` LINHA a LINHA — `getReader()`+`TextDecoder`+buffer, reconstrói linhas
+   quebradas através de fronteiras de byte — reusado por TODOS os streamings); `parseSseData`
+   (parser de linha SSE `data: {…}` genérico, tolera `[DONE]`/`event:`/parcial). O
+   `geminiComplete`/`geminiCompleteStream` foram REFATORADOS para reusá-los (comportamento
+   idêntico; sem regressão do `test:web:ai`/`test:web:ai-stream`).
+2. **Anthropic** (`x-api-key`+`anthropic-version`; `POST https://api.anthropic.com/v1/messages`):
+   body `{model, max_tokens:8192, system, thinking:{type:"adaptive"}, messages:[{role:"user",
+   content:user}]}` (+`stream:true` no streaming); extract não-stream = concat dos blocos
+   `content[type=="text"].text` (`stop_reason=="refusal"` → erro); DELTA streaming (SSE) =
+   eventos `content_block_delta` com `delta.type=="text_delta"` → `delta.text`.
+3. **OpenAI** (`authorization: Bearer <key>`; `POST https://api.openai.com/v1/chat/completions`):
+   body `{model, max_tokens:8192, messages:[{role:"system"},{role:"user"}]}` (+`stream:true`);
+   extract não-stream = `choices[0].message.content`; DELTA streaming (SSE) =
+   `choices[0].delta.content` (+`data: [DONE]`).
+4. **Ollama** (LOCAL, **SEM chave** — header só `content-type`; `POST http://localhost:11434/api/
+   chat`): body `{model, stream:<bool>, messages:[{role:"system"},{role:"user"}]}`; extract
+   não-stream = `message.content`; DELTA streaming = **NDJSON** (JSON por linha, sem prefixo
+   `data:`) `{"message":{"content":...},"done":...}` → `message.content` por linha.
+5. **`webLlmTransport`:** novos `case` `anthropic`/`openai`/`ollama` — exige chave (SÓ
+   anthropic/openai; ollama **não**) e despacha `*CompleteStream` (com `onToken`) ou `*Complete`
+   (sem). Chave ausente/vazia p/ anthropic/openai → erro que cita **só o provedor** (nunca o
+   valor). `askAnchoredOnHandle` inalterado (o despacho é interno).
+
+### Prova (portões F4.2)
+Prova **headless node** determinística (`multiProvider.web.test.mjs`, fetch MOCK SSE/NDJSON, SEM
+rede/chave real) para CADA provedor (anthropic/openai/ollama), em 3 cenários: **(1 streaming
+limpo)** N=5 deltas → `onToken` 5× na ORDEM, concatenação == `AiAnswer.interpretation`; request
+CAPTURADO asserta endpoint + método POST + header da chave CORRETO por provedor (ollama SEM chave)
++ body espelhando o `*_body` do core + a chave DUMMY NUNCA na URL; **(2 não-streaming)**
+`interpretation` == `*_extract` do shape do provedor; **(3 âncora espúria + bytes fatiados 5B)** o
+stream emite `[V:G9999]` → `ai_web_finalize` (Rust) a REMOVE. Em TODOS: `cited_text` = João 3:16
+KJV VERBATIM do store (via `ai_web_prepare`, inalterado), separado; `provider`/`model` (default
+resolvido pelo `ai_web_prepare`) conferem. + Chave ausente (anthropic/openai) → erro cita só o
+provedor, 0 fetch. `tsc --noEmit` 0 + `expo export --platform web` 0; grafo wasm PURO (sem
+`rusqlite`/`reqwest`); SEM regressão dos testes web (ask/ask-stream gemini-mock/study/session/
+compare/…).
+
+### Consequências
+- `the-light` **intacto** (`04b9b24`) e `core/src/lib.rs`/`core/Cargo.toml`/`Cargo.lock` **NÃO**
+  alterados — a mudança é 100% app-side (transporte TS). Nenhum binding novo de fronteira. Os
+  provedores JÁ existem no core (nativo já funciona); um provedor **novo, inexistente no core**
+  exigiria `impl LlmProvider` no core → PR futuro (`gate:true`, fora de escopo).
+- Anti-alucinação **ZERO-DRIFT**: o transporte só monta o request (com `system`/`user`/`model` do
+  Rust `ai-pure`) e extrai a INTERPRETAÇÃO do modelo; nenhum prompt/RAG/citação/aparato é
+  reimplementado em TS; o `cited_text` viaja SEPARADO (store, via `prepare`) e a interpretação
+  completa passa pela MESMA `ai_web_finalize`. Os `*_body`/`*_extract` espelham os PRIVADOS do
+  core.
+- BYOK — **chave por provedor, session-only, só no header:** anthropic `x-api-key`
+  (+`anthropic-version`), openai `Authorization: Bearer`, gemini `x-goog-api-key`, **ollama sem
+  chave** (localhost). NUNCA na URL/log. `fetch` INJETÁVEL; a prova usa MOCK (nenhuma rede/chave
+  real).
+- Offline-first: a IA web é opt-in; sem chave/rede o app segue offline; o `"mock"` roda sem rede.
+- **Versionado nesta tarefa:** `app/web/ai-anchored.web.ts` (multi-provedor no transporte +
+  helpers compartilhados + refactor do Gemini), `app/package.json` (script
+  `test:web:ai-multiprovider`), `app/web/__tests__/{multiProvider-headless-entry.ts,
+  multiProvider.web.test.mjs}` (novos), `DECISIONS.md` (este ADR).
+  **Gerado/IGNORADO:** `app/web/generated/*` (bindings web, inalterados — nenhum símbolo novo de
+  fronteira).
