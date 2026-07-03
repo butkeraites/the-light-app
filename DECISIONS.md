@@ -1332,6 +1332,12 @@ checksums UniFFI dos novos símbolos (`get_chapter`=24118, `list_books`=43013,
 
 - **Data:** 2026-06-30 · **Status:** aceito · **Tarefa:** F1.4 · **Depende:** ADR-0014
 
+> **Amendment (F5.14 / ADR-0043, 2026-07-03).** A lacuna "persistência entre reinícios fica
+> como melhoria futura" (ver alternativa rejeitada abaixo) está **FECHADA**. O override de tema
+> agora PERSISTE no KV de prefs OFFLINE da F5.2 (arquivo nativo / localStorage web) sob
+> `tla.pref.theme.mode` — REUSANDO a infra existente, **sem** `AsyncStorage`/`expo-secure-store`
+> nem qualquer dep nova. Detalhes: **ADR-0043**.
+
 ### Contexto
 A F1.4 estende a UI de leitura NATIVA da F1.3 com duas capacidades, **sem** tocar
 o core/fronteira (`the-light` pinado `8f66004`, `core/src/lib.rs` intacto) e **sem**
@@ -3113,3 +3119,23 @@ A UI de planos (F5.7) já mostra o plano ativo + progresso, mas não tinha como 
 
 ### Consequências
 - O plano ativo ganha lembrete diário LOCAL opt-in; leitura/planos seguem 100% funcionais sem nunca habilitá-lo. Nova dep de runtime `expo-notifications` (app-side). Sem servidor/conta/push token/rede — offline-first e BYOK/privacidade preservados (nada logado, nada sai do device). Histórico/soneca de lembrete ficam fora do escopo.
+
+## ADR-0043 — F5.14: persistir o MODO DE TEMA (claro/escuro) entre reinícios no KV de prefs OFFLINE da F5.2 (`tla.pref.theme.mode`) — fecha a lacuna do ADR-0015, sem dependência nova
+
+- **Data:** 2026-07-03 · **Status:** aceito · **Tarefa:** F5.14 (`gate: false`) · **Depende:** **F5.2/ADR-0038** (KV de prefs OFFLINE) e **F1.4/ADR-0015** (sistema de tema). É um **amendment** ao ADR-0015 (persistência agora entregue). NÃO toca `the-light` (@ `2fc2dab`) nem `core/**` — 100% app-side, sem dep nova.
+
+### Contexto
+O `ThemeProvider` da F1.4 (ADR-0015) mantinha o override de tema (claro/escuro) só em **estado de sessão** (memória): reabrir o app perdia a escolha e voltava a seguir o `useColorScheme()` do sistema. O ADR-0015 registrou isso como "melhoria futura" e a nota da F5.2/ADR-0038 já previa que o KV de prefs OFFLINE serviria, no futuro, para persistir o tema. Esta tarefa entrega exatamente isso REUSANDO a infra — sem criar um 2º mecanismo de persistência e sem dep nova.
+
+### Decisão
+1. **Lógica PURA em `themePrefs.ts` (molde `planReminders.shared.ts`).** Um módulo novo, dependency-free e SEM `react-native` (não importa `useColorScheme`), define `ThemeMode` (`'light'|'dark'`), `THEME_MODES`, `THEME_PREF_KEY = 'theme.mode'` e o guard `isThemeMode(value)`. Manter isto SEPARADO de `theme.ts` (que puxa `react-native`) é o que torna a prova headless bundlável em node. `theme.ts` re-exporta `ThemeMode` (compat: consumidores importam de `../lib/theme` como antes).
+2. **`ThemeProvider` hidrata no boot e persiste on-change (molde `I18nProvider`).** A base segue sendo `useColorScheme()`; no boot, um `useEffect` lê `getPref('theme.mode')` e, se `isThemeMode(saved)`, aplica o override. `toggle`/`setMode` gravam via `setPref` (ou `removePref` quando `null`, voltando a seguir o sistema) — fire-and-forget, falha tolerada (offline-first, nunca quebra a UI). Só `'light'|'dark'|ausente` são estados válidos; um valor desconhecido/corrompido no storage é IGNORADO pelo guard (segue o sistema). A pref NUNCA é logada.
+3. **Reuso do KV da F5.2 (SEM 2º mecanismo).** Grava sob a chave NAMESPACEADA `tla.pref.theme.mode` (via `prefIdFor`), ao lado de `tla.pref.ui.locale` (F5.2) e `tla.pref.plans.reminder` (F5.13): mesmo arquivo JSON nativo / `localStorage` web, mesma superfície `Prefs`. Nada de `AsyncStorage`/`expo-secure-store` (tema NÃO é segredo — o keystore continua exclusivo de chaves BYOK).
+4. **Boot-flash aceitável (ADR-0015).** A hidratação é ASSÍNCRONA (o KV nativo/web tem API async): se o modo salvo DIVERGE do esquema do sistema, o 1º paint segue o sistema por um instante até a leitura resolver — comportamento idêntico ao `I18nProvider` da F5.2 e explicitamente aceito pela tarefa/ADR-0015. Não se adicionou leitura síncrona (acoplaria `theme.ts` ao `localStorage` e quebraria a paridade nativa).
+
+### Prova e gates
+- `tsc --noEmit` (0). Self-test headless novo `web/__tests__/theme.test.mjs` (`npm run test:web:theme`, esbuild + `expo-file-system` EXTERNAL, `PrefsBackend` FAKE em memória, molde `i18n.test.mjs`): guard `isThemeMode` (só light/dark; `system`/`''`/null/undefined/case-diferente → inválido); ROUND-TRIP `setPref('theme.mode','dark')` → SOBREVIVE a uma NOVA instância de `Prefs` sobre o MESMO storage (reabrir o app) e re-hidrata; grava sob a chave namespaceada `tla.pref.theme.mode` (nunca a crua); `removePref` volta a seguir o sistema; toggle simétrico light/dark; valor desconhecido ignorado; higiene (`themePrefs.ts`/`theme.ts` sem `console.*`).
+- `test:i18n` verde (138 chaves, paridade pt↔en) + os 16 `test:web:*` + `test:keystore` sem regressão. `expo export --platform web` (0). `eslint` = N/A neste repo (sem config — ADR-0038).
+
+### Consequências
+- A escolha de tema SOBREVIVE a reinícios (fecha a lacuna do ADR-0015) reusando o KV OFFLINE da F5.2 — offline-first e BYOK preservados (nada sai do device, nada logado). Sem dep nova; `core/**`/`the-light` intactos. Um breve flash default→hidrata pode ocorrer no boot quando o modo salvo diverge do sistema (aceitável, molde i18n). Um seletor tri-estado (claro/escuro/sistema) na UI e a auditoria WCAG ficam FORA do escopo (F5.18).
