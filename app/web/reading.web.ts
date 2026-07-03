@@ -40,10 +40,6 @@ import {
   listReadingPlans as listReadingPlansWasm,
   readingPlanDay as readingPlanDayWasm,
   readingPlanDayIndex as readingPlanDayIndexWasm,
-  readingPlanProgress as readingPlanProgressWasm,
-  startReadingPlan as startReadingPlanWasm,
-  setReadingPlanCompleted as setReadingPlanCompletedWasm,
-  clearReadingPlan as clearReadingPlanWasm,
 } from './generated/index.web';
 import type {
   Book,
@@ -581,63 +577,89 @@ export async function askSessionAnchored(
   }
 }
 
-// ── PLANOS DE LEITURA (list/day/day_index) — F5.1 (STUB web) ──────────────────
-// STUB: o módulo `userdata` (geração de planos) é nativo-only (`#[cfg(feature="embedded")]`)
-// e NÃO entra no wasm — os bindings gerados são os STUBS da fronteira (`list` → `[]`, `day`
-// → vazio, `dayIndex` → CoreError). A paridade web REAL (F5.10) exigirá expor a superfície
-// PURA de planos sob `ai-pure` no `the-light` (PR + ADR — gate estratégico à parte). Aqui só
-// reexportamos os stubs (assinatura IDÊNTICA ao glue nativo), SEM espelhar geração em TS
-// (zero drift). SÍNCRONO, como `listBooks` (exige o wasm já inicializado). Os stubs NÃO
-// tocam OPFS (nada de `openReadingDbWeb`).
+// ── PLANOS DE LEITURA (list/day/day_index) — F5.10 (geração REAL/wasm) ─────────
+// DESTUBADO: a geração de planos é CFG-FREE no core (F5.10/ADR-0037/rev `225b8c9`): a
+// superfície PURA `userdata::plans` compila sob `ai-pure` (wasm-safe), então os bindings
+// gerados carregam a impl REAL (não mais os stubs vazios). Aqui só reexportamos a fronteira
+// wasm (assinatura IDÊNTICA ao glue nativo), SEM espelhar geração em TS: o CATALOG (ids/nomes
+// PT), a divisão em dias (capítulos inteiros) e o índice do dia vêm SEMPRE do core (uma fonte
+// da verdade; anti-alucinação — refs/nomes do core, ZERO-DRIFT nativo↔web). SÍNCRONO, como
+// `listBooks` (exige o wasm já inicializado, pré-aquecido por `useWasmReady()`). NÃO tocam
+// OPFS (geração pura em memória).
 
-/** STUB web (F5.10): lista vazia até a PR `ai-pure` de planos ao core. */
+/** Os 3 planos (annual/nt/gospels) com nome PT verbatim do core + nº de dias — REAL (wasm). */
 export function listReadingPlans(): ReadingPlanSummary[] {
   return listReadingPlansWasm();
 }
 
-/** STUB web (F5.10): dia vazio (`{ label: '', references: [] }`) até a PR `ai-pure`. */
+/** As leituras (capítulos inteiros) de um dia + rótulo PT — REAL (wasm). Fora do intervalo → vazio. */
 export function readingPlanDay(planId: string, day: number): ReadingPlanDay {
   return readingPlanDayWasm(planId, day);
 }
 
-/** STUB web (F5.10): lança (CoreError) até a PR `ai-pure` de planos ao core. */
+/** Índice (0-based) do dia de hoje (satura em `[0, len-1]`) — REAL (wasm). Data inválida → lança. */
 export function readingPlanDayIndex(startDate: string, today: string, len: number): number {
   return readingPlanDayIndexWasm(startDate, today, len);
 }
 
-// ── PROGRESSO DO PLANO (persistência) — F5.4 (STUB web) ───────────────────────
-// STUB: a persistência do progresso usa `userdata::plans::PlanStore` (fs), nativo-only
-// (`#[cfg(feature="embedded")]`) — os bindings gerados são os STUBS da fronteira (lançam
-// CoreError). A paridade web REAL (F5.10) espelhará `<dataDir>/reading-plans/active.json`
-// em OPFS (mesmo layout do core, byte-a-byte), como notas/highlights (F1.16). Aqui só
-// reexportamos os stubs (assinatura IDÊNTICA ao glue nativo, async), SEM tocar OPFS nem
-// espelhar serialização em TS (zero drift). Os stubs lançam → a Promise rejeita.
+// ── PROGRESSO DO PLANO (persistência) — F5.10 (OPFS app-side) ─────────────────
+// DESTUBADO: como `userdata::plans::PlanStore` (fs) é nativo-only (`#[cfg(feature="embedded")]`)
+// e NÃO entra no wasm, o PROGRESSO no web é persistido em TS sobre OPFS, ESPELHANDO o formato em
+// disco do core (`reading-plans/active.json` = `{plan_id, start_date, completed}`), como
+// notas/highlights (F1.16/ADR-0022). O I/O de ARQUIVO INTEIRO vem do MESMO backend OPFS de
+// userdata (`openUserDataWeb`); o FORMATO + a validação (plan_id via CATALOG do core, start_date
+// ISO via `readingPlanDayIndex`) vivem em `plans-fs.web.ts` (VFS-agnóstico, espelho do core).
+// `_dataDir` é aceito por paridade de assinatura com o nativo; o store web abre o OPFS
+// internamente (mesmo padrão de `putNote`/`getChapter`). Offline-first: só OPFS local, sem rede.
 
-/** STUB web (F5.10): lança (CoreError) até o espelho OPFS do progresso. */
+/** Lê o PROGRESSO do plano ativo (OPFS); sem plano ativo → `undefined` (não erro). */
 export async function readingPlanProgress(
-  dataDir: string,
+  _dataDir: string,
 ): Promise<ReadingPlanProgress | undefined> {
-  return readingPlanProgressWasm(dataDir);
+  const [{ openUserDataWeb }, { readActivePlanFs }] = await Promise.all([
+    import('./userdata-opfs.web'),
+    import('./plans-fs.web'),
+  ]);
+  const dir = await openUserDataWeb();
+  return readActivePlanFs(dir);
 }
 
-/** STUB web (F5.10): lança (CoreError) até o espelho OPFS do progresso. */
+/**
+ * INICIA um plano (`completed = 0`) em OPFS. `planId` fora do CATALOG do core / `startDate`
+ * não-ISO → lança (mesma semântica/mensagem do nativo), sem gravar. SOBRESCREVE o plano ativo.
+ */
 export async function startReadingPlan(
-  dataDir: string,
+  _dataDir: string,
   planId: string,
   startDate: string,
 ): Promise<ReadingPlanProgress> {
-  return startReadingPlanWasm(dataDir, planId, startDate);
+  const [{ openUserDataWeb }, { startPlanFs }] = await Promise.all([
+    import('./userdata-opfs.web'),
+    import('./plans-fs.web'),
+  ]);
+  const dir = await openUserDataWeb();
+  return startPlanFs(dir, planId, startDate);
 }
 
-/** STUB web (F5.10): lança (CoreError) até o espelho OPFS do progresso. */
+/** ATUALIZA os dias concluídos do plano ativo (OPFS); sem plano ativo → lança. */
 export async function setReadingPlanCompleted(
-  dataDir: string,
+  _dataDir: string,
   completed: number,
 ): Promise<ReadingPlanProgress> {
-  return setReadingPlanCompletedWasm(dataDir, completed);
+  const [{ openUserDataWeb }, { setCompletedFs }] = await Promise.all([
+    import('./userdata-opfs.web'),
+    import('./plans-fs.web'),
+  ]);
+  const dir = await openUserDataWeb();
+  return setCompletedFs(dir, completed);
 }
 
-/** STUB web (F5.10): lança (CoreError) até o espelho OPFS do progresso. */
-export async function clearReadingPlan(dataDir: string): Promise<boolean> {
-  return clearReadingPlanWasm(dataDir);
+/** REMOVE o plano ativo (OPFS); `true` se removeu, idempotente → `false` se não havia. */
+export async function clearReadingPlan(_dataDir: string): Promise<boolean> {
+  const [{ openUserDataWeb }, { clearActivePlanFs }] = await Promise.all([
+    import('./userdata-opfs.web'),
+    import('./plans-fs.web'),
+  ]);
+  const dir = await openUserDataWeb();
+  return clearActivePlanFs(dir);
 }

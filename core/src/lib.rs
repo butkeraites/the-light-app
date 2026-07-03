@@ -3150,18 +3150,20 @@ pub fn study_web_finalize(
     Ok(StudyResultOut::from(result))
 }
 
-// ── F5.1: geração de PLANOS DE LEITURA (list/day/day_index) — fronteira NATIVA + stub web ──
+// ── F5.1: geração de PLANOS DE LEITURA (list/day/day_index) — fronteira CFG-FREE ──
 //
-// Molde das fns nativas+stub já no arquivo (F1.10 notas/highlights, F3.3 `deep_study`): a
-// geração de planos vive em `the_light_core::userdata::plans`, e o módulo `userdata` é
-// `#[cfg(feature = "embedded")]` (SÓ no nativo) — logo o corpo que delega a `plans` é
-// `#[cfg(not(target_arch = "wasm32"))]` + **stub web**, mantendo `userdata` fora do grafo
-// wasm. Os Records são **puros** (`String`/`u32`/`Vec<Reference>`), presentes em TODOS os
-// alvos (a forma da fronteira é uniforme). NADA de geração/chunking é reimplementado aqui: o
-// CATALOG (ids/nomes PT), a divisão em dias e o índice do dia vivem no core (uma fonte da
-// verdade; anti-alucinação — refs de capítulo inteiro e nomes de plano vêm do core). A
-// **paridade web (F5.10)** exigirá expor a superfície PURA de planos sob `ai-pure` no
-// `the-light` (PR + ADR — gate estratégico à parte), como notas/estudo fizeram.
+// F5.10 (ADR-0037/rev `225b8c9`): a superfície PURA de geração de planos
+// (`the_light_core::userdata::plans::{available_plans, plan_by_id, Plan, PlanProgress,
+// day_index_for}`) passou a compilar sob `ai-pure` (wasm-safe): `pub mod userdata` e
+// `pub mod plans` são cfg-free no core, e SÓ o `PlanStore` (fs) segue `embedded`. Por isso
+// estas 3 fns de GERAÇÃO deixam de ser nativa+stub (como eram na F5.1) e viram **cfg-free**:
+// uma ÚNICA impl que delega a `userdata::plans`, válida no nativo E no web (o web ganha a
+// impl REAL, zero-drift com o nativo, em vez do antigo stub). Os Records são **puros**
+// (`String`/`u32`/`Vec<Reference>`), presentes em TODOS os alvos. NADA de geração/chunking é
+// reimplementado aqui: o CATALOG (ids/nomes PT), a divisão em dias e o índice do dia vivem no
+// core (uma fonte da verdade; anti-alucinação — refs de capítulo inteiro e nomes de plano vêm
+// do core). A PERSISTÊNCIA do progresso (F5.4, abaixo) usa `PlanStore` (fs) → segue nativa +
+// stub web; a paridade web do PROGRESSO é app-side em OPFS (F5.10).
 
 /// Um **plano de leitura** disponível (resumo), na fronteira UniFFI.
 ///
@@ -3237,131 +3239,105 @@ impl From<the_light_core::userdata::plans::PlanProgress> for ReadingPlanProgress
 
 /// Lista os **planos de leitura** disponíveis (resumo), delegando ao core.
 ///
-/// Pipeline no **nativo**: `plans::available_plans()` (ids + nomes PT do CATALOG) +
+/// Pipeline (nativo E web): `plans::available_plans()` (ids + nomes PT do CATALOG) +
 /// `plans::plan_by_id(id).map(|p| p.days.len())` (nº de dias). **Nenhum** nome/plano é
-/// hardcoded aqui (uma fonte da verdade). Infalível no nativo (geração pura em memória).
+/// hardcoded aqui (uma fonte da verdade). Infalível (geração pura em memória, sem I/O).
 ///
-/// **Gating por alvo (molde F1.10):** corpo que toca `userdata::plans`
-/// `cfg(not(target_arch = "wasm32"))`; no **web** um stub retorna `Vec::new()` (paridade web =
-/// F5.10, que exige a PR `ai-pure` ao core), sem arrastar `userdata` para o grafo wasm.
+/// **CFG-FREE (F5.10):** `userdata::plans` compila sob `ai-pure` (wasm-safe), então esta é uma
+/// impl ÚNICA para todos os alvos — o web ganha a MESMA saída do nativo (zero-drift), sem o
+/// antigo stub. `PlanStore` (fs) NÃO entra aqui (só na persistência F5.4).
 #[uniffi::export]
 pub fn list_reading_plans() -> Vec<ReadingPlanSummary> {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        use the_light_core::userdata::plans;
-        plans::available_plans()
-            .into_iter()
-            .map(|(id, name)| ReadingPlanSummary {
-                id: id.to_string(),
-                name: name.to_string(),
-                days: plans::plan_by_id(id).map(|p| p.days.len()).unwrap_or(0) as u32,
-            })
-            .collect()
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        Vec::new()
-    }
+    use the_light_core::userdata::plans;
+    plans::available_plans()
+        .into_iter()
+        .map(|(id, name)| ReadingPlanSummary {
+            id: id.to_string(),
+            name: name.to_string(),
+            days: plans::plan_by_id(id).map(|p| p.days.len()).unwrap_or(0) as u32,
+        })
+        .collect()
 }
 
 /// As leituras (capítulos inteiros) de **um dia** de um plano, delegando ao core.
 ///
-/// Pipeline no **nativo**: `plans::plan_by_id(&plan_id)?.reading(day)` → refs (via o
+/// Pipeline (nativo E web): `plans::plan_by_id(&plan_id)?.reading(day)` → refs (via o
 /// `From<model::Reference>`), com `label` = `reference::format_reference(&ref, Pt)` das refs
 /// juntas por `", "`. Plano desconhecido / dia fora do intervalo → `references` e `label`
 /// vazios (herdado do core: `plan_by_id` → `None`, `reading(day)` → `&[]`), **sem panic**.
 /// **Nenhuma** geração/chunking é reimplementada. Anti-alucinação: as refs (capítulo inteiro)
 /// vêm do core.
 ///
-/// **Gating por alvo (molde F1.10):** corpo `cfg(not(target_arch = "wasm32"))`; no **web** um
-/// stub retorna um [`ReadingPlanDay`] vazio (paridade web = F5.10).
+/// **CFG-FREE (F5.10):** impl ÚNICA para todos os alvos (`userdata::plans` + `format_reference`
+/// são puros/`ai-pure`); o web ganha a MESMA saída do nativo (zero-drift), sem o antigo stub.
 #[uniffi::export]
 pub fn reading_plan_day(plan_id: String, day: u32) -> ReadingPlanDay {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let refs: Vec<the_light_core::model::Reference> =
-            the_light_core::userdata::plans::plan_by_id(&plan_id)
-                .map(|p| p.reading(day as usize).to_vec())
-                .unwrap_or_default();
-        let label = refs
-            .iter()
-            .map(|r| {
-                the_light_core::reference::format_reference(r, the_light_core::model::Lang::Pt)
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-        ReadingPlanDay {
-            label,
-            references: refs.into_iter().map(Reference::from).collect(),
-        }
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        let _ = (plan_id, day);
-        ReadingPlanDay {
-            label: String::new(),
-            references: Vec::new(),
-        }
+    let refs: Vec<the_light_core::model::Reference> =
+        the_light_core::userdata::plans::plan_by_id(&plan_id)
+            .map(|p| p.reading(day as usize).to_vec())
+            .unwrap_or_default();
+    let label = refs
+        .iter()
+        .map(|r| the_light_core::reference::format_reference(r, the_light_core::model::Lang::Pt))
+        .collect::<Vec<_>>()
+        .join(", ");
+    ReadingPlanDay {
+        label,
+        references: refs.into_iter().map(Reference::from).collect(),
     }
 }
 
 /// **Índice (0-based) do dia** de um plano para a data de hoje, delegando a
 /// `PlanProgress::day_index_for` (satura em `[0, len-1]`).
 ///
-/// Pipeline no **nativo**: parseia `start_date`/`today` como ISO `YYYY-MM-DD` e delega a
+/// Pipeline (nativo E web): parseia `start_date`/`today` como ISO `YYYY-MM-DD` e delega a
 /// `PlanProgress { plan_id: "", start_date, completed: 0 }.day_index_for(today, len)`.
 /// **Nenhum** cálculo/clamp é reimplementado (vive no core). Data ISO inválida →
 /// [`CoreError`], **sem panic**.
 ///
-/// **Gating por alvo (molde F1.10):** corpo que toca `userdata::plans`
-/// `cfg(not(target_arch = "wasm32"))`; no **web** um stub retorna [`CoreError`] (paridade web
-/// = F5.10).
+/// **CFG-FREE (F5.10):** impl ÚNICA para todos os alvos (`PlanProgress`/`day_index_for` são
+/// puros/`ai-pure`); o web ganha a MESMA saída do nativo (zero-drift), sem o antigo stub. O web
+/// (F5.10) também reusa esta fn para VALIDAR a `start_date` ISO ao persistir o progresso em OPFS.
 #[uniffi::export]
 pub fn reading_plan_day_index(
     start_date: String,
     today: String,
     len: u32,
 ) -> Result<u32, CoreError> {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        // `NaiveDate` é dep TRANSITIVA (não nomeável sem editar `core/Cargo.toml`, PROIBIDO):
-        // o tipo é INFERIDO do campo `PlanProgress::start_date: NaiveDate` e do parâmetro de
-        // `day_index_for(today: NaiveDate, …)` via `str::parse::<NaiveDate>()` (`FromStr` ISO
-        // `YYYY-MM-DD`) — SEM `use chrono`. O parsing/cálculo vivem no core (zero drift).
-        let progress = the_light_core::userdata::plans::PlanProgress {
-            plan_id: String::new(),
-            start_date: start_date.parse().map_err(|_| CoreError::Generic {
-                message: format!("data de início inválida (esperado YYYY-MM-DD): {start_date}"),
-            })?,
-            completed: 0,
-        };
-        let today = today.parse().map_err(|_| CoreError::Generic {
-            message: format!("data de hoje inválida (esperado YYYY-MM-DD): {today}"),
-        })?;
-        Ok(progress.day_index_for(today, len as usize) as u32)
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        let _ = (start_date, today, len);
-        Err(CoreError::Generic {
-            message: "geração de planos indisponível no alvo web (paridade web = F5.10)"
-                .to_string(),
-        })
-    }
+    // `NaiveDate` é dep TRANSITIVA (não nomeável sem editar `core/Cargo.toml`, PROIBIDO):
+    // o tipo é INFERIDO do campo `PlanProgress::start_date: NaiveDate` e do parâmetro de
+    // `day_index_for(today: NaiveDate, …)` via `str::parse::<NaiveDate>()` (`FromStr` ISO
+    // `YYYY-MM-DD`) — SEM `use chrono`. O parsing/cálculo vivem no core (zero drift).
+    let progress = the_light_core::userdata::plans::PlanProgress {
+        plan_id: String::new(),
+        start_date: start_date.parse().map_err(|_| CoreError::Generic {
+            message: format!("data de início inválida (esperado YYYY-MM-DD): {start_date}"),
+        })?,
+        completed: 0,
+    };
+    let today = today.parse().map_err(|_| CoreError::Generic {
+        message: format!("data de hoje inválida (esperado YYYY-MM-DD): {today}"),
+    })?;
+    Ok(progress.day_index_for(today, len as usize) as u32)
 }
 
 // ── PERSISTÊNCIA DO PROGRESSO DO PLANO (PlanStore fs) — F5.4, fronteira NATIVA ─
 // Molde F1.10 (notas): a fronteira delega ao `userdata::plans::PlanStore` (fs), que é
 // `#[cfg(feature = "embedded")]` (SÓ no nativo) — logo o corpo é
-// `#[cfg(not(target_arch = "wasm32"))]` + **stub web** (paridade web em OPFS = F5.10),
-// mantendo `userdata`/fs FORA do grafo wasm. NADA de serialização/layout/índice do dia é
-// reimplementado aqui: o formato de `active.json` (escrita atômica), o `NaiveDate` e a
-// validação de plano (`plan_by_id` do CATALOG) vivem no core (uma fonte da verdade;
-// anti-alucinação — nomes de plano do CATALOG). O caminho é montado EXATAMENTE como o
-// layout do core (`reading_plans_dir()`): `<data_dir>/reading-plans/active.json`, para
-// que o espelho web (F5.10) leia o MESMO arquivo. Único plano ativo (o core guarda um só
+// `#[cfg(not(target_arch = "wasm32"))]` + **stub web**, mantendo `userdata`/fs FORA do grafo
+// wasm. NADA de serialização/layout/índice do dia é reimplementado aqui: o formato de
+// `active.json` (escrita atômica), o `NaiveDate` e a validação de plano (`plan_by_id` do
+// CATALOG) vivem no core (uma fonte da verdade; anti-alucinação — nomes de plano do CATALOG).
+// O caminho é montado EXATAMENTE como o layout do core (`reading_plans_dir()`):
+// `<data_dir>/reading-plans/active.json`. Único plano ativo (o core guarda um só
 // `active.json`) — iniciar um novo plano SOBRESCREVE. `data_dir` é o diretório GRAVÁVEL de
 // userdata (o mesmo de notas/highlights), SEPARADO do banco só-leitura.
+//
+// PARIDADE WEB (F5.10): como `PlanStore` é fs/nativo-only, o PROGRESSO no web é app-side em
+// OPFS (molde das notas/highlights, F1.16): `app/web/plans-fs.web.ts` ESPELHA o formato
+// `{plan_id, start_date, completed}` de `active.json` sob `reading-plans/active.json`,
+// validando o `plan_id` contra o CATALOG (via `list_reading_plans`, agora cfg-free/wasm) e a
+// `start_date` ISO (via `reading_plan_day_index`) — zero-drift, sem espelhar geração em TS.
 
 /// Constrói o [`PlanStore`](the_light_core::userdata::plans::PlanStore) do `data_dir` no
 /// caminho `<data_dir>/reading-plans/active.json` (espelha `reading_plans_dir()` do core).
@@ -6920,10 +6896,11 @@ mod session_tests {
     }
 }
 
-/// Testes da geração de PLANOS DE LEITURA (F5.1), **apenas no nativo**: o host de teste tem a
-/// feature `embedded` (matriz por alvo, ADR-0005), então `userdata::plans` existe. No wasm
-/// este módulo nem compila (as fns caem no stub). Prova determinística/headless (geração pura
-/// em memória; sem rede/store/chave).
+/// Testes da geração de PLANOS DE LEITURA (F5.1/F5.10). As fns de geração são **cfg-free**
+/// (F5.10: `userdata::plans` compila sob `ai-pure`/wasm), mas os testes rodam no host de teste
+/// (feature `embedded`, matriz por alvo, ADR-0005) e comparam com `available_plans()` do core.
+/// Prova determinística/headless (geração pura em memória; sem rede/store/chave). A prova de
+/// que o web gera IDÊNTICO (zero-drift) é o self-test web de planos (F5.10).
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod plans_tests {
     use super::*;

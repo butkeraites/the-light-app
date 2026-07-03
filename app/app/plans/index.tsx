@@ -16,17 +16,17 @@
 // 1º capítulo daquele dia, "Marcar dia como lido" avança `completed` (persiste) e
 // "Trocar/encerrar plano" limpa o progresso.
 //
-// OFFLINE-FIRST/BYOK: 100% local (planos gerados no core, progresso em fs nativo via
-// F5.4); nada exige rede/conta. i18n/a11y: cromo via `t()`, cores por TOKENS de tema,
-// interativos com role+label. NATIVE-FIRST: no web o módulo `userdata::plans` é
-// nativo-only (stubs lançam) → a entrada (home) é gateada p/ nativo e esta tela
-// degrada com um aviso (paridade web = F5.10, gate à parte).
+// OFFLINE-FIRST/BYOK: 100% local; nada exige rede/conta. i18n/a11y: cromo via `t()`, cores
+// por TOKENS de tema, interativos com role+label. PARIDADE WEB (F5.10): a MESMA tela roda no
+// web — a GERAÇÃO é cfg-free/wasm (ADR-0037, idêntica ao nativo) e o PROGRESSO persiste em
+// OPFS (`web/plans-fs.web.ts`, mesmo formato do core). Só o LEMBRETE diário (F5.13) é
+// nativo-only (`expo-notifications`): o controle é gateado por `REMINDERS_SUPPORTED` (false no
+// web, sem `expo-notifications` no bundle). Sem "native-only": a tela funciona nas duas.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { router, useNavigation } from 'expo-router';
 import {
   ActivityIndicator,
   FlatList,
-  Platform,
   Pressable,
   StyleSheet,
   Switch,
@@ -39,6 +39,7 @@ import { ensureUserDataDir } from '../../lib/userdata';
 import { useI18n, type TranslateFn } from '../../lib/i18n';
 import { useTheme, type ThemeColors } from '../../lib/theme';
 import {
+  REMINDERS_SUPPORTED,
   disableReminder,
   enableReminder,
   getReminder,
@@ -74,30 +75,13 @@ function todayISO(): string {
 }
 
 export default function PlansScreen() {
-  // No web o módulo de planos é nativo-only (stubs lançam) → mostramos um aviso de
-  // paridade (F5.10) SEM chamar a fronteira. No nativo, a fronteira é síncrona/pronta,
-  // mas mantemos o WasmGate por simetria com as demais rotas (transparente no device).
-  if (Platform.OS === 'web') {
-    return <PlansWebNotice />;
-  }
+  // F5.10: a MESMA tela vale no nativo E no web. No web a geração é wasm (síncrona, exige o
+  // wasm pronto) e o progresso é OPFS — o `WasmGate` garante o wasm inicializado antes de
+  // `listReadingPlans()`; no nativo a fronteira é síncrona/pronta e o gate é transparente.
   return (
     <WasmGate>
       <PlansContent />
     </WasmGate>
-  );
-}
-
-/** Aviso de indisponibilidade no web (paridade = F5.10). Não toca a fronteira. */
-function PlansWebNotice() {
-  const { colors } = useTheme();
-  const { t } = useI18n();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
-  return (
-    <View style={styles.centered}>
-      <Text style={styles.hint} accessibilityRole="text">
-        {t('plans.webUnavailable')}
-      </Text>
-    </View>
   );
 }
 
@@ -120,7 +104,7 @@ function PlansContent() {
   const [busy, setBusy] = useState(false);
 
   // Boot: resolve o dir de userdata (mesmo das notas/highlights), lista os planos do
-  // core (CATALOG, síncrono) e lê o progresso ativo (fs nativo, async).
+  // core (CATALOG, síncrono/wasm) e lê o progresso ativo (fs nativo / OPFS web, async).
   useEffect(() => {
     let alive = true;
     void (async () => {
@@ -432,7 +416,11 @@ function ActivePlanView(props: {
         }}
       />
 
-      <ReminderControls planName={planName} styles={styles} colors={colors} t={t} />
+      {/* Lembrete diário (F5.13) só onde há agendamento LOCAL confiável (nativo). No web
+          `REMINDERS_SUPPORTED` é false → o controle nem renderiza (sem `expo-notifications`). */}
+      {REMINDERS_SUPPORTED ? (
+        <ReminderControls planName={planName} styles={styles} colors={colors} t={t} />
+      ) : null}
 
       <View style={styles.actions}>
         {!allDone ? (

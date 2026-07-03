@@ -84,7 +84,6 @@ export type MessageKey =
   | 'plans.doneBadge'
   | 'plans.completedAll'
   | 'plans.empty'
-  | 'plans.webUnavailable'
   // CROMO do LEMBRETE LOCAL do plano (F5.13). `plans.reminderTitle`/`plans.reminderBody` são o
   // TÍTULO/CORPO da notificação LOCAL (opt-in, offline); `{plan}` é o NOME do plano VERBATIM do
   // core (nunca via t() — anti-alucinação). `plans.reminderChannel` = nome do canal Android.
@@ -284,7 +283,6 @@ const pt: Record<MessageKey, string> = {
   'plans.doneBadge': 'Lido',
   'plans.completedAll': 'Plano concluído!',
   'plans.empty': 'Nenhum plano disponível.',
-  'plans.webUnavailable': 'Os planos de leitura estão disponíveis no app nativo (paridade web = F5.10).',
   'plans.reminderSection': 'Lembrete diário',
   'plans.reminderTitle': 'Hora da leitura',
   'plans.reminderBody': 'Continue seu plano: {plan}',
@@ -463,7 +461,6 @@ const en: Record<MessageKey, string> = {
   'plans.doneBadge': 'Read',
   'plans.completedAll': 'Plan completed!',
   'plans.empty': 'No plans available.',
-  'plans.webUnavailable': 'Reading plans are available in the native app (web parity = F5.10).',
   'plans.reminderSection': 'Daily reminder',
   'plans.reminderTitle': 'Time to read',
   'plans.reminderBody': 'Continue your plan: {plan}',

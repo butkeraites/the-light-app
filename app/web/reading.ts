@@ -434,8 +434,8 @@ export async function askSessionAnchored(
 // TS — o CATALOG (ids/nomes PT), a divisão em dias (capítulos inteiros) e o cálculo/clamp
 // do dia de hoje vivem no core (uma fonte da verdade; anti-alucinação — as refs e os nomes
 // de plano vêm do core, NUNCA hardcoded). Geração PURA em memória (sem rede/store/chave),
-// SÍNCRONA como `listBooks`. A paridade web (F5.10) exige a PR `ai-pure` ao core (o módulo
-// `userdata` é nativo-only); no web `reading.web.ts` chama os STUBS.
+// SÍNCRONA como `listBooks`. F5.10: a GERAÇÃO virou cfg-free/wasm (ADR-0037), então o web
+// (`reading.web.ts`) chama a MESMA impl REAL do core (zero-drift), não mais stubs.
 
 /** Os 3 planos disponíveis (annual/nt/gospels) com nome PT verbatim do core + nº de dias. */
 export function listReadingPlans(): ReadingPlanSummary[] {
@@ -467,8 +467,8 @@ export function readingPlanDayIndex(startDate: string, today: string, len: numbe
 // verdade; anti-alucinação — o `planId` é validado contra o CATALOG do core). O `dataDir`
 // é o MESMO diretório gravável de userdata (notas/highlights), SEPARADO do banco só-leitura;
 // o core persiste em `<dataDir>/reading-plans/active.json` (único plano ativo — iniciar um
-// novo SOBRESCREVE). I/O local → async (molde das notas F1.10); a paridade web em OPFS é a
-// F5.10 (`reading.web.ts` = stubs que lançam).
+// novo SOBRESCREVE). I/O local → async (molde das notas F1.10). F5.10: a paridade web do
+// PROGRESSO é app-side em OPFS (`reading.web.ts` + `plans-fs.web.ts`, mesmo formato do core).
 
 /** Lê o PROGRESSO do plano ativo; sem plano ativo → `undefined` (não erro). */
 export async function readingPlanProgress(
