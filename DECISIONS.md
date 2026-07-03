@@ -3271,3 +3271,25 @@ Restavam os eixos de a11y que são de RUNTIME/estrutura da UI: (1) **dynamic typ
 
 ### Consequências
 - Os painéis de leitura têm semântica de modal correta (`accessibilityViewIsModal`), foco inicial no cabeçalho (ordem lógica + anúncio idiomático) e retorno de foco ao fechar (Modal nativo); a UI respeita o dynamic type do sistema, com uma GUARDA que trava regressão de ambos (modal + escala de fonte). Anti-alucinação preservada: a11y de CROMO — nenhum texto bíblico tocado. LIMITAÇÃO HONESTA: (a) `TLA_A11Y` é estático (props), não runtime de core — a verificação REAL de VoiceOver "não vaza p/ o fundo" e "não corta em fonte grande" é a checagem MANUAL documentada (o `accessibilityViewIsModal`/dynamic-type default são o contrato que o SO honra); (b) o retorno de foco ao fechar delega ao `<Modal>` nativo (não gerenciamos o elemento anterior manualmente). Fecha a largura de a11y da Fase 5. Nova dep = nenhuma.
+
+
+## ADR-0037 — F5.10 (gate): PARIDADE WEB dos planos de leitura = **PR `ai-pure` ao `the-light`** expondo a geração PURA de planos (wasm-safe); `PlanStore`/fs seguem embedded
+
+- **Data:** 2026-07-03 · **Status:** **aceito e MERGEADO** (the-light PR #3, ff na `main` → rev **`225b8c929cf388e29dc148fec3975bf05a884b07`**; `core/Cargo.toml` re-pinado 2 linhas) · **Tarefa:** F5.10 (**gate estratégico** — toca o `the-light` via PR + ADR) · **Sancionado por:** o humano (escolha "opção A" para a F5.10) · **Precedente:** ADR-0024/F2.7, ADR-0030/F3.11, ADR-0035/F4.6 (mesmo molde de PR `ai-pure` + re-pin). · **Número:** 0037 foi RESERVADO a este PR (por isso fora de sequência vs. 0038–0049).
+
+### Contexto
+Os planos de leitura são NATIVOS (F5.1/4/7/13) porque `pub mod userdata` era `#[cfg(feature="embedded")]` no core → a GERAÇÃO de planos não compilava em wasm (a F5.1 foi re-escopada p/ native-first exatamente por isso). Mas a geração é PURA: `available_plans`/`plan_by_id`/`Plan`/`PlanProgress`/`day_index_for`/`chunk` dependem só de `model::Reference`, `reference::chapters_in_book`, `chrono` clock-free e `serde_json` — todos já sob `ai-pure`. Só a PERSISTÊNCIA (`PlanStore`, `data_dir`, path helpers) usa fs/`directories`. A paridade web precisa da geração pura no navegador (zero-drift vs. nativo) → expor essa superfície sob `ai-pure` = mudança no core = PR + ADR.
+
+### Decisão
+PR mínimo e não-quebrante ao `the-light` (branch `feat/ai-pure-plans`, `+36/-3` em 3 arquivos):
+- `lib.rs`: `pub mod userdata` de `#[cfg(embedded)]` -> `#[cfg(any(embedded, ai-pure))]`.
+- `userdata/mod.rs`: `#[cfg(embedded)]` em `data_dir` + 7 path helpers + submódulos `notes`/`highlights`/`sessions` (+ re-exports) + `PlanStore`. Mantém PURO: `pub mod plans`, `UserDataError`, `pub use plans::{Plan, PlanProgress}`.
+- `userdata/plans.rs`: `#[cfg(embedded)]` em `PlanStore` (+ `use PathBuf`/`super::Result`) e no teste `progress_roundtrip` (fs).
+
+### Garantias (verificadas + revisão independente)
+- **Não-quebrante:** `default = ["embedded"]` byte-a-byte (`Cargo.toml` intacto); `embedded` inclui `ai-pure` → nativo com `userdata` COMPLETO (CLI/TUI/xtask + 196 testes do core verdes, clippy `-D warnings`). Nenhuma API removida/renomeada.
+- **wasm PURO:** build `--features ai-pure --target wasm32` compila; `cargo tree` sem `reqwest`/`rusqlite`/`directories`/`tempfile`. Revisor construiu um consumidor `ai-pure` fora do repo → `available_plans()` = 3 planos/365 dias (REACH_OK); `PlanStore` sob `ai-pure` → `E0433` (gate real).
+- **Zero-drift:** só atributos `#[cfg]` mudaram; lógica de geração byte-idêntica → nativo e web geram planos idênticos.
+
+### Consequências / follow-up (app-side = F5.10 propriamente dita)
+Após o re-pin (`225b8c9`; frontier 80 testes verdes): (1) as fns de geração de planos na fronteira (F5.1: `listReadingPlans`/`readingPlanDay`/`readingPlanDayIndex`) podem virar **cfg-free** (largam o stub web → chamam `userdata::plans` real no wasm); (2) o **progresso** web (que a F5.4 stuba pois `PlanStore` é embedded) passa a persistir em **OPFS** app-side (espelho de `active.json`, molde do VFS de userdata F1.16); (3) a rota `/plans` (F5.7) deixa de mostrar o aviso "native-only" e funciona no web. Prova: headless web (geração via wasm + progresso OPFS). Próximo ADR livre = **ADR-0050** (0036 reservado ao sync F5.22).
