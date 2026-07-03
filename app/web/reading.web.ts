@@ -33,7 +33,13 @@
 // passam a funcionar no browser só por este glue + `db.web.ts`/`userdata.web.ts`
 // (sentinelas). Resolução por extensão do Metro: este `.web.ts` vale no web; no
 // nativo vale `reading.ts` (Turbo Module → the-light-core).
-import { listBooks as listBooksWasm, parseReference } from './generated/index.web';
+import {
+  listBooks as listBooksWasm,
+  parseReference,
+  listReadingPlans as listReadingPlansWasm,
+  readingPlanDay as readingPlanDayWasm,
+  readingPlanDayIndex as readingPlanDayIndexWasm,
+} from './generated/index.web';
 import type {
   Book,
   Passage,
@@ -49,6 +55,8 @@ import type {
   VerifiedLexiconOut,
   LexEntry,
   ChatTurn,
+  ReadingPlanSummary,
+  ReadingPlanDay,
 } from './generated/the_light_app_core';
 import { StudyMode, StudyLens, StudyDepth, ChatRole } from './generated/the_light_app_core';
 import {
@@ -90,6 +98,8 @@ export type {
   VerifiedLexiconOut,
   LexEntry,
   ChatTurn,
+  ReadingPlanSummary,
+  ReadingPlanDay,
 };
 export { StudyMode, StudyLens, StudyDepth, ChatRole };
 
@@ -494,4 +504,28 @@ export async function askSessionAnchored(
   } finally {
     await handle.close();
   }
+}
+
+// ── PLANOS DE LEITURA (list/day/day_index) — F5.1 (STUB web) ──────────────────
+// STUB: o módulo `userdata` (geração de planos) é nativo-only (`#[cfg(feature="embedded")]`)
+// e NÃO entra no wasm — os bindings gerados são os STUBS da fronteira (`list` → `[]`, `day`
+// → vazio, `dayIndex` → CoreError). A paridade web REAL (F5.10) exigirá expor a superfície
+// PURA de planos sob `ai-pure` no `the-light` (PR + ADR — gate estratégico à parte). Aqui só
+// reexportamos os stubs (assinatura IDÊNTICA ao glue nativo), SEM espelhar geração em TS
+// (zero drift). SÍNCRONO, como `listBooks` (exige o wasm já inicializado). Os stubs NÃO
+// tocam OPFS (nada de `openReadingDbWeb`).
+
+/** STUB web (F5.10): lista vazia até a PR `ai-pure` de planos ao core. */
+export function listReadingPlans(): ReadingPlanSummary[] {
+  return listReadingPlansWasm();
+}
+
+/** STUB web (F5.10): dia vazio (`{ label: '', references: [] }`) até a PR `ai-pure`. */
+export function readingPlanDay(planId: string, day: number): ReadingPlanDay {
+  return readingPlanDayWasm(planId, day);
+}
+
+/** STUB web (F5.10): lança (CoreError) até a PR `ai-pure` de planos ao core. */
+export function readingPlanDayIndex(startDate: string, today: string, len: number): number {
+  return readingPlanDayIndexWasm(startDate, today, len);
 }

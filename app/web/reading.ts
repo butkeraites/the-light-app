@@ -28,6 +28,9 @@ import {
   deepStudy as deepStudyNative,
   lexicalEntries as lexicalEntriesNative,
   askSessionAnchored as askSessionAnchoredNative,
+  listReadingPlans as listReadingPlansNative,
+  readingPlanDay as readingPlanDayNative,
+  readingPlanDayIndex as readingPlanDayIndexNative,
 } from './native-generated/src/index';
 import type {
   Book,
@@ -45,6 +48,8 @@ import type {
   VerifiedLexiconOut,
   LexEntry,
   ChatTurn,
+  ReadingPlanSummary,
+  ReadingPlanDay,
 } from './native-generated/bindings/the_light_app_core';
 import {
   StudyMode,
@@ -68,6 +73,8 @@ export type {
   VerifiedLexiconOut,
   LexEntry,
   ChatTurn,
+  ReadingPlanSummary,
+  ReadingPlanDay,
 };
 export { StudyMode, StudyLens, StudyDepth, ChatRole };
 
@@ -412,4 +419,36 @@ export async function askSessionAnchored(
     key,
     model,
   );
+}
+
+// ── PLANOS DE LEITURA (list/day/day_index) — F5.1, fronteira NATIVA ───────────
+// Glue NATIVO da geração de PLANOS (`listReadingPlans`/`readingPlanDay`/
+// `readingPlanDayIndex`): delega às funções geradas → JSI → o módulo
+// `the_light_core::userdata::plans`. NÃO reimplementa geração/chunking/índice do dia em
+// TS — o CATALOG (ids/nomes PT), a divisão em dias (capítulos inteiros) e o cálculo/clamp
+// do dia de hoje vivem no core (uma fonte da verdade; anti-alucinação — as refs e os nomes
+// de plano vêm do core, NUNCA hardcoded). Geração PURA em memória (sem rede/store/chave),
+// SÍNCRONA como `listBooks`. A paridade web (F5.10) exige a PR `ai-pure` ao core (o módulo
+// `userdata` é nativo-only); no web `reading.web.ts` chama os STUBS.
+
+/** Os 3 planos disponíveis (annual/nt/gospels) com nome PT verbatim do core + nº de dias. */
+export function listReadingPlans(): ReadingPlanSummary[] {
+  return listReadingPlansNative();
+}
+
+/**
+ * As leituras (capítulos inteiros) de um dia (0-based) de um plano + rótulo legível (PT).
+ * Plano desconhecido / dia fora do intervalo → `{ label: '', references: [] }` (sem throw).
+ */
+export function readingPlanDay(planId: string, day: number): ReadingPlanDay {
+  return readingPlanDayNative(planId, day);
+}
+
+/**
+ * Índice (0-based) do dia de hoje num plano de `len` dias, dado `startDate`/`today` ISO
+ * `YYYY-MM-DD`; satura em `[0, len-1]` (delegado a `PlanProgress::day_index_for`). Data
+ * inválida → lança (CoreError).
+ */
+export function readingPlanDayIndex(startDate: string, today: string, len: number): number {
+  return readingPlanDayIndexNative(startDate, today, len);
 }

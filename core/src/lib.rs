@@ -3150,6 +3150,164 @@ pub fn study_web_finalize(
     Ok(StudyResultOut::from(result))
 }
 
+// ── F5.1: geração de PLANOS DE LEITURA (list/day/day_index) — fronteira NATIVA + stub web ──
+//
+// Molde das fns nativas+stub já no arquivo (F1.10 notas/highlights, F3.3 `deep_study`): a
+// geração de planos vive em `the_light_core::userdata::plans`, e o módulo `userdata` é
+// `#[cfg(feature = "embedded")]` (SÓ no nativo) — logo o corpo que delega a `plans` é
+// `#[cfg(not(target_arch = "wasm32"))]` + **stub web**, mantendo `userdata` fora do grafo
+// wasm. Os Records são **puros** (`String`/`u32`/`Vec<Reference>`), presentes em TODOS os
+// alvos (a forma da fronteira é uniforme). NADA de geração/chunking é reimplementado aqui: o
+// CATALOG (ids/nomes PT), a divisão em dias e o índice do dia vivem no core (uma fonte da
+// verdade; anti-alucinação — refs de capítulo inteiro e nomes de plano vêm do core). A
+// **paridade web (F5.10)** exigirá expor a superfície PURA de planos sob `ai-pure` no
+// `the-light` (PR + ADR — gate estratégico à parte), como notas/estudo fizeram.
+
+/// Um **plano de leitura** disponível (resumo), na fronteira UniFFI.
+///
+/// Espelha uma entrada de `the_light_core::userdata::plans::available_plans()` + o número de
+/// dias de `plan_by_id(id)`. Record **puro** (só `String`/`u32`), presente em todos os alvos.
+/// O `name` é o nome PT **verbatim do CATALOG do core** (a fronteira não inventa/traduz nomes).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ReadingPlanSummary {
+    /// Slug do plano (ex.: `"annual"`, `"nt"`, `"gospels"`).
+    pub id: String,
+    /// Nome legível (PT), verbatim do CATALOG do core.
+    pub name: String,
+    /// Número de dias do plano.
+    pub days: u32,
+}
+
+/// As leituras de **um dia** de um plano, na fronteira UniFFI.
+///
+/// [`references`](Self::references) são **capítulos inteiros** (`VerseRange::WholeChapter`),
+/// construídas via o `From<model::Reference>` (cfg-free) da geração do core;
+/// [`label`](Self::label) é o rótulo legível das refs do dia via `reference::format_reference`
+/// (PT), juntas por `", "`. Dia fora do intervalo / plano desconhecido → ambos vazios (sem
+/// panic). Record **puro** ([`Reference`]/`String`), presente em todos os alvos.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ReadingPlanDay {
+    /// Rótulo legível das referências do dia (PT), ex.: `"Mateus 1, Mateus 2, Mateus 3"`.
+    pub label: String,
+    /// Referências (capítulos inteiros) a ler no dia, em ordem canônica.
+    pub references: Vec<Reference>,
+}
+
+/// Lista os **planos de leitura** disponíveis (resumo), delegando ao core.
+///
+/// Pipeline no **nativo**: `plans::available_plans()` (ids + nomes PT do CATALOG) +
+/// `plans::plan_by_id(id).map(|p| p.days.len())` (nº de dias). **Nenhum** nome/plano é
+/// hardcoded aqui (uma fonte da verdade). Infalível no nativo (geração pura em memória).
+///
+/// **Gating por alvo (molde F1.10):** corpo que toca `userdata::plans`
+/// `cfg(not(target_arch = "wasm32"))`; no **web** um stub retorna `Vec::new()` (paridade web =
+/// F5.10, que exige a PR `ai-pure` ao core), sem arrastar `userdata` para o grafo wasm.
+#[uniffi::export]
+pub fn list_reading_plans() -> Vec<ReadingPlanSummary> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use the_light_core::userdata::plans;
+        plans::available_plans()
+            .into_iter()
+            .map(|(id, name)| ReadingPlanSummary {
+                id: id.to_string(),
+                name: name.to_string(),
+                days: plans::plan_by_id(id).map(|p| p.days.len()).unwrap_or(0) as u32,
+            })
+            .collect()
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        Vec::new()
+    }
+}
+
+/// As leituras (capítulos inteiros) de **um dia** de um plano, delegando ao core.
+///
+/// Pipeline no **nativo**: `plans::plan_by_id(&plan_id)?.reading(day)` → refs (via o
+/// `From<model::Reference>`), com `label` = `reference::format_reference(&ref, Pt)` das refs
+/// juntas por `", "`. Plano desconhecido / dia fora do intervalo → `references` e `label`
+/// vazios (herdado do core: `plan_by_id` → `None`, `reading(day)` → `&[]`), **sem panic**.
+/// **Nenhuma** geração/chunking é reimplementada. Anti-alucinação: as refs (capítulo inteiro)
+/// vêm do core.
+///
+/// **Gating por alvo (molde F1.10):** corpo `cfg(not(target_arch = "wasm32"))`; no **web** um
+/// stub retorna um [`ReadingPlanDay`] vazio (paridade web = F5.10).
+#[uniffi::export]
+pub fn reading_plan_day(plan_id: String, day: u32) -> ReadingPlanDay {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let refs: Vec<the_light_core::model::Reference> =
+            the_light_core::userdata::plans::plan_by_id(&plan_id)
+                .map(|p| p.reading(day as usize).to_vec())
+                .unwrap_or_default();
+        let label = refs
+            .iter()
+            .map(|r| {
+                the_light_core::reference::format_reference(r, the_light_core::model::Lang::Pt)
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        ReadingPlanDay {
+            label,
+            references: refs.into_iter().map(Reference::from).collect(),
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (plan_id, day);
+        ReadingPlanDay {
+            label: String::new(),
+            references: Vec::new(),
+        }
+    }
+}
+
+/// **Índice (0-based) do dia** de um plano para a data de hoje, delegando a
+/// `PlanProgress::day_index_for` (satura em `[0, len-1]`).
+///
+/// Pipeline no **nativo**: parseia `start_date`/`today` como ISO `YYYY-MM-DD` e delega a
+/// `PlanProgress { plan_id: "", start_date, completed: 0 }.day_index_for(today, len)`.
+/// **Nenhum** cálculo/clamp é reimplementado (vive no core). Data ISO inválida →
+/// [`CoreError`], **sem panic**.
+///
+/// **Gating por alvo (molde F1.10):** corpo que toca `userdata::plans`
+/// `cfg(not(target_arch = "wasm32"))`; no **web** um stub retorna [`CoreError`] (paridade web
+/// = F5.10).
+#[uniffi::export]
+pub fn reading_plan_day_index(
+    start_date: String,
+    today: String,
+    len: u32,
+) -> Result<u32, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        // `NaiveDate` é dep TRANSITIVA (não nomeável sem editar `core/Cargo.toml`, PROIBIDO):
+        // o tipo é INFERIDO do campo `PlanProgress::start_date: NaiveDate` e do parâmetro de
+        // `day_index_for(today: NaiveDate, …)` via `str::parse::<NaiveDate>()` (`FromStr` ISO
+        // `YYYY-MM-DD`) — SEM `use chrono`. O parsing/cálculo vivem no core (zero drift).
+        let progress = the_light_core::userdata::plans::PlanProgress {
+            plan_id: String::new(),
+            start_date: start_date.parse().map_err(|_| CoreError::Generic {
+                message: format!("data de início inválida (esperado YYYY-MM-DD): {start_date}"),
+            })?,
+            completed: 0,
+        };
+        let today = today.parse().map_err(|_| CoreError::Generic {
+            message: format!("data de hoje inválida (esperado YYYY-MM-DD): {today}"),
+        })?;
+        Ok(progress.day_index_for(today, len as usize) as u32)
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (start_date, today, len);
+        Err(CoreError::Generic {
+            message: "geração de planos indisponível no alvo web (paridade web = F5.10)"
+                .to_string(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -6541,5 +6699,96 @@ mod session_tests {
         )
         .expect_err("db_path = diretório deve falhar no Store::open");
         assert!(matches!(err, CoreError::Generic { .. }));
+    }
+}
+
+/// Testes da geração de PLANOS DE LEITURA (F5.1), **apenas no nativo**: o host de teste tem a
+/// feature `embedded` (matriz por alvo, ADR-0005), então `userdata::plans` existe. No wasm
+/// este módulo nem compila (as fns caem no stub). Prova determinística/headless (geração pura
+/// em memória; sem rede/store/chave).
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod plans_tests {
+    use super::*;
+
+    #[test]
+    fn lists_three_plans_with_core_pt_names_verbatim() {
+        let plans = list_reading_plans();
+        assert_eq!(plans.len(), 3, "annual + nt + gospels");
+        // Dias por plano (do CATALOG do core).
+        let days_of = |id: &str| plans.iter().find(|p| p.id == id).unwrap().days;
+        assert_eq!(days_of("annual"), 365);
+        assert_eq!(days_of("nt"), 90);
+        assert_eq!(days_of("gospels"), 30);
+        // Nomes PT VERBATIM do core (sem hardcode: comparados com `available_plans()`).
+        let core: std::collections::HashMap<&str, &str> =
+            the_light_core::userdata::plans::available_plans()
+                .into_iter()
+                .collect();
+        for p in &plans {
+            assert_eq!(
+                &p.name,
+                core.get(p.id.as_str()).unwrap(),
+                "nome PT verbatim do core: {}",
+                p.id
+            );
+            assert!(!p.name.is_empty());
+        }
+    }
+
+    #[test]
+    fn gospels_day0_starts_at_matthew_1_whole_chapter_with_label() {
+        let day = reading_plan_day("gospels".to_string(), 0);
+        assert!(!day.references.is_empty());
+        let first = day.references[0];
+        assert_eq!(first.book, 40, "Mateus é o livro 40");
+        assert_eq!(first.chapter, 1);
+        assert!(matches!(first.verses, VerseRange::WholeChapter));
+        assert!(!day.label.is_empty(), "rótulo legível não-vazio");
+    }
+
+    #[test]
+    fn annual_days_sum_to_1189_whole_bible_chapters() {
+        let days = list_reading_plans()
+            .into_iter()
+            .find(|p| p.id == "annual")
+            .unwrap()
+            .days;
+        let total: usize = (0..days)
+            .map(|d| reading_plan_day("annual".to_string(), d).references.len())
+            .sum();
+        assert_eq!(total, 1189, "total de capítulos da Bíblia (66 livros)");
+    }
+
+    #[test]
+    fn unknown_plan_or_out_of_range_day_is_empty_no_panic() {
+        let unknown = reading_plan_day("does-not-exist".to_string(), 0);
+        assert!(unknown.references.is_empty());
+        assert!(unknown.label.is_empty());
+        let out_of_range = reading_plan_day("gospels".to_string(), 10_000);
+        assert!(out_of_range.references.is_empty());
+        assert!(out_of_range.label.is_empty());
+    }
+
+    #[test]
+    fn day_index_matches_core_and_clamps_to_range() {
+        let idx =
+            |s: &str, t: &str| reading_plan_day_index(s.to_string(), t.to_string(), 365).unwrap();
+        assert_eq!(idx("2026-01-01", "2026-01-01"), 0);
+        assert_eq!(idx("2026-01-01", "2026-01-11"), 10);
+        // Satura: antes do início → 0; muito depois → len-1.
+        assert_eq!(idx("2026-01-01", "2025-12-01"), 0);
+        assert_eq!(idx("2026-01-01", "2030-01-01"), 364);
+    }
+
+    #[test]
+    fn day_index_invalid_iso_date_is_core_error() {
+        assert!(
+            reading_plan_day_index("not-a-date".to_string(), "2026-01-11".to_string(), 365)
+                .is_err()
+        );
+        assert!(
+            reading_plan_day_index("2026-01-01".to_string(), "31/12/2026".to_string(), 365)
+                .is_err()
+        );
     }
 }
