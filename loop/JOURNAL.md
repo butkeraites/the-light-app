@@ -375,3 +375,22 @@ Não fabricar busywork. **Próximo:** aguardar input humano (LICENSE · client-i
 - **Reviewer (independente):** **PASSED**. tsc 0; reading(Mateus+João)/search/xref/coverage verdes; perf-budget LOCKED (841, nominais batem export). Fix correto; re-baseline legítimo; the-light `225b8c9`. **CAVEAT declarado:** o fix é browser-only, NÃO exercitado headless (usam o análogo Node) — o humano confirma em browser real.
 - **Resultado:** aceito/arquivado. Servidor web reiniciado (--clear) servindo o DB 38MB + código novo. Humano orientado a testar Mateus em janela NORMAL (Cmd+Shift+R; sem OPFS agora).
 - **Pendente:** confirmação do humano no browser. Follow-ups: léxico completo (F5.36 note), AiProviderNotice lazy (perf), tela Settings + BYOK real p/ Study/Chat. Próximo ADR livre = ADR-0058.
+
+## Ciclo — 2026-07-03T23:55Z — F5.39 ACEITA (causa raiz REAL: wa-sqlite "Invalid base URL") — LEITURA WEB CORRIGIDA
+
+- **Tarefa:** F5.39 (corrigir leitura web quebrada). Não-gate. Causa raiz REAL do bug do humano.
+- **Diagnóstico (Driver, Chrome headless real via puppeteer-core sobre o Chrome do sistema):** abrir capítulo lançava
+  "Failed to construct 'URL': Invalid base URL". Stack: `openReadingDbWeb`→`SQLiteESMFactory`→glue Emscripten do wa-sqlite
+  avalia `new URL("wa-sqlite.wasm", import.meta.url)`; no bundler DEV do Metro `import.meta.url`="null" → lança. NÃO era
+  tamanho do DB (F5.36) nem OPFS (F5.38): a leitura web SEMPRE esteve quebrada; só passava headless (Node, file:// válido).
+  As 3 camadas do bug: (1) livros faltando [F5.36], (2) cache de asset do Metro [restart --clear], (3) este URL [F5.39].
+- **Fix (Driver):** `locateFile:(path)=>path` ao factory nos 2 stores de produção (`sqlite-reading-opfs.web.ts`,
+  `sqlite-lexicon-opfs.web.ts`) → desvia do branch do `new URL` inválido; bytes do wasm já vêm por `wasmBinary`. Testes
+  (Node) inalterados. Commit `5e88fc5`.
+- **Verificação:** DUAS provas em Chrome real (Driver + reviewer independente): Mateus 1 renderiza o texto KJV
+  ("The book of the generation of Jesus Christ..."); `SQLITE_URL_ERROR_PRESENT=false`. Gates: tsc 0;
+  reading(João+Mateus)/coverage/search/xref/lexicon/perf-budget(841) verdes; the-light `225b8c9`.
+- **Resultado:** aceito/arquivado. **LEITURA WEB FUNCIONA** (66 livros, qualquer capítulo). Servidor :8081 no ar com o fix.
+- **Lição:** o loop testava só headless (Node) — a leitura no browser nunca fora exercitada; agora há repro em Chrome
+  headless (`scratchpad/browser-repro`) p/ validar comportamento real do browser. **Follow-up:** um guard de smoke em
+  browser real (puppeteer) evitaria essa classe de bug "passa headless, quebra no browser". Próximo ADR livre = ADR-0058.
