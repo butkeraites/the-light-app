@@ -91,7 +91,13 @@ const BUDGET = {
   stable: {
     // F5.6: wasm agora é build RELEASE + wasm-opt -Oz (era DEBUG ~4,24 MB).
     // 4.244.884 -> 1.198.888 B (-71,8%). Byte-exato/determinístico (release+LTO+wasm-opt).
-    frontierWasm: { bytes: 1198888, re: /^assets\/web\/generated\/wasm-bindgen\/index_bg\..*\.wasm$/ },
+    // F5.10 (ADR-0037/0050) — re-baseline DELIBERADO 1.198.888 -> 1.223.324 B (+24.436, +2,0%):
+    // a GERAÇÃO de planos de leitura virou cfg-free/PURA e passou a compilar na wasm da
+    // fronteira sob `ai-pure` (`the_light_core::userdata::plans` + o parse de data `chrono`),
+    // realizando a paridade web dos planos. NÃO é regressão: é a feature entrando no grafo wasm
+    // (git-provável; determinístico em 3 exports: 1.223.324 B, gzip 440.559, br 319.679). O
+    // PROGRESSO segue app-side (OPFS, chunk async `plans-fs`), fora do 1º paint.
+    frontierWasm: { bytes: 1223324, re: /^assets\/web\/generated\/wasm-bindgen\/index_bg\..*\.wasm$/ },
     // F5.15 (ADR-0044): o `reading-sample.sqlite` COMBINADO (14.409.728 B) SAIU do dist
     // web. A LEITURA agora usa `reading-lite.sqlite` (SEM léxico, 4.530.176 B) e o DADO do
     // léxico virou `lexicon-sample.sqlite` (9.502.720 B), carregado ON-DEMAND (chunk async
@@ -174,12 +180,22 @@ const BUDGET = {
   // altamente compressível) → bandas re-verificadas, mantidas. Este é o LOCK final do
   // workstream perf: os limites abaixo são o CONTRATO congelado (espelhado em
   // `loop/perf/web-bundle-budget.json`, cross-check por `scripts/check-web-bundle-budget.sh`).
+  //
+  // NOTA F5.10 (ADR-0037/0050) — re-baseline DELIBERADO pós-paridade web dos planos:
+  // (a) ESTRUTURAL moduleCount 838 → 839 (+1 módulo eager EXATO, determinístico em 3 exports):
+  //     a tela `/plans` deixou de degradar no web (o `PlansWebNotice` saiu) e passou a montar a
+  //     UI real (geração cfg-free + progresso OPFS), puxando +1 módulo eager de `plans/index`.
+  //     O progresso OPFS (`plans-fs.web`) é chunk ASYNC (import() no `reading.web.ts`), NÃO
+  //     eager. (b) BYTES re-centrados no centro do flutter do Metro medido em 3 exports
+  //     (raw 1.324.748–1.324.870; gzip 334.428–336.118; brotli 264.620–264.644) — a +1 módulo
+  //     e o glue leve de planos somam ~10,5 KB raw / ~2,4 KB gzip ao entry; tolerâncias
+  //     INALTERADAS (magnitude do flutter igual). NÃO é regressão: é a feature de paridade web.
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 838,
-    eagerBytes: { nominal: 1314270, tolerance: 1024 },
-    eagerGzipBytes: { nominal: 332884, tolerance: 2048 },
-    eagerBrotliBytes: { nominal: 262639, tolerance: 1024 },
+    moduleCount: 839,
+    eagerBytes: { nominal: 1324809, tolerance: 1024 },
+    eagerGzipBytes: { nominal: 335273, tolerance: 2048 },
+    eagerBrotliBytes: { nominal: 264632, tolerance: 1024 },
   },
 };
 

@@ -36,16 +36,16 @@ o contrato congelado. Qualquer breach → exit `!= 0` com o campo ofensor + delt
 
 | grandeza | limite travado | tipo | origem |
 | --- | ---: | --- | --- |
-| frontier `.wasm` (raw) | **1.198.888 B** | EXATO | F5.6 (release + wasm-opt -Oz) |
-| frontier `.wasm` transfer | gzip 430.849 · br 311.729 | EXATO | F5.17 |
+| frontier `.wasm` (raw) | **1.223.324 B** | EXATO | F5.6 (release + wasm-opt) + **F5.10** (geração de planos na wasm) |
+| frontier `.wasm` transfer | gzip 440.559 · br 319.679 | EXATO | F5.17 + **F5.10** |
 | `reading-lite.sqlite` (leitura) | **4.530.176 B** | EXATO | F5.15 (léxico off-path) |
 | `lexicon-sample.sqlite` (on-demand) | **9.502.720 B** | EXATO | F5.15 (fora do 1º paint) |
 | `wa-sqlite` FTS5 `.wasm` | **666.267 B** | EXATO | F1.14 (vendorado) |
-| entry-JS eager `moduleCount` | **838** | EXATO | F5.9/12/15 + **F5.18** (ver abaixo) |
-| entry-JS eager raw | 1.314.270 ± 1.024 B | nominal±tol | F5.17 (centro do flutter) |
-| entry-JS eager gzip | 332.884 ± 2.048 B | nominal±tol | F5.17 |
-| entry-JS eager brotli | 262.639 ± 1.024 B | nominal±tol | F5.17 |
-| **1º paint transfer** (headline) | **gzip 332.884 · br 262.639** | nominal | F5.17 |
+| entry-JS eager `moduleCount` | **839** | EXATO | F5.9/12/15 + F5.18 + **F5.10** (ver abaixo) |
+| entry-JS eager raw | 1.324.809 ± 1.024 B | nominal±tol | F5.17 + **F5.10** (centro do flutter) |
+| entry-JS eager gzip | 335.273 ± 2.048 B | nominal±tol | F5.17 + **F5.10** |
+| entry-JS eager brotli | 264.632 ± 1.024 B | nominal±tol | F5.17 + **F5.10** |
+| **1º paint transfer** (headline) | **gzip 335.273 · br 264.632** | nominal | F5.17 + **F5.10** |
 | assets REMOVIDOS (não podem voltar) | `waSqliteNpm`, `sampleDb`, `readingSampleCombined` | guard | F5.12/F5.15 |
 
 **Determinismo (honesto):** os assets content-addressed são BYTE-ESTÁVEIS → EXATOS. O entry-JS
@@ -67,7 +67,8 @@ tolerância`, re-verificado a cada run. Por isso a baseline JSON é reprodutíve
 | 1º paint OVER-THE-WIRE | — (não medido) | ~332 KB gzip / ~262 KB br | medido/travado (F5.17) |
 
 Marcos do entry-JS eager `moduleCount`: **856** (F5.3) → 844 (F5.9 code-split) → 834 (F5.12
-dead-assets + split `passage.web`) → 837 (F5.15 glue léxico on-demand) → **838** (F5.18).
+dead-assets + split `passage.web`) → 837 (F5.15 glue léxico on-demand) → 838 (F5.18) → **839**
+(F5.10 paridade web de planos).
 
 ### Re-baseline F5.18 → 838 (registrado por esta guarda)
 
@@ -80,7 +81,21 @@ bytes NÃO mudaram de forma relevante (o wrapper `__d(...)` extra ~600 B raw é 
 ±1024; centros gzip/brotli inalterados). É exatamente a classe de regressão que esta guarda passa a
 travar — daqui pra frente `test:web:perf-budget` roda junto da suíte web e a pega.
 
-## Como re-baselinear (deliberado, com justificativa)
+### Re-baseline F5.10 → 839 + wasm +24 KB (paridade web dos planos; ADR-0037/0050)
+
+Re-baseline DELIBERADO/justificado (autorizado pelo Driver/loop owner), com DUAS partes:
+
+1. **frontier `.wasm` 1.198.888 → 1.223.324 B (+24.436, +2,0 %; gzip 430.849→440.559, br
+   311.729→319.679).** A GERAÇÃO de planos de leitura virou cfg-free/PURA (ADR-0037, core @
+   `225b8c9`) e passou a compilar na wasm da fronteira sob `ai-pure` (`userdata::plans` + o parse
+   de data `chrono`), realizando a paridade web. NÃO é regressão: é a feature entrando no grafo
+   wasm (determinístico em 3 exports). O PROGRESSO segue app-side em OPFS (chunk async `plans-fs`),
+   fora do 1º paint.
+2. **`moduleCount` eager 838 → 839 (+1 módulo eager EXATO).** A tela `/plans` deixou de degradar
+   no web (o `PlansWebNotice` saiu) e monta a UI real (geração + progresso OPFS) → +1 módulo eager
+   de `plans/index`. Os bytes do entry foram re-centrados no centro do flutter do Metro medido em 3
+   exports (raw 1.324.748–1.324.870; gzip 334.428–336.118; br 264.620–264.644); tolerâncias
+   inalteradas (magnitude do flutter igual). Baseline JSON byte-estável em 3 runs.
 
 Re-baseline SÓ quando a mudança do app é **intencional/aceita** (não uma regressão acidental):
 

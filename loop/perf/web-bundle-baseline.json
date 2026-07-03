@@ -15,14 +15,14 @@
     "offlineFirst": "preservado — assets LOCAIS same-origin; o browser descomprime transparente, o fetch() do app devolve os bytes ORIGINAIS (byte-idênticos). Sem CDN/servidor externo.",
     "docs": "ADR-0045 · loop/perf/SERVING.md"
   },
-  "frontierWasmBytes": 1198888,
-  "frontierWasmBytesGzip": 430849,
-  "frontierWasmBytesBrotli": 311729,
+  "frontierWasmBytes": 1223324,
+  "frontierWasmBytesGzip": 440559,
+  "frontierWasmBytesBrotli": 319679,
   "readingLiteDbBytes": 4530176,
   "lexiconDbBytes": 9502720,
   "waSqliteFts5Bytes": 666267,
-  "firstPaintTransferBytes": 332884,
-  "firstPaintTransferBytesBrotli": 262639,
+  "firstPaintTransferBytes": 335273,
+  "firstPaintTransferBytesBrotli": 264632,
   "removedAssets": [
     "waSqliteNpm",
     "sampleDb",
@@ -31,26 +31,26 @@
   "entryJs": {
     "note": "Entry-JS \"eager\" carregado no 1º paint. moduleCount (nº de `__d(`) é EXATO e independe da ordem — a grandeza de budget do JS (code-split futuro a reduz de forma medível). eagerBytes/eagerGzipBytes/eagerBrotliBytes são NOMINAL ± TOLERÂNCIA (Metro não é byte-determinístico); o script mede o valor vivo e falha se sair da faixa. O gzip/brotli é o TAMANHO DE TRANSFER do 1º paint (ver firstPaintTransferBytes).",
     "glob": "_expo/static/js/web/entry-*.js",
-    "moduleCount": 838,
+    "moduleCount": 839,
     "eagerBytes": {
-      "nominal": 1314270,
+      "nominal": 1324809,
       "tolerance": 1024
     },
     "eagerGzipBytes": {
-      "nominal": 332884,
+      "nominal": 335273,
       "tolerance": 2048
     },
     "eagerBrotliBytes": {
-      "nominal": 262639,
+      "nominal": 264632,
       "tolerance": 1024
     }
   },
   "assets": {
     "frontierWasm": {
-      "path": "app/dist/assets/web/generated/wasm-bindgen/index_bg.412b7b84bd6fa8d24314a4bb48d40169.wasm",
-      "bytes": 1198888,
-      "gzipBytes": 430849,
-      "brotliBytes": 311729
+      "path": "app/dist/assets/web/generated/wasm-bindgen/index_bg.8ab78d0aa0e3970c6e1c55143036dd58.wasm",
+      "bytes": 1223324,
+      "gzipBytes": 440559,
+      "brotliBytes": 319679
     },
     "readingLiteDb": {
       "path": "app/dist/assets/_assets/data/reading-lite.bfab1458b5b33506ad64ff77f7395e41.sqlite",
@@ -72,11 +72,11 @@
     }
   },
   "totals": {
-    "stableAssetsBytes": 15898051,
-    "stableAssetsGzipBytes": 5444336,
-    "stableAssetsBrotliBytes": 3524825,
-    "nominalTotalBytes": 17212321,
-    "nominalTotalGzipBytes": 5777220,
-    "nominalTotalBrotliBytes": 3787464
+    "stableAssetsBytes": 15922487,
+    "stableAssetsGzipBytes": 5454046,
+    "stableAssetsBrotliBytes": 3532775,
+    "nominalTotalBytes": 17247296,
+    "nominalTotalGzipBytes": 5789319,
+    "nominalTotalBrotliBytes": 3797407
   }
 }
