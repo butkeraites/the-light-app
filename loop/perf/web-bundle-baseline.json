@@ -21,8 +21,8 @@
   "readingLiteDbBytes": 4530176,
   "lexiconDbBytes": 9502720,
   "waSqliteFts5Bytes": 666267,
-  "firstPaintTransferBytes": 336848,
-  "firstPaintTransferBytesBrotli": 266106,
+  "firstPaintTransferBytes": 338708,
+  "firstPaintTransferBytesBrotli": 267845,
   "removedAssets": [
     "waSqliteNpm",
     "sampleDb",
@@ -31,17 +31,17 @@
   "entryJs": {
     "note": "Entry-JS \"eager\" carregado no 1º paint. moduleCount (nº de `__d(`) é EXATO e independe da ordem — a grandeza de budget do JS (code-split futuro a reduz de forma medível). eagerBytes/eagerGzipBytes/eagerBrotliBytes são NOMINAL ± TOLERÂNCIA (Metro não é byte-determinístico); o script mede o valor vivo e falha se sair da faixa. O gzip/brotli é o TAMANHO DE TRANSFER do 1º paint (ver firstPaintTransferBytes).",
     "glob": "_expo/static/js/web/entry-*.js",
-    "moduleCount": 839,
+    "moduleCount": 840,
     "eagerBytes": {
-      "nominal": 1330402,
+      "nominal": 1340803,
       "tolerance": 1024
     },
     "eagerGzipBytes": {
-      "nominal": 336848,
+      "nominal": 338708,
       "tolerance": 2048
     },
     "eagerBrotliBytes": {
-      "nominal": 266106,
+      "nominal": 267845,
       "tolerance": 1024
     }
   },
@@ -75,8 +75,8 @@
     "stableAssetsBytes": 15922487,
     "stableAssetsGzipBytes": 5454046,
     "stableAssetsBrotliBytes": 3532775,
-    "nominalTotalBytes": 17252889,
-    "nominalTotalGzipBytes": 5790894,
-    "nominalTotalBrotliBytes": 3798881
+    "nominalTotalBytes": 17263290,
+    "nominalTotalGzipBytes": 5792754,
+    "nominalTotalBrotliBytes": 3800620
   }
 }

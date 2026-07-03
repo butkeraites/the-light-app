@@ -425,6 +425,9 @@ async function main() {
     'highlight',
     // F5.26 (ADR-0054): cromo da sincronização opt-in + backup (privacidade / offline-first).
     'sync',
+    // F5.35: cromo da tela SOBRE / créditos / licenças (fontes, princípios, provedores) + os
+    // DOIS identificadores de licença CC-BY VERBATIM (idênticos pt/en). Nenhum texto bíblico.
+    'about',
   ]);
   for (const key of MESSAGE_KEYS) {
     const ns = key.split('.')[0];

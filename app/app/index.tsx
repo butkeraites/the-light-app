@@ -224,6 +224,19 @@ export default function HomeScreen() {
       >
         {t('home.readingPlans')}
       </Link>
+
+      {/* F5.35: entrada para a tela SOBRE (créditos/licenças das 4 fontes embarcadas +
+          princípios offline-first/BYOK/anti-alucinação + atalho de backup). Explicador de
+          1º uso; 100% offline, sem rede/segredo. Renderizada nas duas plataformas. */}
+      <Link
+        href="/about"
+        style={styles.readLink}
+        testID="open-about"
+        accessibilityRole="link"
+        accessibilityLabel={t('a11y.openAbout')}
+      >
+        {t('home.about')}
+      </Link>
     </View>
   );
 }

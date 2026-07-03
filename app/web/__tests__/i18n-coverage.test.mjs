@@ -262,6 +262,10 @@ async function main() {
     // F5.26 (ADR-0054): cromo da sincronização opt-in + backup — só rótulos/dicas/a11y
     // (o que sincroniza vs. o que nunca sai do aparelho); nenhum dado do store/usuário/token.
     'sync',
+    // F5.35: cromo da tela SOBRE / créditos / licenças — rótulos/dicas/a11y + os DOIS
+    // identificadores de licença CC-BY VERBATIM (about.xrefAttribution/about.stepAttribution,
+    // idênticos pt/en, travados contra drift por `test:about-attr`). Nenhum texto bíblico.
+    'about',
   ]);
   for (const key of MESSAGE_KEYS) {
     assert.ok(

@@ -308,7 +308,38 @@ export type MessageKey =
   | 'a11y.syncDriveLink'
   | 'a11y.syncDriveUnlink'
   | 'a11y.syncDriveSyncNow'
-  | 'a11y.syncClose';
+  | 'a11y.syncClose'
+  // ─── CROMO da tela SOBRE / CRÉDITOS / LICENÇAS (F5.35) ────────────────────────────────
+  // Tela consolidada de "Sobre": explicador de 1º uso + créditos/licenças das 4 fontes de
+  // dados embarcadas + os princípios inegociáveis (offline-first, BYOK, anti-alucinação) +
+  // provedores de IA (BYOK) + atalho p/ backup/export (reusa `SyncSettings`). Só CROMO aqui.
+  // As DUAS strings de atribuição CC-BY (`about.xrefAttribution` = OpenBible; `about.stepAttribution`
+  // = STEP/Tyndale) são IDÊNTICAS em pt E en de PROPÓSITO: são IDENTIFICADORES DE LICENÇA
+  // VERBATIM (cópias byte-a-byte das constantes fonte-da-verdade `XREF_ATTRIBUTION` de
+  // `ReaderXrefPanel.tsx` e `STEP_ATTRIBUTION` de `ReaderStudyPanel.tsx`), não texto traduzível
+  // — travadas contra drift pelo guard `test:about-attr`. Os NOMES de versão/fonte (KJV, Almeida
+  // 1911, OpenBible.info, STEP Bible, Tyndale) são nomes próprios (idênticos nos dois idiomas).
+  | 'home.about'
+  | 'nav.about'
+  | 'a11y.openAbout'
+  | 'about.title'
+  | 'about.intro'
+  | 'about.sourcesTitle'
+  | 'about.kjvTitle'
+  | 'about.almeidaTitle'
+  | 'about.publicDomain'
+  | 'about.xrefTitle'
+  | 'about.xrefAttribution'
+  | 'about.stepTitle'
+  | 'about.stepAttribution'
+  | 'about.principlesTitle'
+  | 'about.offlineFirst'
+  | 'about.byok'
+  | 'about.antiHallucination'
+  | 'about.providersTitle'
+  | 'about.providers'
+  | 'about.backupTitle'
+  | 'about.backupHint';
 
 // Catálogo PORTUGUÊS (default do app). "The Light" é o NOME do produto (marca),
 // idêntico nos dois idiomas de propósito.
@@ -537,6 +568,37 @@ const pt: Record<MessageKey, string> = {
   'a11y.syncDriveUnlink': 'Desconectar a conta do Google Drive',
   'a11y.syncDriveSyncNow': 'Sincronizar agora com o Google Drive',
   'a11y.syncClose': 'Fechar sincronização e backup',
+  // ─── Sobre / créditos / licenças (F5.35) — só CROMO (ver nota na união de chaves) ─────
+  'home.about': 'Sobre o app →',
+  'nav.about': 'Sobre',
+  'a11y.openAbout': 'Abrir a tela Sobre, com créditos e licenças',
+  'about.title': 'Sobre o The Light',
+  'about.intro':
+    'The Light é um app de estudo bíblico offline-first. Ele funciona 100% no seu aparelho, sem conta e sem internet: leitura, busca, planos, notas e marcações não dependem de rede. A interpretação por IA é opcional e usa a sua própria chave (BYOK).',
+  'about.sourcesTitle': 'Fontes e licenças',
+  'about.kjvTitle': 'Texto bíblico — King James Version (KJV)',
+  'about.almeidaTitle': 'Texto bíblico — Almeida (1911)',
+  'about.publicDomain': 'Domínio público.',
+  'about.xrefTitle': 'Referências cruzadas — OpenBible.info',
+  // VERBATIM (identificador de licença) — cópia byte-a-byte de XREF_ATTRIBUTION; idêntico em pt/en.
+  'about.xrefAttribution': 'Cross references courtesy of OpenBible.info (CC-BY)',
+  'about.stepTitle': 'Léxico (línguas originais) — STEP Bible / Tyndale House',
+  // VERBATIM (identificador de licença) — cópia byte-a-byte de STEP_ATTRIBUTION; idêntico em pt/en.
+  'about.stepAttribution':
+    "Credit it to 'STEP Bible' linked to www.STEPBible.org (data based on work at Tyndale House, Cambridge; CC BY 4.0)",
+  'about.principlesTitle': 'Princípios inegociáveis',
+  'about.offlineFirst':
+    'Offline-first: tudo o que é essencial funciona sem rede e sem conta. O texto bíblico e os dados de estudo são locais, embarcados no app.',
+  'about.byok':
+    'BYOK (traga sua chave): as chaves de IA ficam no cofre seguro do aparelho (no navegador, só na sessão atual). Nunca são registradas nem enviadas a ninguém além do provedor que você escolher.',
+  'about.antiHallucination':
+    'Anti-alucinação: o texto do versículo vem sempre do acervo local (verbatim); a IA apenas interpreta — nunca inventa a Escritura.',
+  'about.providersTitle': 'Provedores de IA (BYOK, opcional)',
+  'about.providers':
+    'Claude (Anthropic), GPT (OpenAI), Gemini (Google) e Ollama (modelos locais, sem chave).',
+  'about.backupTitle': 'Backup e sincronização',
+  'about.backupHint':
+    'Exporte um backup dos seus dados (notas, marcações, progresso) ou ligue a sincronização opcional. Tudo é opt-in; o app funciona 100% offline sem isto.',
 };
 
 // Catálogo ENGLISH. As MESMAS chaves de `pt` (paridade forçada pelo tipo).
@@ -765,6 +827,37 @@ const en: Record<MessageKey, string> = {
   'a11y.syncDriveUnlink': 'Disconnect the Google Drive account',
   'a11y.syncDriveSyncNow': 'Sync now with Google Drive',
   'a11y.syncClose': 'Close sync & backup',
+  // ─── About / credits / licenses (F5.35) — CHROME only (see note on the key union) ─────
+  'home.about': 'About the app →',
+  'nav.about': 'About',
+  'a11y.openAbout': 'Open the About screen, with credits and licenses',
+  'about.title': 'About The Light',
+  'about.intro':
+    'The Light is an offline-first Bible-study app. It works 100% on your device, with no account and no internet: reading, search, plans, notes and highlights need no network. AI interpretation is optional and uses your own key (BYOK).',
+  'about.sourcesTitle': 'Sources & licenses',
+  'about.kjvTitle': 'Bible text — King James Version (KJV)',
+  'about.almeidaTitle': 'Bible text — Almeida (1911)',
+  'about.publicDomain': 'Public domain.',
+  'about.xrefTitle': 'Cross references — OpenBible.info',
+  // VERBATIM (license identifier) — byte-for-byte copy of XREF_ATTRIBUTION; identical in pt/en.
+  'about.xrefAttribution': 'Cross references courtesy of OpenBible.info (CC-BY)',
+  'about.stepTitle': 'Lexicon (original languages) — STEP Bible / Tyndale House',
+  // VERBATIM (license identifier) — byte-for-byte copy of STEP_ATTRIBUTION; identical in pt/en.
+  'about.stepAttribution':
+    "Credit it to 'STEP Bible' linked to www.STEPBible.org (data based on work at Tyndale House, Cambridge; CC BY 4.0)",
+  'about.principlesTitle': 'Non-negotiable principles',
+  'about.offlineFirst':
+    'Offline-first: everything essential works with no network and no account. The Bible text and study data are local, embedded in the app.',
+  'about.byok':
+    'BYOK (bring your own key): AI keys live in the device secure vault (in the browser, only in the current session). They are never logged and never sent to anyone but the provider you choose.',
+  'about.antiHallucination':
+    'Anti-hallucination: verse text always comes from your local library (verbatim); the AI only interprets — it never invents Scripture.',
+  'about.providersTitle': 'AI providers (BYOK, optional)',
+  'about.providers':
+    'Claude (Anthropic), GPT (OpenAI), Gemini (Google), and Ollama (local models, no key).',
+  'about.backupTitle': 'Backup & sync',
+  'about.backupHint':
+    'Export a backup of your data (notes, highlights, progress) or turn on optional sync. Everything is opt-in; the app works 100% offline without it.',
 };
 
 /** Catálogos por idioma (uma fonte de verdade de texto de UI). */

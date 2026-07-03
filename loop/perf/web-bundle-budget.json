@@ -9,6 +9,7 @@
   "note838": "F5.19 (ADR-0047): moduleCount 837 → 838 é um re-baseline DELIBERADO/justificado — a F5.18 (ADR-0046) extraiu os tokens de cor p/ o módulo PURO `app/lib/themePalettes.ts` (importado por `theme.ts`, eager no 1º paint): +1 módulo eager estrutural (git-provável, +1 exato; determinístico em 2+ exports). Os bytes NÃO mudaram de forma relevante (o wrapper extra ~600 B raw é absorvido pela banda ±1024; centros gzip/brotli inalterados). A F5.18 não rodou a métrica → a drift passou sem ser vista; esta guarda a trava.",
   "note839": "F5.10 (ADR-0037/0050): re-baseline DELIBERADO pós-paridade WEB dos planos de leitura. (a) frontierWasm 1.198.888 → 1.223.324 B (+24.436, +2,0%): a GERAÇÃO de planos virou cfg-free/PURA e entrou na wasm da fronteira sob `ai-pure` (`userdata::plans` + parse de data `chrono`) — a feature entrando no grafo wasm, NÃO regressão (determinístico em 3 exports: bytes 1.223.324, gzip 440.559, br 319.679). (b) ESTRUTURAL moduleCount 838 → 839 (+1 eager exato): a tela `/plans` deixou de degradar no web (saiu o `PlansWebNotice`) e monta a UI real (geração + progresso OPFS), +1 módulo eager de `plans/index`; o progresso `plans-fs.web` é chunk ASYNC (não eager). (c) BYTES do entry re-centrados no centro do flutter medido em 3 exports (raw 1.324.748–1.324.870; gzip 334.428–336.118; brotli 264.620–264.644); tolerâncias inalteradas.",
   "noteBytesF526": "F5.26 (ADR-0054): re-baseline SÓ de BYTES do entry (moduleCount INALTERADO em 839 — SEM regressão estrutural). A seção de SINCRONIZAÇÃO opt-in + backup adicionou ~40 chaves de CROMO (PT+EN) ao catálogo i18n EAGER (`app/lib/i18n.ts`): aviso de privacidade (o que sincroniza vs. o que nunca sai do aparelho), 'funciona 100% offline sem isto', rótulos/a11y. Os MOTORES pesados (snapshotStore/driveAuth/driveSync/userdataSnapshot + o painel `SyncSettings`) são `import()` SOB DEMANDA (chunk ASYNC) — por isso moduleCount NÃO mudou (verificado em 3 exports). Só o texto localizado cresceu: eagerBytes 1.324.809 → 1.330.402 (+~5,6 KB raw); eagerBrotliBytes 264.632 → 266.106 (+~1,5 KB); eagerGzipBytes 335.273 → 336.848 (dentro da banda antiga, re-centrado). Nominais re-centrados no centro do flutter medido em 3 exports (raw 1.330.341–1.330.463; gzip 336.014–337.681; brotli 265.994–266.218); tolerâncias INALTERADAS. transferHeadline segue eagerGzip/eagerBrotli.",
+  "noteF535": "F5.35 (ADR-0055): re-baseline DELIBERADO/justificado — +1 rota EAGER (tela SOBRE/créditos/licenças). (a) ESTRUTURAL moduleCount 839 → 840 (+1 módulo eager EXATO, determinístico em 3 exports IDÊNTICOS): a nova rota `app/app/about.tsx` (créditos/licenças das 4 fontes embarcadas — KJV/Almeida domínio público, OpenBible CC-BY, STEP/Tyndale CC BY 4.0 — + princípios offline-first/BYOK/anti-alucinação + provedores de IA + atalho de backup) entra no require.context do expo-router (web `output: static` ⇒ todas as rotas são eager no entry). O painel `SyncSettings` que ela REUSA segue `import()` SOB DEMANDA (chunk ASYNC, NÃO eager) — só a rota leve pesa. NÃO é regressão: é a feature (tela Sobre). (b) BYTES: a rota + ~18 chaves de CROMO (PT+EN, incluindo as 2 atribuições CC-BY verbatim idênticas pt/en) somam ~10,4 KB raw / ~1,7 KB brotli ao entry: eagerBytes 1.330.402 → 1.340.803; eagerGzipBytes 336.848 → 338.708; eagerBrotliBytes 266.106 → 267.845. Nominais re-centrados nos valores medidos em 3 exports DETERMINÍSTICOS (idênticos); tolerâncias INALTERADAS. transferHeadline segue eagerGzip/eagerBrotli. Espelhado em `scripts/measure-web-bundle.sh` (nota F5.35).",
   "exact": {
     "frontierWasmBytes": 1223324,
     "frontierWasmBytesGzip": 440559,
@@ -18,14 +19,14 @@
     "waSqliteFts5Bytes": 666267
   },
   "entry": {
-    "moduleCount": 839,
-    "eagerBytes": { "nominal": 1330402, "tolerance": 1024 },
-    "eagerGzipBytes": { "nominal": 336848, "tolerance": 2048 },
-    "eagerBrotliBytes": { "nominal": 266106, "tolerance": 1024 }
+    "moduleCount": 840,
+    "eagerBytes": { "nominal": 1340803, "tolerance": 1024 },
+    "eagerGzipBytes": { "nominal": 338708, "tolerance": 2048 },
+    "eagerBrotliBytes": { "nominal": 267845, "tolerance": 1024 }
   },
   "transferHeadline": {
-    "firstPaintTransferBytes": 336848,
-    "firstPaintTransferBytesBrotli": 266106
+    "firstPaintTransferBytes": 338708,
+    "firstPaintTransferBytesBrotli": 267845
   },
   "removedAssets": [
     "waSqliteNpm",

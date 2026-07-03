@@ -20,6 +20,7 @@
     "test:keystore": "node web/__tests__/keystore.test.mjs",
     "test:i18n": "node web/__tests__/i18n.test.mjs",
     "test:i18n-coverage": "node web/__tests__/i18n-coverage.test.mjs",
+    "test:about-attr": "node web/__tests__/about-attributions.test.mjs",
     "test:web:theme": "node web/__tests__/theme.test.mjs",
     "test:web:contrast": "node web/__tests__/contrast.test.mjs",
     "test:a11y-scan": "node web/__tests__/a11y-scan.test.mjs",

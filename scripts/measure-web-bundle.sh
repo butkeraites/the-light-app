@@ -201,12 +201,22 @@ const BUDGET = {
   // (gzip dentro da banda antiga). Nominais re-centrados no centro do flutter medido em 3
   // exports (raw 1.330.341–1.330.463; gzip 336.014–337.681; brotli 265.994–266.218);
   // tolerâncias INALTERADAS. Espelhado em `loop/perf/web-bundle-budget.json`.
+  // NOTA F5.35 (ADR-0055) — re-baseline DELIBERADO/justificado: +1 rota EAGER (tela SOBRE).
+  //   (a) ESTRUTURAL moduleCount 839 -> 840 (+1 modulo eager EXATO, 3 exports IDENTICOS): a nova
+  //       rota `app/app/about.tsx` (creditos/licencas das 4 fontes + principios offline-first/
+  //       BYOK/anti-alucinacao + provedores + atalho de backup) entra no require.context do
+  //       expo-router (web output:static = todas as rotas eager). O painel `SyncSettings` que ela
+  //       reusa segue `import()` SOB DEMANDA (chunk ASYNC, NAO eager). NAO e regressao: e a feature.
+  //   (b) BYTES: a rota + ~18 chaves de CROMO (PT+EN, incl. 2 identificadores de licenca CC-BY
+  //       verbatim) somam ~10,4 KB raw / ~1,7 KB brotli ao entry. Nominais re-centrados nos valores
+  //       medidos em 3 exports DETERMINISTICOS (raw 1.340.803; gzip 338.708; brotli 267.845);
+  //       tolerancias INALTERADAS. Espelhado em `loop/perf/web-bundle-budget.json` (nota `noteF535`).
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 839,
-    eagerBytes: { nominal: 1330402, tolerance: 1024 },
-    eagerGzipBytes: { nominal: 336848, tolerance: 2048 },
-    eagerBrotliBytes: { nominal: 266106, tolerance: 1024 },
+    moduleCount: 840,
+    eagerBytes: { nominal: 1340803, tolerance: 1024 },
+    eagerGzipBytes: { nominal: 338708, tolerance: 2048 },
+    eagerBrotliBytes: { nominal: 267845, tolerance: 1024 },
   },
 };
 

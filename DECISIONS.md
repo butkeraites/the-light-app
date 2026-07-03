@@ -3468,3 +3468,29 @@ Para não regredir o entry eager do 1º paint (perf-budget travado — F5.19/ADR
 Headless (node, sem browser/rede/device/chave) `test:web:syncui` — exercita o MESMO código de produção que a tela costura: (A) o adaptador `createSnapshotStore` ligado a um store REAL em memória (`*Fs`/`*PlanFs` da F5.23 + wasm) → export→import **ROUND-TRIP** + idempotente; (B) `formatReferenceEnPure` == `formatReferenceEn` (sem drift; referência canônica do core); (C) opt-in **DEFAULT OFF** (KV vazio → `false`) + persiste (ligar grava/relê, desligar volta a OFF, valor-lixo lê OFF). Marcador `SYNC_UI store=ok optin_default_off=ok optin_persist=ok`. A UI React não roda 100% headless → o transporte manual (download/Share/file-picker) e os controles do Drive são provados por INSPEÇÃO + os guards de i18n/contraste/a11y sobre `SyncSettings.tsx`.
 
 Próximo ADR livre = **ADR-0055** (0036–0054 usados; 0037 foi o PR de planos).
+
+## ADR-0055 — F5.35: tela **Sobre / Créditos / Licenças** consolidada (KJV/Almeida domínio público · OpenBible CC-BY · STEP/Tyndale CC BY 4.0) + princípios (offline-first/BYOK/anti-alucinação) + atalho de backup; última da varredura de refinamento
+
+- **Data:** 2026-07-03 · **Status:** aceito · **Tarefa:** F5.35 (`gate: false`, ÚLTIMA da varredura F5.28+) · **Depende:** **F5.26/ADR-0054** (o painel `SyncSettings` que o atalho de backup REUSA), **F5.2/ADR-0038** (camada i18n PT/EN), **F1.4/ADR-0015** (tokens de tema), **ADR-0016** (atribuição OpenBible CC-BY) e **ADR-0026** (atribuição STEP CC BY 4.0). **NÃO** toca o `the-light` (@ `225b8c9`) nem `core/**` — 100% app-side, sem dep nova.
+
+### Problema
+Não havia tela central de "Sobre" (grep por about/onboarding/welcome/credits vazio). As atribuições apareciam SÓ contextualmente (OpenBible no painel de xref; STEP no painel de estudo) e os textos bíblicos embarcados (KJV, Almeida 1911) não tinham atribuição exibida em lugar nenhum.
+
+### Decisão
+Nova ROTA `app/app/about.tsx` (registrada na Stack do `_layout.tsx`; alcançável por um `<Link href="/about">` na Home), 100% CROMO, que consolida:
+
+1. **4 fontes de dados embarcadas + licença** — texto bíblico KJV e Almeida 1911 = **domínio público**; **referências cruzadas OpenBible.info = CC-BY** (`about.xrefAttribution`); **léxico STEP Bible / Tyndale House = CC BY 4.0** (`about.stepAttribution`).
+2. **Princípios inegociáveis** — offline-first (tudo essencial funciona sem rede/conta; dados locais), BYOK (chaves no cofre do aparelho / só-sessão no web; nunca logadas nem enviadas a ninguém além do provedor escolhido) e anti-alucinação (versículo sempre do acervo local verbatim; a IA só interpreta).
+3. **Provedores de IA (BYOK, opcional)** — Claude (Anthropic), GPT (OpenAI), Gemini (Google) e **Ollama (modelos locais, sem chave)** — o conjunto REAL de `SUPPORTED_PROVIDERS` (`['anthropic','openai','gemini','ollama']`).
+4. **Explicador de 1º uso** (`about.intro`) + **atalho de backup/export** que REUSA `SyncSettings` (F5.26), carregado SOB DEMANDA (`import()`, chunk async) — não construímos outra superfície de backup.
+
+### Atribuições CC-BY = FONTE-DA-VERDADE (verbatim, sem drift)
+As duas strings CC-BY são expostas via `t()` como valores FIXOS **idênticos em pt/en** (identificadores de licença, não texto traduzível) e são **cópias byte-a-byte** das constantes `XREF_ATTRIBUTION` (`ReaderXrefPanel.tsx`) e `STEP_ATTRIBUTION` (`ReaderStudyPanel.tsx`). Um novo guard `test:about-attr` (`about-attributions.test.mjs`, headless/text-extract, sem bundlar os painéis pesados) TRAVA a igualdade catálogo⇔constante e pt⇔en — se qualquer lado editar e divergir, FALHA (preserva o requisito de licença ADR-0016/0026). O allowlist do guard i18n-coverage (marcadores OpenBible/STEP Bible/CC-BY/CC BY/Tyndale) já isenta essas linhas; `about` foi adicionado ao conjunto de namespaces de CROMO em `i18n.test.mjs` e `i18n-coverage.test.mjs`.
+
+### Perf (re-baseline DELIBERADO +1 rota eager; nota sobre `loop/perf`)
+Com `web.output: static` e sem `asyncRoutes`, TODA rota do expo-router é eager no entry do 1º paint → a nova rota `about` é **+1 módulo eager EXATO** (moduleCount **839 → 840**, determinístico em 3 exports IDÊNTICOS), como a `/plans` foi na F5.10. O painel `SyncSettings` reusado segue `import()` sob demanda (chunk ASYNC, não pesa o entry). Bytes: a rota + ~18 chaves de CROMO (PT+EN) somam ~10,4 KB raw / ~1,7 KB brotli (eagerBytes 1.330.402→1.340.803; gzip 336.848→338.708; brotli 266.106→267.845). Feito **re-baseline** dos nominais (tolerâncias inalteradas) em `scripts/measure-web-bundle.sh` **e** `loop/perf/web-bundle-budget.json` (nota `noteF535`) — seguindo a `reBaselinePolicy` e o precedente F5.10/F5.19/F5.26, autorizado pela instrução de perf da tarefa ("re-baseline com justificativa"); é o ÚNICO toque em `loop/`, nenhum arquivo de ESTADO do loop (queue/done/STATUS/JOURNAL/HALT) foi tocado. Após o re-baseline, `test:web:perf-budget` volta a **LOCKED OK**.
+
+### Prova
+`npx tsc --noEmit` (0) · `test:about-attr` (atribuições byte-a-byte) · `test:i18n` + `test:i18n-coverage` (paridade pt/en 225 chaves, todas em namespace de CROMO, sem hardcoded PT/hex) · `test:a11y-scan` (73 interativos com role/label/alvo ≥44) · `test:web:contrast` (WCAG AA, tokens de tema) · `npx expo export --platform web` (sucesso) · `test:web:perf-budget` (LOCKED OK pós re-baseline). Offline: nenhuma rede, nenhum segredo; texto/atribuições são CROMO/dado exibido, não saída de modelo.
+
+Próximo ADR livre = **ADR-0056** (0036–0055 usados; 0037 foi o PR de planos).

@@ -94,6 +94,10 @@ function RootNavigator() {
           Orquestra a geração (F5.1) + o progresso (F5.4) via a fronteira nativa; no
           web degrada com aviso (paridade = F5.10). Header temático + toggles. */}
       <Stack.Screen name="plans/index" options={{ title: t('nav.plans'), ...screenChrome }} />
+      {/* F5.35: tela SOBRE / créditos / licenças (KJV/Almeida domínio público; OpenBible CC-BY;
+          STEP/Tyndale CC BY 4.0) + princípios (offline-first/BYOK/anti-alucinação) + atalho de
+          backup (reusa SyncSettings). 100% CROMO, sem rede/segredo. Header temático + toggles. */}
+      <Stack.Screen name="about" options={{ title: t('nav.about'), ...screenChrome }} />
     </Stack>
   );
 }
