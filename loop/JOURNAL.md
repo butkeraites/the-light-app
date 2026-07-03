@@ -303,3 +303,10 @@
 - **Executor:** `0e4f522` — reusou `ReaderVersionPicker`; lista via `listTranslations` (store); KJV default; `translation` nas deps do debounce → selecionar re-executa `search(dbPath, term, translation)`. +1 chave `search.translationLabel` (pt/en). Snippet/ref verbatim do store.
 - **Reviewer (independente):** **PASSED**. tsc 0; `test:web:search`(KJV+alm1911, "ceus" retorna hits)/`test:i18n`(203)/`test:i18n-coverage` verdes. Re-consulta real (deps `[query,translation]`, não estado morto); lista store-sourced; `ReaderSearchResultItem` sem `useI18n` (anti-alucinação); reuso sem duplicação; commit só `search/index.tsx`+`i18n.ts`; the-light `225b8c9`.
 - **Resultado:** aceito/arquivado (`loop/archive/F5.31.*`). **Próximo:** F5.32 (rolar/destacar o versículo alvo com `?verse=N`; busca/xref hoje caem no topo — esforço M; componente compartilhado corrige web+nativo). Loop LIVE. Próximo ADR livre = ADR-0055.
+
+## Ciclo — 2026-07-03T19:05Z — F5.32 ACEITA (verse-anchor) → seedar F5.33
+
+- **Heartbeat:** 2026-07-03T19:05:00Z. **Tarefa:** F5.32 (rolar/destacar o versículo alvo com `?verse=N`). Não-gate. Refinamento (M).
+- **Executor:** `4bbe855` — `[chapter].tsx` lê `verse` opcional (normaliza/valida) → prop `anchorVerse`; `ReaderChapterView` mapeia offsets via `onLayout`, `scrollTo({y})` com fallback `pendingRef` (timing async), `flashVerse` transitório (`verseSelected`, auto-limpa ~2.5s). Sem param = no-op; fora de faixa/lixo = seguro. Componente compartilhado → web+nativo. xref/busca já empurravam `?verse=N`.
+- **Reviewer (independente):** **PASSED**. tsc 0; expo web 0; `test:i18n-coverage`/`test:web:reading`/`xref`/`search` verdes. No-param regression provada (React bail-out, comportamento idêntico); robustez (999/`abc`/`0`/`-5`→ignorado sem crash); cross-target (só `ScrollView`/`scrollTo`/`onLayout`, sem DOM-only); texto do store; commit só 2 arquivos de produto; the-light `225b8c9`.
+- **Resultado:** aceito/arquivado (`loop/archive/F5.32.*`). **Próximo:** F5.33 (seletor tri-estado de tema claro/escuro/sistema — `setMode`/`isSystem` já existem, sem UI; reusar sem 2ª camada de persistência). Loop LIVE. Próximo ADR livre = ADR-0055.
