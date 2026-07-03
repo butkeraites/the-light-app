@@ -282,3 +282,10 @@
 - **Executor:** `32d06f2` — removido `label` PT de `highlightColors.ts`; +4 chaves `highlight.{yellow,green,blue,pink}` (pt/en); `ReaderVersePanel` usa `t(\`highlight.${c.name}\`)`; `name`→união literal; `highlight` no CHROME_NAMESPACES dos 2 guardas. EN "Highlight with Yellow", PT "Marcar com Amarelo".
 - **Reviewer (independente):** **PASSED**. tsc 0; `test:i18n`(203, paridade)/`test:i18n-coverage`/`test:a11y-scan`(71)/`test:web:notes` verdes. Bug corrigido nos 2 locais (asserts não-vazios); paridade real; `label` sem consumidores (remoção segura); the-light `225b8c9`; `.claude/settings.json` não commitado; commit só 5 arquivos de app. Fecha a última lacuna i18n.
 - **Resultado:** aceito/arquivado (`loop/archive/F5.28.*`). **Próximo:** F5.29 (corrigir o `accessibilityLabel` da Home que sobrescreve o `resultText` → leitor de tela anuncia o conteúdo real). Loop LIVE. Próximo ADR livre = ADR-0055.
+
+## Ciclo — 2026-07-03T18:20Z — F5.29 ACEITA (a11y Home result) → seedar F5.30
+
+- **Heartbeat:** 2026-07-03T18:20:00Z. **Tarefa:** F5.29 (corrigir o label da Home que escondia o `resultText`). Não-gate. Refinamento.
+- **Executor:** `d97ca2c` — removido `accessibilityLabel={t('a11y.result')}` do `Text` de resultado (mantido `role="text"`); leitor de tela agora anuncia o conteúdo real (`resultText` cobre passage/reference/error/idle). Chave `a11y.result` órfã removida do union + pt/en (203→202, paridade).
+- **Reviewer (independente):** **PASSED**. tsc 0; `test:a11y-scan`(71)/`test:i18n-coverage`(202)/`test:i18n` verdes. Fix cobre os 4 outcomes; grep `a11y.result`=NONE no código; sem over-reach; anti-alucinação intacta (`v.text` verbatim); the-light `225b8c9`; commit só `index.tsx`+`i18n.ts`.
+- **Resultado:** aceito/arquivado (`loop/archive/F5.29.*`). **Próximo:** F5.30 (expor links /read /search /plans na home web — hoje só por URL; corrigir comentários obsoletos). Loop LIVE. Próximo ADR livre = ADR-0055.
