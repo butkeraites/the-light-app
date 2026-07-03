@@ -19,6 +19,7 @@
 // — o caminho da prova headless. A chave real + rede são a F3.10. NENHUMA chave é usada/
 // logada aqui. O texto bíblico vem SEMPRE do store local, verbatim; o LLM só interpreta.
 import { useEffect, useMemo, useState } from 'react';
+import { router } from 'expo-router';
 import {
   ActivityIndicator,
   Modal,
@@ -34,6 +35,7 @@ import { useI18n } from '../lib/i18n';
 import { useReaderModalA11y } from '../lib/useReaderModalA11y';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import { askSessionAnchored, ChatRole, type AiAnswer, type ChatTurn } from '../web/reading';
+import { AiProviderNotice, useConfiguredAiProviders } from './AiProviderNotice';
 
 // Provedor determinístico OFFLINE (sem chave, sem rede): o caminho da prova headless e o
 // único provedor desta entrega (a chave real + rede são a F3.10).
@@ -79,6 +81,17 @@ export function ReaderChatPanel({
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<AiAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // F5.37: há algum provedor de IA configurado? (NOMES com chave no cofre, nunca valores.)
+  // Sem nenhum → aviso claro + CTA (esta entrega ainda usa `mock` offline; BYOK real = F3.10).
+  const { checked: providersChecked, providers: providersWithKey } = useConfiguredAiProviders(visible);
+  const showNoProviderNotice = providersChecked && providersWithKey.length === 0;
+
+  // F5.37: leva à tela SOBRE (config BYOK explicada). Fecha o painel antes de navegar.
+  function onConfigureProvider() {
+    onClose();
+    router.push('/about');
+  }
 
   // Ao trocar de passagem (nova âncora) ou fechar, limpa a conversa inteira — o histórico
   // NUNCA persiste texto entre passagens (a âncora é sempre a passagem corrente do store).
@@ -153,6 +166,12 @@ export function ReaderChatPanel({
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          {/* ── AVISO "sem provedor de IA" (F5.37) ────────────────────────────
+              A conversa usa IA; sem nenhum provedor configurado, convite CLARO p/ configurar
+              (link à tela Sobre), não um erro cru. Os recursos offline seguem sem chave; o
+              provedor offline `mock` ainda responde na thread abaixo. */}
+          {showNoProviderNotice ? <AiProviderNotice onConfigure={onConfigureProvider} /> : null}
+
           {/* ── PASSAGEM (texto bíblico, verbatim do store — a ÂNCORA) ─────────
               Anti-alucinação VISÍVEL: o `citedText` vem do RETORNO real (store),
               exibido UMA vez, rotulado como texto bíblico — NUNCA como saída do LLM.

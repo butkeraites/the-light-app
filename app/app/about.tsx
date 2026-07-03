@@ -84,6 +84,17 @@ export default function AboutScreen() {
         <Text style={styles.body}>{t('about.antiHallucination')}</Text>
       </View>
 
+      {/* F5.37: distinção EXPLÍCITA offline-vs-IA — o que funciona 100% offline (sem conta/chave)
+          vs. o que usa IA e precisa de um provedor (BYOK). Deixa claro que o app NÃO está
+          "quebrado" quando um recurso de IA pede configuração. */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle} accessibilityRole="header">
+          {t('about.aiVsOfflineTitle')}
+        </Text>
+        <Text style={styles.body}>{t('about.offlineFeatures')}</Text>
+        <Text style={styles.body}>{t('about.aiFeatures')}</Text>
+      </View>
+
       {/* Provedores de IA BYOK (opcional): Claude, GPT, Gemini, Ollama. */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle} accessibilityRole="header">

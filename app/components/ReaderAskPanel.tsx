@@ -16,6 +16,7 @@
 // há chave nem rede (é o caminho da prova headless). O texto bíblico vem SEMPRE do store
 // local, verbatim; o LLM só interpreta.
 import { useEffect, useMemo, useState } from 'react';
+import { router } from 'expo-router';
 import {
   ActivityIndicator,
   Modal,
@@ -32,6 +33,7 @@ import { getKey, listProviders, setKey, SUPPORTED_PROVIDERS } from '../lib/keyst
 import { useReaderModalA11y } from '../lib/useReaderModalA11y';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import { askAnchoredStream, type AiAnswer } from '../web/reading';
+import { AiProviderNotice } from './AiProviderNotice';
 
 // Provedor determinístico OFFLINE (sem chave, sem rede): default seguro e o caminho da
 // prova headless. NÃO está em `SUPPORTED_PROVIDERS` (que é só BYOK real) — é adicionado
@@ -81,6 +83,9 @@ export function ReaderAskPanel({
   const [error, setError] = useState<string | null>(null);
   // NOMES dos provedores que TÊM chave no cofre (nunca os valores) — só p/ o badge.
   const [providersWithKey, setProvidersWithKey] = useState<string[]>([]);
+  // F5.37: `true` após a 1ª checagem do cofre resolver — evita PISCAR o aviso "sem provedor"
+  // antes de sabermos se há chave. Só mostramos o aviso quando checado E lista vazia.
+  const [providersChecked, setProvidersChecked] = useState(false);
   // Rascunho da chave BYOK (input controlado) — NUNCA logado/exibido em claro (input
   // mascarado). No web o cofre é session-only (perdido no reload, ADR-0025); no nativo,
   // secure-store do device. Estado local, some ao fechar/salvar.
@@ -94,12 +99,17 @@ export function ReaderAskPanel({
       return;
     }
     let alive = true;
+    setProvidersChecked(false);
     (async () => {
       try {
         const withKey = await listProviders();
-        if (alive) setProvidersWithKey(withKey);
+        if (alive) {
+          setProvidersWithKey(withKey);
+          setProvidersChecked(true);
+        }
       } catch {
         // Sem indicadores de chave; a pergunta ainda funciona (mock/entrada real).
+        if (alive) setProvidersChecked(true);
       }
     })();
     return () => {
@@ -119,6 +129,14 @@ export function ReaderAskPanel({
   const isMock = provider === MOCK_PROVIDER;
   const providerHasKey = providersWithKey.includes(provider);
   const askDisabled = busy || dbPath == null || question.trim().length === 0;
+  // F5.37: nenhum provedor de IA configurado (checado, cofre vazio) → aviso claro + CTA.
+  const showNoProviderNotice = providersChecked && providersWithKey.length === 0;
+
+  // F5.37: leva à tela SOBRE (onde a config BYOK é explicada). Fecha o painel antes de navegar.
+  function onConfigureProvider() {
+    onClose();
+    router.push('/about');
+  }
 
   async function onAsk() {
     if (askDisabled || dbPath == null) {
@@ -210,6 +228,12 @@ export function ReaderAskPanel({
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          {/* ── AVISO "sem provedor de IA" (F5.37) ────────────────────────────
+              Recurso de IA sem nenhum provedor configurado → convite CLARO p/ configurar
+              (com link à tela Sobre), não um erro cru/tela vazia. O provedor offline `mock`
+              ainda responde abaixo; os recursos offline seguem sem chave. */}
+          {showNoProviderNotice ? <AiProviderNotice onConfigure={onConfigureProvider} /> : null}
+
           {/* ── PROVEDOR / MODELO ─────────────────────────────────────────── */}
           <Text style={styles.sectionTitle}>{t('ask.providerSection')}</Text>
           <View style={styles.providers}>

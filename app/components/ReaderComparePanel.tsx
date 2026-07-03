@@ -29,6 +29,7 @@
 // chave, sem rede). A chave NUNCA é logada/impressa/exibida. Custo estimado é OMITIDO — a
 // fronteira não expõe `estimate_cost_usd` (simplificação idêntica à da F2.5).
 import { useEffect, useMemo, useState } from 'react';
+import { router } from 'expo-router';
 import {
   ActivityIndicator,
   Modal,
@@ -45,6 +46,7 @@ import { getKey, SUPPORTED_PROVIDERS } from '../lib/keystore';
 import { useReaderModalA11y } from '../lib/useReaderModalA11y';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import { askAnchored, type AiAnswer } from '../web/reading';
+import { AiProviderNotice, useConfiguredAiProviders } from './AiProviderNotice';
 
 // Provedor determinístico OFFLINE (sem chave, sem rede): o caminho da prova headless.
 const MOCK_PROVIDER = 'mock';
@@ -97,6 +99,17 @@ export function ReaderComparePanel({
   const [busy, setBusy] = useState(false);
   const [columns, setColumns] = useState<CompareColumn[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // F5.37: há algum provedor de IA configurado? (NOMES com chave no cofre, nunca valores.)
+  // Sem nenhum → aviso claro + CTA (o provedor offline `mock` ainda responde; BYOK real = F3.10).
+  const { checked: providersChecked, providers: providersWithKey } = useConfiguredAiProviders(visible);
+  const showNoProviderNotice = providersChecked && providersWithKey.length === 0;
+
+  // F5.37: leva à tela SOBRE (config BYOK explicada). Fecha o painel antes de navegar.
+  function onConfigureProvider() {
+    onClose();
+    router.push('/about');
+  }
 
   // Ao trocar de passagem (nova âncora) ou fechar, limpa os resultados — nunca persiste
   // texto entre passagens (a âncora é sempre a passagem corrente do store).
@@ -199,6 +212,12 @@ export function ReaderComparePanel({
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          {/* ── AVISO "sem provedor de IA" (F5.37) ────────────────────────────
+              A comparação usa IA de provedores reais; sem nenhum configurado, convite CLARO
+              p/ configurar (link à tela Sobre), não um erro cru. Colunas de provedores sem
+              chave já mostram nota própria abaixo; o `mock` responde offline. */}
+          {showNoProviderNotice ? <AiProviderNotice onConfigure={onConfigureProvider} /> : null}
+
           {/* ── PROVEDORES (seletor MULTI, ≥2) ────────────────────────────── */}
           <Text style={styles.sectionTitle}>{t('compare.providersSection')}</Text>
           <View style={styles.chips}>

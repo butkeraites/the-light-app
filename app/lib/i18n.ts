@@ -147,6 +147,13 @@ export type MessageKey =
   | 'ai.questionPlaceholder'
   | 'ai.mockProviderNote'
   | 'ai.offlineBadge'
+  // F5.37: estado "sem provedor de IA configurado" (banner claro + CTA) — compartilhado pelos 4
+  // painéis de IA. Deixa explícito que o recurso usa IA e como configurar um provedor (BYOK),
+  // e reassegura que os recursos offline (leitura/busca/notas/planos) NÃO precisam de chave.
+  | 'ai.noProviderTitle'
+  | 'ai.noProviderBody'
+  | 'ai.noProviderOffline'
+  | 'ai.noProviderCta'
   // Painel PERGUNTAR (Ask, F2.5).
   | 'ask.title'
   | 'ask.providerSection'
@@ -223,6 +230,8 @@ export type MessageKey =
   | 'a11y.chatField'
   | 'a11y.compareField'
   | 'a11y.tavilyKey'
+  // F5.37: rótulo a11y do botão que leva à tela Sobre p/ configurar um provedor de IA (BYOK).
+  | 'a11y.aiConfigure'
   // ─── CROMO dos componentes de LEITURA restantes (F5.16) ──────────────────────────────
   // ANTI-ALUCINAÇÃO (LEI): só CROMO (rótulos, botões, seções, a11y, placeholders). O TEXTO
   // do versículo e os NOMES de livro vêm do STORE (nunca via `t()`); as REFERÊNCIAS cruzadas
@@ -338,6 +347,11 @@ export type MessageKey =
   | 'about.antiHallucination'
   | 'about.providersTitle'
   | 'about.providers'
+  // F5.37: distinção EXPLÍCITA offline-vs-IA na tela Sobre — o que funciona 100% offline (sem
+  // conta/chave) vs. o que usa IA e precisa de um provedor (BYOK). Só CROMO.
+  | 'about.aiVsOfflineTitle'
+  | 'about.offlineFeatures'
+  | 'about.aiFeatures'
   | 'about.backupTitle'
   | 'about.backupHint';
 
@@ -413,8 +427,14 @@ const pt: Record<MessageKey, string> = {
   'ai.meta': 'Provedor: {provider} · Modelo: {model}',
   'ai.questionSection': 'Pergunta',
   'ai.questionPlaceholder': 'O que você quer entender sobre esta passagem?',
-  'ai.mockProviderNote': 'Provedor: mock (offline, sem chave/rede — F3.10 traz BYOK).',
+  'ai.mockProviderNote': 'Provedor: mock (demonstração offline, sem chave nem rede).',
   'ai.offlineBadge': '· offline',
+  'ai.noProviderTitle': 'Recurso de IA',
+  'ai.noProviderBody':
+    'Este recurso usa IA. Para respostas de um provedor (Claude, GPT, Gemini ou Ollama local), configure uma chave — ela é sua (BYOK) e fica no seu aparelho.',
+  'ai.noProviderOffline':
+    'Leitura, busca, referências cruzadas, notas, marcações e planos funcionam 100% offline, sem provedor e sem conta.',
+  'ai.noProviderCta': 'Configurar provedor de IA',
   'ask.title': 'Perguntar · {source}',
   'ask.providerSection': 'Provedor',
   'ask.keyBadgeYes': '· chave ✓',
@@ -448,7 +468,7 @@ const pt: Record<MessageKey, string> = {
   'compare.anchorTitle': 'Passagem (texto bíblico) — âncora comum',
   'compare.consistencyOk': '✓ Mesma passagem do acervo em todas as {count} colunas',
   'compare.consistencyBad': '⚠ Passagens divergentes entre as colunas',
-  'compare.columnNoKey': 'sem chave (BYOK — F3.10)',
+  'compare.columnNoKey': 'Sem chave para este provedor (BYOK). Configure em Sobre.',
   'compare.disclaimer':
     'IA — confira nas Escrituras. O texto bíblico (âncora) vem do seu acervo local (verbatim), idêntico para todos os modelos; a IA apenas interpreta. Custo estimado indisponível (a fronteira não o expõe).',
   'study.title': 'Estudo · {source}',
@@ -495,6 +515,7 @@ const pt: Record<MessageKey, string> = {
   'a11y.chatField': 'Campo de conversa sobre a passagem',
   'a11y.compareField': 'Campo de pergunta para comparar entre provedores',
   'a11y.tavilyKey': 'Chave Tavily (session-only)',
+  'a11y.aiConfigure': 'Abrir a tela Sobre para configurar um provedor de IA (BYOK)',
   // ─── Componentes de leitura restantes (F5.16) — só CROMO (ver nota na união de chaves) ─
   'common.close': 'Fechar',
   'xref.title': 'Referências cruzadas — {source}',
@@ -596,6 +617,11 @@ const pt: Record<MessageKey, string> = {
   'about.providersTitle': 'Provedores de IA (BYOK, opcional)',
   'about.providers':
     'Claude (Anthropic), GPT (OpenAI), Gemini (Google) e Ollama (modelos locais, sem chave).',
+  'about.aiVsOfflineTitle': 'Offline sempre · IA opcional',
+  'about.offlineFeatures':
+    'Funcionam 100% offline, sem conta e sem chave: leitura, busca, referências cruzadas, notas, marcações, planos de leitura, temas e backup/export.',
+  'about.aiFeatures':
+    'Usam IA e precisam de um provedor (BYOK): Perguntar, Estudo profundo, Comparar e Conversa. Configure uma chave de Claude, GPT ou Gemini, ou rode o Ollama local. Sem isso, cada recurso mostra um convite claro para configurar — o resto do app continua funcionando.',
   'about.backupTitle': 'Backup e sincronização',
   'about.backupHint':
     'Exporte um backup dos seus dados (notas, marcações, progresso) ou ligue a sincronização opcional. Tudo é opt-in; o app funciona 100% offline sem isto.',
@@ -672,8 +698,14 @@ const en: Record<MessageKey, string> = {
   'ai.meta': 'Provider: {provider} · Model: {model}',
   'ai.questionSection': 'Question',
   'ai.questionPlaceholder': 'What would you like to understand about this passage?',
-  'ai.mockProviderNote': 'Provider: mock (offline, no key/network — F3.10 brings BYOK).',
+  'ai.mockProviderNote': 'Provider: mock (offline demo, no key or network).',
   'ai.offlineBadge': '· offline',
+  'ai.noProviderTitle': 'AI feature',
+  'ai.noProviderBody':
+    'This feature uses AI. For answers from a provider (Claude, GPT, Gemini, or local Ollama), set up a key — it is yours (BYOK) and stays on your device.',
+  'ai.noProviderOffline':
+    'Reading, search, cross-references, notes, highlights and plans work 100% offline, with no provider and no account.',
+  'ai.noProviderCta': 'Set up an AI provider',
   'ask.title': 'Ask · {source}',
   'ask.providerSection': 'Provider',
   'ask.keyBadgeYes': '· key ✓',
@@ -707,7 +739,7 @@ const en: Record<MessageKey, string> = {
   'compare.anchorTitle': 'Passage (biblical text) — common anchor',
   'compare.consistencyOk': '✓ Same passage from the library across all {count} columns',
   'compare.consistencyBad': '⚠ Divergent passages across columns',
-  'compare.columnNoKey': 'no key (BYOK — F3.10)',
+  'compare.columnNoKey': 'No key for this provider (BYOK). Set it up in About.',
   'compare.disclaimer':
     'AI — verify against Scripture. The biblical text (anchor) comes from your local library (verbatim), identical for all models; the AI only interprets. Estimated cost unavailable (the boundary does not expose it).',
   'study.title': 'Study · {source}',
@@ -754,6 +786,7 @@ const en: Record<MessageKey, string> = {
   'a11y.chatField': 'Conversation field about the passage',
   'a11y.compareField': 'Question field to compare across providers',
   'a11y.tavilyKey': 'Tavily key (session-only)',
+  'a11y.aiConfigure': 'Open the About screen to set up an AI provider (BYOK)',
   // ─── Remaining reading components (F5.16) — CHROME only (see note on the key union) ────
   'common.close': 'Close',
   'xref.title': 'Cross references — {source}',
@@ -855,6 +888,11 @@ const en: Record<MessageKey, string> = {
   'about.providersTitle': 'AI providers (BYOK, optional)',
   'about.providers':
     'Claude (Anthropic), GPT (OpenAI), Gemini (Google), and Ollama (local models, no key).',
+  'about.aiVsOfflineTitle': 'Always offline · AI optional',
+  'about.offlineFeatures':
+    'Work 100% offline, with no account and no key: reading, search, cross-references, notes, highlights, reading plans, themes and backup/export.',
+  'about.aiFeatures':
+    'Use AI and need a provider (BYOK): Ask, Deep study, Compare and Conversation. Set up a Claude, GPT or Gemini key, or run local Ollama. Without one, each feature shows a clear invitation to set it up — the rest of the app keeps working.',
   'about.backupTitle': 'Backup & sync',
   'about.backupHint':
     'Export a backup of your data (notes, highlights, progress) or turn on optional sync. Everything is opt-in; the app works 100% offline without it.',

@@ -22,6 +22,7 @@
 // usada/logada aqui. O texto bíblico e as glosas vêm SEMPRE do store local, verbatim; o
 // LLM só interpreta.
 import { useEffect, useMemo, useState } from 'react';
+import { router } from 'expo-router';
 import {
   ActivityIndicator,
   Modal,
@@ -38,6 +39,7 @@ import { useI18n, type MessageKey } from '../lib/i18n';
 import { buildStudyExport } from '../lib/studyExport';
 import { useReaderModalA11y } from '../lib/useReaderModalA11y';
 import { useTheme, type ThemeColors } from '../lib/theme';
+import { AiProviderNotice, useConfiguredAiProviders } from './AiProviderNotice';
 import {
   deepStudy,
   lexicalEntries,
@@ -160,6 +162,17 @@ export function ReaderStudyPanel({
   const [error, setError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
+  // F5.37: há algum provedor de IA configurado? (NOMES com chave no cofre, nunca valores.)
+  // Sem nenhum → aviso claro + CTA (esta entrega ainda usa `mock` offline; BYOK real = F3.10).
+  const { checked: providersChecked, providers: providersWithKey } = useConfiguredAiProviders(visible);
+  const showNoProviderNotice = providersChecked && providersWithKey.length === 0;
+
+  // F5.37: leva à tela SOBRE (config BYOK explicada). Fecha o painel antes de navegar.
+  function onConfigureProvider() {
+    onClose();
+    router.push('/about');
+  }
+
   // Ao trocar de passagem ou fechar, limpa o resultado (nunca persiste texto entre refs).
   useEffect(() => {
     setResult(null);
@@ -262,6 +275,12 @@ export function ReaderStudyPanel({
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          {/* ── AVISO "sem provedor de IA" (F5.37) ────────────────────────────
+              Estudo profundo usa IA; sem nenhum provedor configurado, convite CLARO p/
+              configurar (link à tela Sobre), não um erro cru. Os recursos offline seguem
+              sem chave; o provedor offline `mock` ainda produz o estudo abaixo. */}
+          {showNoProviderNotice ? <AiProviderNotice onConfigure={onConfigureProvider} /> : null}
+
           {/* ── MODO ──────────────────────────────────────────────────────── */}
           <Text style={styles.sectionTitle}>{t('study.modeSection')}</Text>
           <View style={styles.chips}>
