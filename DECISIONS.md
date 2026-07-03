@@ -3407,3 +3407,38 @@ Headless (node, sem browser/rede/CONTA/chave) `test:web:driveauth` — exercita 
 **MOCK apenas** — NENHUMA chamada real ao Google nesta tarefa. Push/pull do snapshot na pasta app-data + merge no pull → **F5.25**. UI opt-in (toggle OFF por padrão, aviso de privacidade, "funciona offline sem isto", link/unlink) + wiring nativo do motor de snapshot → **F5.26**. Validação com conta/Drive Google REAIS → **F5.27 (⛔ gate humano; conta/token NUNCA transitam pelo loop)**.
 
 Próximo ADR livre = **ADR-0053** (0036–0052 usados; 0037 foi o PR de planos).
+
+## ADR-0053 — F5.25: PUSH/PULL do snapshot na pasta app-private do Google Drive (arquivo canônico único) + MERGE no pull = motor PURO sobre F5.23/F5.24 + prova headless MOCK; 3ª etapa do sync (ADR-0036)
+
+- **Data:** 2026-07-03 · **Status:** aceito · **Tarefa:** F5.25 (`gate: false`, 3ª da decomposição do sync ADR-0036) · **Depende:** **F5.24/ADR-0052** (o fluxo OAuth/PKCE que provê o access token via `currentToken`), **F5.23/ADR-0051** (o SNAPSHOT round-trippável + merge determinístico que esta tarefa MOVE), **F5.22/ADR-0036** (a decisão de sync = export/import manual + Drive no web, opt-in). **NÃO** toca o `the-light` (@ `225b8c9`) nem `core/**` — 100% app-side (web-only TS). Sem dep nova (`fetch` injetado; Node/esbuild só na prova; wasm já presente).
+
+### Contexto
+O ADR-0036 decidiu, como 3ª camada do sync (a 1ª, F5.23, é o snapshot local round-trippável; a 2ª, F5.24, é o OAuth/link do Drive), o **transporte do snapshot** para/da pasta **app-private** (`appDataFolder`) do Drive do PRÓPRIO usuário: com o token linkado na F5.24, empurrar (push) e puxar (pull) o snapshot da F5.23, e no pull MESCLAR com o estado local. Com isto os dados do usuário transitam entre dispositivos via o Drive DELE, **sem servidor do app**. Esta tarefa entrega SÓ o motor de transporte+merge (MOCK); a UI opt-in + wiring nativo é a F5.26; a validação com conta/Drive REAIS é a F5.27 (gate humano).
+
+### Decisão
+Um motor **PURO / de injeção de dependências** `app/lib/driveSync.ts` (molde `driveAuth.ts`/`userdataSnapshot.ts`: sem rede/store/token embutidos — recebe `fetch`, `getToken()` (F5.24) e um `SnapshotStore` (F5.23)). `createDriveSync(deps)` expõe:
+1. **`pushSnapshot()`** — `exportSnapshot(store)` (F5.23) → `serializeSnapshot` → **upload/replace** do ARQUIVO CANÔNICO ÚNICO `the-light-app.snapshot.json` na pasta app-private: cria via `POST /upload/drive/v3/files?uploadType=multipart` com `parents:["appDataFolder"]`; se já existe, substitui por id via `PATCH /upload/.../files/{id}?uploadType=media` (**id ESTÁVEL**). Retorna `{fileId, bytes}`.
+2. **`pullSnapshot()`** — `findSnapshotFile()` (`GET /drive/v3/files?spaces=appDataFolder&q=name='...'`), baixa (`alt=media`) e delega 100% à F5.23 `importSnapshotIntoStore` (parse + valida app/versão/tipos + `assertValidReference` REAL via core ANTES de tocar o store + `mergeSnapshots` união + aplica SÓ o diff). App-data vazio = **no-op** (store intacto). Retorna `{applied, merged}`.
+3. **`syncNow()`** — **pull-then-push** (convergência): puxa+mescla e então empurra o merge. **Idempotente**: na 2ª rodada seguida o remoto já == local → pull aplica 0/0/false e o push reescreve os mesmos bytes.
+
+**Arquivo canônico único** (não histórico/multi-arquivo): o snapshot já É o estado completo do usuário (a F5.23 é round-trippável) e o merge é determinístico, então um arquivo substituível basta; simplicidade e sem duplicação. Bytes determinísticos (`exportSnapshot` ordenado, sem `exportedAt`) → id estável no replace e idempotência do sync.
+
+### Reuso (não reimplementa)
+Snapshot/merge = 100% F5.23 (`exportSnapshot`/`serializeSnapshot`/`importSnapshotIntoStore` → `parseSnapshot`/`mergeSnapshots`). OAuth/token = 100% F5.24 (chega pronto via `getToken`; expirado/ausente → `null` → o motor LANÇA sem tocar a rede). O motor NOVO é só o transporte Drive (list/download/create/update).
+
+### Anti-alucinação / privacidade / merge não-destrutivo
+O que SOBE é EXATAMENTE o snapshot da F5.23 — notas + marcações + progresso de plano, com referências CANÔNICAS do core e MAIS NADA: **NENHUM** texto bíblico (só a referência), **NENHUMA** sessão de IA, **NENHUM** banco, **NENHUMA** chave/token. O que BAIXA é validado (estrutura + referência real via core) ANTES de qualquer escrita. O **merge NUNCA apaga dado local** (união por referência; progresso `max(completed)` — F5.23/ADR-0051): provado que um pull de um remoto MENOR preserva a nota só-local.
+
+### Não-vazamento de segredo (LEI, molde ADR-0052/ADR-0023 D3)
+O access token chega SÓ do `getToken` injetado, vai SÓ no header `Authorization: Bearer` (o mock exige em TODA request) e NUNCA é logado (`driveSync.ts` não faz NENHUMA chamada de log; a prova faz grep do fonte por `console.*`, exigindo ausência, e espiona `console.*` durante toda a execução exigindo que o token nunca apareça — `notoken=ok`). As mensagens de erro citam só o status HTTP.
+
+### Offline-first / perf
+Estritamente **OPT-IN e ADITIVO**: o app é 100% funcional com ZERO conta/rede; nada essencial passa a exigir Google. O módulo é puro/injetável → FORA do entry graph eager do web (perf-budget `moduleCount` inalterado — 839; sem re-baseline).
+
+### Prova
+Headless (node, sem browser/rede/CONTA) `test:web:drivesync` — exercita o MESMO código de produção com um `fetch` MOCK + uma "nuvem" EM MEMÓRIA (dict que emula a app-data) + `SnapshotStore` ligado às fns web (`*Fs`/`*PlanFs`) + wasm p/ referência REAL: (1) push cria 1 arquivo canônico (list acha 1) e 2º push = replace (id estável); (2) só notas+marcações+progresso sobem (sem texto bíblico/sessão/chave; campos do snapshot); (3) pull vazio = no-op; (4) 2 dispositivos (2 stores + 1 nuvem) convergem p/ a UNIÃO após `syncNow` A→B→A, progresso = max(completed); (5) idempotência (0/0/false na 2ª); (6) merge nunca apaga (pull de remoto menor preserva local); (7) não-vazamento (`notoken=ok`). Marcador `DRIVE_SYNC push=ok pull=ok converge=ok idempotent=ok notoken=ok`.
+
+### Escopo NÃO coberto (próximas tarefas)
+**MOCK apenas** — NENHUMA chamada real ao Google nesta tarefa. UI opt-in (link/unlink, aviso de privacidade, botão "Sincronizar agora", "funciona offline sem isto") + wiring do motor de snapshot ao store NATIVO real → **F5.26**. Validação com conta/Drive Google REAIS → **F5.27 (⛔ gate humano; conta/token NUNCA transitam pelo loop)**.
+
+Próximo ADR livre = **ADR-0054** (0036–0053 usados; 0037 foi o PR de planos).
