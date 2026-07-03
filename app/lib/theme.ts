@@ -28,77 +28,15 @@ import {
 import { useColorScheme } from 'react-native';
 
 import { getPref, removePref, setPref } from './prefs';
+// TOKENS de cor moram em `themePalettes.ts` (módulo PURO, sem `react-native`) para que a
+// auditoria de contraste WCAG AA (F5.18/ADR-0046) os bundle HEADLESS. Re-exportamos aqui p/
+// os componentes seguirem importando `ThemeColors` de `lib/theme` sem mudança.
+import { PALETTES, type ThemeColors } from './themePalettes';
 import { isThemeMode, THEME_PREF_KEY, type ThemeMode } from './themePrefs';
 
 export type { ThemeMode } from './themePrefs';
-
-/** Tokens de cor consumidos pela UI de leitura (uma fonte de verdade visual). */
-export type ThemeColors = {
-  /** Fundo das telas/listas. */
-  background: string;
-  /** Fundo do header de navegação. */
-  headerBackground: string;
-  /** Texto primário (nomes de livro, números de capítulo, títulos). */
-  text: string;
-  /** Texto do versículo (corpo da leitura). */
-  verseText: string;
-  /** Texto secundário/atenuado (subtítulos, vazios). */
-  muted: string;
-  /** Elementos muito sutis (chevron). */
-  faint: string;
-  /** Divisórias finas (hairline) entre linhas. */
-  divider: string;
-  /** Bordas de chips/células. */
-  border: string;
-  /** Destaque do número do versículo. */
-  accent: string;
-  /** Chip/seleção ativa: fundo. */
-  chipActiveBg: string;
-  /** Chip/seleção ativa: texto. */
-  chipActiveText: string;
-  /** Chip inativo: texto. */
-  chipText: string;
-  /** Chip: rótulo de idioma. */
-  chipLang: string;
-  /** Mensagens de erro. */
-  error: string;
-};
-
-const LIGHT: ThemeColors = {
-  background: '#ffffff',
-  headerBackground: '#ffffff',
-  text: '#111111',
-  verseText: '#1a1a1a',
-  muted: '#888888',
-  faint: '#cccccc',
-  divider: '#e2e2e2',
-  border: '#dddddd',
-  accent: '#b08400',
-  chipActiveBg: '#111111',
-  chipActiveText: '#ffffff',
-  chipText: '#333333',
-  chipLang: '#999999',
-  error: '#b00020',
-};
-
-const DARK: ThemeColors = {
-  background: '#101012',
-  headerBackground: '#16161a',
-  text: '#f2f2f2',
-  verseText: '#e6e6e6',
-  muted: '#9a9a9a',
-  faint: '#555555',
-  divider: '#2a2a2e',
-  border: '#3a3a40',
-  accent: '#e0b84d',
-  chipActiveBg: '#f2f2f2',
-  chipActiveText: '#111111',
-  chipText: '#cfcfcf',
-  chipLang: '#8a8a8a',
-  error: '#ff6b6b',
-};
-
-const PALETTES: Record<ThemeMode, ThemeColors> = { light: LIGHT, dark: DARK };
+export type { ThemeColors } from './themePalettes';
+export { LIGHT, DARK, PALETTES } from './themePalettes';
 
 export type ThemeContextValue = {
   /** Modo efetivo aplicado (`light`/`dark`). */
