@@ -61,6 +61,10 @@ export type MessageKey =
   | 'search.inputPlaceholder'
   | 'search.hintEmpty'
   | 'search.noResults'
+  // Rótulo do SELETOR DE TRADUÇÃO da busca (F5.31). CROMO puro: só o rótulo "Tradução"
+  // passa por t(); os NOMES/abreviações das versões vêm do STORE (`listTranslations`),
+  // nunca de t() (anti-alucinação), e o texto/ref de resultado seguem VERBATIM do store.
+  | 'search.translationLabel'
   // Títulos de header do expo-router (fluxo de leitura + busca + planos). "The Light"
   // é a MARCA — idêntica nos dois idiomas de propósito.
   | 'nav.home'
@@ -320,6 +324,7 @@ const pt: Record<MessageKey, string> = {
   'search.inputPlaceholder': 'Buscar na Bíblia (ex.: God, amor, light)',
   'search.hintEmpty': 'Digite um termo para buscar no texto bíblico.',
   'search.noResults': 'Nenhum resultado para “{term}”.',
+  'search.translationLabel': 'Tradução',
   'nav.home': 'The Light',
   'nav.read': 'Ler a Bíblia',
   'nav.chapters': 'Capítulos',
@@ -546,6 +551,7 @@ const en: Record<MessageKey, string> = {
   'search.inputPlaceholder': 'Search the Bible (e.g., God, love, light)',
   'search.hintEmpty': 'Type a term to search the biblical text.',
   'search.noResults': 'No results for “{term}”.',
+  'search.translationLabel': 'Translation',
   'nav.home': 'The Light',
   'nav.read': 'Read the Bible',
   'nav.chapters': 'Chapters',

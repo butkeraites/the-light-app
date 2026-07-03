@@ -17,15 +17,26 @@ import { router } from 'expo-router';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ReaderSearchResultItem } from '../../components/ReaderSearchResultItem';
+import { ReaderVersionPicker } from '../../components/ReaderVersionPicker';
 import { WasmGate } from '../../components/WasmGate';
 import { ensureReadingDb } from '../../lib/db';
 import { useI18n } from '../../lib/i18n';
 import { useTheme, type ThemeColors } from '../../lib/theme';
-import { listBooks, search, type Book, type SearchHit } from '../../web/reading';
+import {
+  listBooks,
+  listTranslations,
+  search,
+  type Book,
+  type SearchHit,
+  type Translation,
+} from '../../web/reading';
 
-// Tradução default da busca (o seletor de versão é a leitura; aqui fixamos KJV —
-// a paridade multi-tradução/seletor de busca é evolução futura).
-const TRANSLATION = 'kjv';
+// F5.31: KJV é a tradução PADRÃO da busca. O seletor (reusa o `ReaderVersionPicker` da
+// leitura) lista as traduções REALMENTE presentes no store (via `listTranslations` — ex.:
+// KJV + Almeida 1911), nunca hardcoded; trocar re-executa a query na tradução escolhida
+// pelo parâmetro EXISTENTE `search(dbPath, term, translation)`. Anti-alucinação: os nomes
+// de versão vêm do store e o texto/ref de resultado seguem VERBATIM do store (nunca `t()`).
+const DEFAULT_TRANSLATION = 'kjv';
 const DEBOUNCE_MS = 300;
 
 /** Número do versículo de um hit (sempre `Single` num resultado de busca). */
@@ -64,6 +75,9 @@ function SearchContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
+  // F5.31: tradução ATIVA da busca (padrão KJV) + traduções disponíveis (do store).
+  const [translation, setTranslation] = useState(DEFAULT_TRANSLATION);
+  const [translations, setTranslations] = useState<Translation[]>([]);
 
   // Cânon (66 livros, PURO) p/ resolver o nome do livro na referência do item.
   useEffect(() => {
@@ -73,6 +87,24 @@ function SearchContent() {
       // Sem cânon → o item cai no rótulo de fallback (CROMO `read.bookFallback`); não bloqueia a busca.
     }
   }, []);
+
+  // F5.31: carrega uma vez as traduções PRESENTES no store (seletor de versão). A lista
+  // vem SEMPRE do store (`listTranslations`) — nunca hardcoded; a default segue KJV.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const dbPath = await ensureReadingDb();
+        const ts = await listTranslations(dbPath);
+        if (alive) setTranslations(ts);
+      } catch {
+        // Sem traduções → o seletor some; a busca ainda usa a default (KJV).
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
   // Nome do livro p/ a referência do item: vem SEMPRE do STORE (namePt/nameEn) — o `locale`
   // só ESCOLHE o campo, nunca traduz. O fallback (livro ausente do cânon) é CROMO (`t()`).
   const bookNameOf = useMemo(() => {
@@ -81,7 +113,8 @@ function SearchContent() {
   }, [books, locale, t]);
 
   // Busca com DEBOUNCE: dispara só quando o termo fica estável por DEBOUNCE_MS.
-  // `seq` evita corridas (descarta respostas de buscas obsoletas).
+  // `seq` evita corridas (descarta respostas de buscas obsoletas). F5.31: `translation`
+  // também dispara — trocar a versão re-executa a MESMA query na tradução escolhida.
   const seqRef = useRef(0);
   useEffect(() => {
     const term = query.trim();
@@ -96,7 +129,7 @@ function SearchContent() {
     const handle = setTimeout(async () => {
       try {
         const dbPath = await ensureReadingDb();
-        const hits = await search(dbPath, term, TRANSLATION);
+        const hits = await search(dbPath, term, translation);
         if (mySeq === seqRef.current) {
           setResults(hits);
           setError(null);
@@ -111,7 +144,7 @@ function SearchContent() {
       }
     }, DEBOUNCE_MS);
     return () => clearTimeout(handle);
-  }, [query]);
+  }, [query, translation]);
 
   function openHit(hit: SearchHit) {
     const verse = verseOf(hit);
@@ -143,6 +176,21 @@ function SearchContent() {
         testID="search-input"
         accessibilityLabel={t('a11y.searchTextInput')}
       />
+
+      {/* F5.31: seletor de tradução (reusa o ReaderVersionPicker). Os NOMES das versões vêm
+          do store (`listTranslations`); só o rótulo "Tradução" é cromo via t(). Trocar
+          re-executa a query na versão escolhida. Some se o store não expõe traduções. */}
+      {translations.length > 0 ? (
+        <View style={styles.pickerRow}>
+          <Text style={styles.pickerLabel}>{t('search.translationLabel')}</Text>
+          <ReaderVersionPicker
+            translations={translations}
+            current={translation}
+            onChange={setTranslation}
+            testIDPrefix="search-version"
+          />
+        </View>
+      ) : null}
 
       {error ? (
         <View style={styles.centered}>
@@ -196,5 +244,12 @@ function makeStyles(colors: ThemeColors) {
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
     hint: { fontSize: 14, color: colors.muted, textAlign: 'center' },
     error: { fontSize: 14, color: colors.error, textAlign: 'center' },
+    pickerRow: { gap: 2 },
+    pickerLabel: {
+      fontSize: 11,
+      color: colors.muted,
+      textTransform: 'uppercase',
+      paddingHorizontal: 16,
+    },
   });
 }
