@@ -114,7 +114,6 @@ export type MessageKey =
   | 'ref.verseRange'
   | 'ref.wholeChapter'
   | 'a11y.searchInput'
-  | 'a11y.result'
   // A11Y da BUSCA + navegação de leitura (F5.8). `{name}` (livro) vem do STORE
   // (namePt/nameEn; `locale` só ESCOLHE o campo), `{chapter}` é DADO — nada aqui é texto
   // bíblico. `a11y.verseOptions` é HINT do gesto no versículo (não substitui o texto lido).
@@ -356,7 +355,6 @@ const pt: Record<MessageKey, string> = {
   'ref.verseRange': 'vv.',
   'ref.wholeChapter': 'capítulo inteiro',
   'a11y.searchInput': 'Campo de busca de passagem bíblica',
-  'a11y.result': 'Resultado da interpretação',
   'a11y.searchTextInput': 'Campo de busca no texto bíblico',
   'a11y.openBook': 'Abrir o livro {name}',
   'a11y.openChapter': 'Abrir o capítulo {chapter}',
@@ -583,7 +581,6 @@ const en: Record<MessageKey, string> = {
   'ref.verseRange': 'vv.',
   'ref.wholeChapter': 'whole chapter',
   'a11y.searchInput': 'Bible passage search field',
-  'a11y.result': 'Interpretation result',
   'a11y.searchTextInput': 'Biblical text search field',
   'a11y.openBook': 'Open the {name} book',
   'a11y.openChapter': 'Open chapter {chapter}',

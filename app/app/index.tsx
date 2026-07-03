@@ -163,12 +163,11 @@ export default function HomeScreen() {
 
       {Platform.OS === 'web' ? <Text style={styles.hint}>{t('home.hint')}</Text> : null}
 
-      <Text
-        testID="result"
-        style={styles.result}
-        accessibilityRole="text"
-        accessibilityLabel={t('a11y.result')}
-      >
+      {/* F5.29: SEM accessibilityLabel — um label fixo ("Resultado da interpretação")
+          SOBRESCREVE os filhos e esconde o conteúdo real do leitor de tela. Com só o
+          role="text", o leitor anuncia os FILHOS (`resultText`): a referência/passagem
+          resolvida OU a mensagem de erro — ambas legíveis por tecnologia assistiva. */}
+      <Text testID="result" style={styles.result} accessibilityRole="text">
         {resultText}
       </Text>
 
