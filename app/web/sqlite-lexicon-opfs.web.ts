@@ -96,7 +96,11 @@ export async function openLexiconDbWeb(): Promise<OpenLexiconDb> {
   }
 
   const wasmBinary = await fetchBytes(waSqliteWasmUri);
-  const module = await SQLiteESMFactory({ wasmBinary });
+  // `locateFile` p/ NÃO tomar o branch `new URL("wa-sqlite.wasm", import.meta.url)` do glue
+  // Emscripten: sob o bundler DEV do Metro `import.meta.url` é "null" → `new URL(...)` lança
+  // "Failed to construct 'URL': Invalid base URL" (mesmo bug da leitura, F5.39). Passamos os bytes
+  // do wasm direto (`wasmBinary`); `locateFile` só desvia do URL inválido.
+  const module = await SQLiteESMFactory({ wasmBinary, locateFile: (path: string) => path });
   const sqlite3 = SQLite.Factory(module);
 
   const vfs = new MemoryVFS();

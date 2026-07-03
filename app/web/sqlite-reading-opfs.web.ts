@@ -101,7 +101,12 @@ export async function openReadingDbWeb(): Promise<OpenReadingDb> {
   // Instancia o SQLite-wasm passando os BYTES do .wasm (asset local) — sem rede
   // externa e sem depender de fetch interno do Emscripten.
   const wasmBinary = await fetchBytes(waSqliteWasmUri);
-  const module = await SQLiteESMFactory({ wasmBinary });
+  // `locateFile` p/ NÃO tomar o branch `new URL("wa-sqlite.wasm", import.meta.url)` do glue
+  // Emscripten: sob o bundler DEV do Metro `import.meta.url` é "null" → `new URL(...)` lança
+  // "Failed to construct 'URL': Invalid base URL" e a LEITURA quebrava no BROWSER (só passava
+  // headless, onde import.meta.url é file://). Passamos os bytes do wasm direto (`wasmBinary`);
+  // `locateFile` só desvia do URL inválido (o valor retornado não é buscado — usa-se `wasmBinary`).
+  const module = await SQLiteESMFactory({ wasmBinary, locateFile: (path: string) => path });
   const sqlite3 = SQLite.Factory(module);
 
   // VFS de memória hidratado com os bytes do asset LOCAL (fetch da própria origem —
