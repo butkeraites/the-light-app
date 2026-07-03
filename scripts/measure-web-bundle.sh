@@ -190,12 +190,23 @@ const BUDGET = {
   //     (raw 1.324.748–1.324.870; gzip 334.428–336.118; brotli 264.620–264.644) — a +1 módulo
   //     e o glue leve de planos somam ~10,5 KB raw / ~2,4 KB gzip ao entry; tolerâncias
   //     INALTERADAS (magnitude do flutter igual). NÃO é regressão: é a feature de paridade web.
+  // NOTA F5.26 (ADR-0054) — re-baseline SÓ de BYTES do entry (moduleCount INALTERADO 839):
+  // a seção de SINCRONIZAÇÃO opt-in + backup (F5.26) adicionou ~40 chaves de CROMO (PT+EN)
+  // ao catálogo i18n EAGER (`app/lib/i18n.ts`, no 1º paint) — aviso de privacidade
+  // (o que sincroniza vs. o que nunca sai do aparelho), "funciona 100% offline sem isto",
+  // rótulos/a11y dos controles. NÃO é regressão estrutural: os MOTORES pesados
+  // (snapshotStore/driveAuth/driveSync/userdataSnapshot + o painel `SyncSettings`) são
+  // `import()` SOB DEMANDA (chunk ASYNC) — moduleCount fica 839 EXATO (verificado em 3
+  // exports). Só o TEXTO localizado cresceu no entry: +~5,6 KB raw / +~1,4 KB brotli
+  // (gzip dentro da banda antiga). Nominais re-centrados no centro do flutter medido em 3
+  // exports (raw 1.330.341–1.330.463; gzip 336.014–337.681; brotli 265.994–266.218);
+  // tolerâncias INALTERADAS. Espelhado em `loop/perf/web-bundle-budget.json`.
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
     moduleCount: 839,
-    eagerBytes: { nominal: 1324809, tolerance: 1024 },
-    eagerGzipBytes: { nominal: 335273, tolerance: 2048 },
-    eagerBrotliBytes: { nominal: 264632, tolerance: 1024 },
+    eagerBytes: { nominal: 1330402, tolerance: 1024 },
+    eagerGzipBytes: { nominal: 336848, tolerance: 2048 },
+    eagerBrotliBytes: { nominal: 266106, tolerance: 1024 },
   },
 };
 

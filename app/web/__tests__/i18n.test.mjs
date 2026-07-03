@@ -396,6 +396,8 @@ async function main() {
     'common',
     'versePanel',
     'xref',
+    // F5.26 (ADR-0054): cromo da sincronização opt-in + backup (privacidade / offline-first).
+    'sync',
   ]);
   for (const key of MESSAGE_KEYS) {
     const ns = key.split('.')[0];

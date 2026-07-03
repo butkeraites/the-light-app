@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
 import { Link } from 'expo-router';
-import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { parseReference, type Reference } from '../web/reference';
 // F5.12 (ADR-0041): `getPassage` (store web) só roda no submit (NUNCA no mount) —
@@ -73,6 +73,19 @@ export default function HomeScreen() {
   const [query, setQuery] = useState('');
   const [outcome, setOutcome] = useState<Outcome>({ kind: 'idle' });
 
+  // F5.26: SEÇÃO de SINCRONIZAÇÃO OPT-IN + backup. Carregada SOB DEMANDA (`import()`) —
+  // o painel e seus motores (snapshot/driveAuth/driveSync) ficam num chunk ASYNC, FORA do
+  // entry eager do 1º paint (perf-budget travado). Opt-in é OFF por padrão (`syncPrefs`).
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [SyncPanel, setSyncPanel] = useState<ComponentType<{ onClose?: () => void }> | null>(null);
+  const openSync = useCallback(async () => {
+    if (!SyncPanel) {
+      const mod = await import('../components/SyncSettings');
+      setSyncPanel(() => mod.SyncSettings);
+    }
+    setSyncOpen(true);
+  }, [SyncPanel]);
+
   // F0.7 — prova HEADLESS: sob EXPO_PUBLIC_TLA_SELFTEST=1, resolve "Jo 3.16" e
   // "John 3:16" pelo Turbo Module nativo e loga marcadores estáveis (capturados
   // pelo simulador). Não muda a UI normal (só dispara sob o env de teste).
@@ -123,6 +136,11 @@ export default function HomeScreen() {
       resultText = t('home.resultPlaceholder');
   }
 
+  // Painel de sync aberto → substitui a home (com voltar). O painel vive num chunk async.
+  if (syncOpen && SyncPanel) {
+    return <SyncPanel onClose={() => setSyncOpen(false)} />;
+  }
+
   return (
     <View style={styles.container}>
       <Text style={styles.title} accessibilityRole="header">
@@ -153,6 +171,18 @@ export default function HomeScreen() {
       >
         {resultText}
       </Text>
+
+      {/* F5.26: entrada para SINCRONIZAÇÃO opt-in + backup (todos os alvos). O painel é
+          carregado sob demanda (chunk async); o app funciona 100% offline sem isto. */}
+      <Pressable
+        onPress={openSync}
+        style={styles.readLink}
+        testID="open-sync"
+        accessibilityRole="button"
+        accessibilityLabel={t('a11y.openSync')}
+      >
+        <Text style={styles.readLinkText}>{t('home.syncBackup')}</Text>
+      </Pressable>
 
       {/* F1.3: entrada para a UI de leitura nativa (livro → capítulo → texto +
           seletor de versão). Lê do store local no device pela fronteira nativa. */}
@@ -235,6 +265,12 @@ function makeStyles(colors: ThemeColors) {
       marginTop: 8,
       // F5.20: alvo de toque ≥44 (padding vertical) p/ o link de navegação (nativo).
       paddingVertical: 10,
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.accent,
+    },
+    // F5.26: rótulo do botão (Pressable) de sync — mesmo visual dos links de navegação.
+    readLinkText: {
       fontSize: 16,
       fontWeight: '600',
       color: colors.accent,

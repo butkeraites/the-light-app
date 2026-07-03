@@ -257,6 +257,9 @@ async function main() {
   const CHROME_NAMESPACES = new Set([
     'home', 'search', 'nav', 'read', 'plans', 'ref', 'a11y', 'language', 'theme',
     'ai', 'ask', 'chat', 'compare', 'study', 'common', 'versePanel', 'xref',
+    // F5.26 (ADR-0054): cromo da sincronização opt-in + backup — só rótulos/dicas/a11y
+    // (o que sincroniza vs. o que nunca sai do aparelho); nenhum dado do store/usuário/token.
+    'sync',
   ]);
   for (const key of MESSAGE_KEYS) {
     assert.ok(

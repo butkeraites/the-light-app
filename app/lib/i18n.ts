@@ -248,7 +248,52 @@ export type MessageKey =
   | 'versePanel.chatLabel'
   | 'versePanel.chatButton'
   | 'versePanel.compareLabel'
-  | 'versePanel.compareButton';
+  | 'versePanel.compareButton'
+  // ─── CROMO da SINCRONIZAÇÃO OPT-IN + backup (F5.26, ADR-0054/0036) ───────────────────
+  // OFFLINE-FIRST explícito: a tela DIZ que o app funciona 100% offline sem sync (OFF por
+  // padrão). Aviso de PRIVACIDADE: o que sincroniza (notas + marcações + progresso de plano)
+  // vs. o que NUNCA sai do aparelho (sessões de IA, banco bíblico, chaves/segredos, texto de
+  // versículo além da referência). Sem telemetria. Só CROMO aqui — nenhum dado do usuário/
+  // store/token passa por `t()`; contadores ({notes}/{highlights}) e erros ({message}) são
+  // DADOS só interpolados. O token do Drive vive no TokenStore (F5.24), nunca aqui/no log.
+  | 'home.syncBackup'
+  | 'sync.title'
+  | 'sync.offlineFirst'
+  | 'sync.optInLabel'
+  | 'sync.optInHint'
+  | 'sync.privacyTitle'
+  | 'sync.privacySyncs'
+  | 'sync.privacyNever'
+  | 'sync.noTelemetry'
+  | 'sync.manualTitle'
+  | 'sync.manualHint'
+  | 'sync.exportButton'
+  | 'sync.importTitle'
+  | 'sync.importPlaceholder'
+  | 'sync.importButton'
+  | 'sync.importFileButton'
+  | 'sync.driveTitle'
+  | 'sync.driveWebOnly'
+  | 'sync.driveEnableFirst'
+  | 'sync.driveNotConfigured'
+  | 'sync.driveLink'
+  | 'sync.driveUnlink'
+  | 'sync.driveSyncNow'
+  | 'sync.driveStatusLinked'
+  | 'sync.driveStatusUnlinked'
+  | 'sync.statusExported'
+  | 'sync.statusImported'
+  | 'sync.statusError'
+  | 'a11y.openSync'
+  | 'a11y.syncOptIn'
+  | 'a11y.syncExport'
+  | 'a11y.syncImportField'
+  | 'a11y.syncImport'
+  | 'a11y.syncImportFile'
+  | 'a11y.syncDriveLink'
+  | 'a11y.syncDriveUnlink'
+  | 'a11y.syncDriveSyncNow'
+  | 'a11y.syncClose';
 
 // Catálogo PORTUGUÊS (default do app). "The Light" é o NOME do produto (marca),
 // idêntico nos dois idiomas de propósito.
@@ -427,6 +472,51 @@ const pt: Record<MessageKey, string> = {
   'versePanel.chatButton': 'Conversa (IA)',
   'versePanel.compareLabel': 'Comparar respostas de várias IAs sobre esta passagem',
   'versePanel.compareButton': 'Comparar (IA)',
+  // ─── Sincronização opt-in + backup (F5.26) — só CROMO (ver nota na união de chaves) ───
+  'home.syncBackup': 'Sincronização e backup →',
+  'sync.title': 'Sincronização e backup',
+  'sync.offlineFirst':
+    'O app funciona 100% offline sem isto. Sincronização e backup são totalmente opcionais.',
+  'sync.optInLabel': 'Sincronizar meus dados',
+  'sync.optInHint':
+    'Desligado por padrão. Com o interruptor desligado, o app nunca acessa a rede nem uma conta — nada é enviado.',
+  'sync.privacyTitle': 'Privacidade',
+  'sync.privacySyncs':
+    'O que é sincronizado: suas notas, marcações e o progresso do plano de leitura.',
+  'sync.privacyNever':
+    'O que NUNCA sai do aparelho: sessões de IA, o banco bíblico, chaves e segredos, e o texto dos versículos (só a referência canônica viaja).',
+  'sync.noTelemetry': 'Sem telemetria. Nenhum uso é rastreado.',
+  'sync.manualTitle': 'Backup manual (todos os aparelhos, sem conta)',
+  'sync.manualHint':
+    'Exporte um arquivo de backup e guarde-o onde quiser; importe-o em outro aparelho. 100% local, sem rede.',
+  'sync.exportButton': 'Exportar backup',
+  'sync.importTitle': 'Importar backup',
+  'sync.importPlaceholder': 'Cole aqui o conteúdo de um backup exportado…',
+  'sync.importButton': 'Importar',
+  'sync.importFileButton': 'Escolher arquivo…',
+  'sync.driveTitle': 'Google Drive (opcional)',
+  'sync.driveWebOnly': 'Disponível apenas na versão web.',
+  'sync.driveEnableFirst': 'Ative "Sincronizar meus dados" acima para usar o Google Drive.',
+  'sync.driveNotConfigured':
+    'Conectar uma conta Google real é a etapa de validação humana (F5.27). Nada é enviado à rede nesta versão.',
+  'sync.driveLink': 'Conectar o Google Drive',
+  'sync.driveUnlink': 'Desconectar',
+  'sync.driveSyncNow': 'Sincronizar agora',
+  'sync.driveStatusLinked': 'Conta conectada.',
+  'sync.driveStatusUnlinked': 'Nenhuma conta conectada.',
+  'sync.statusExported': 'Backup exportado: {notes} notas, {highlights} marcações.',
+  'sync.statusImported': 'Backup importado: {notes} notas, {highlights} marcações aplicadas.',
+  'sync.statusError': 'Não foi possível concluir: {message}',
+  'a11y.openSync': 'Abrir sincronização e backup',
+  'a11y.syncOptIn': 'Ativar a sincronização dos meus dados (opcional, desligado por padrão)',
+  'a11y.syncExport': 'Exportar um arquivo de backup dos meus dados',
+  'a11y.syncImportField': 'Campo para colar o conteúdo de um backup',
+  'a11y.syncImport': 'Importar o backup colado',
+  'a11y.syncImportFile': 'Escolher um arquivo de backup para importar',
+  'a11y.syncDriveLink': 'Conectar uma conta do Google Drive',
+  'a11y.syncDriveUnlink': 'Desconectar a conta do Google Drive',
+  'a11y.syncDriveSyncNow': 'Sincronizar agora com o Google Drive',
+  'a11y.syncClose': 'Fechar sincronização e backup',
 };
 
 // Catálogo ENGLISH. As MESMAS chaves de `pt` (paridade forçada pelo tipo).
@@ -605,6 +695,51 @@ const en: Record<MessageKey, string> = {
   'versePanel.chatButton': 'Chat (AI)',
   'versePanel.compareLabel': 'Compare answers from multiple AIs about this passage',
   'versePanel.compareButton': 'Compare (AI)',
+  // ─── Opt-in sync + backup (F5.26) — CHROME only (see note on the key union) ───────────
+  'home.syncBackup': 'Sync & backup →',
+  'sync.title': 'Sync & backup',
+  'sync.offlineFirst':
+    'The app works 100% offline without this. Sync and backup are entirely optional.',
+  'sync.optInLabel': 'Sync my data',
+  'sync.optInHint':
+    'Off by default. While the switch is off, the app never touches the network or an account — nothing is sent.',
+  'sync.privacyTitle': 'Privacy',
+  'sync.privacySyncs':
+    'What syncs: your notes, highlights and reading-plan progress.',
+  'sync.privacyNever':
+    'What NEVER leaves the device: AI sessions, the Bible database, keys and secrets, and verse text (only the canonical reference travels).',
+  'sync.noTelemetry': 'No telemetry. No usage is tracked.',
+  'sync.manualTitle': 'Manual backup (every device, no account)',
+  'sync.manualHint':
+    'Export a backup file and keep it wherever you like; import it on another device. 100% local, no network.',
+  'sync.exportButton': 'Export backup',
+  'sync.importTitle': 'Import backup',
+  'sync.importPlaceholder': 'Paste the contents of an exported backup here…',
+  'sync.importButton': 'Import',
+  'sync.importFileButton': 'Choose file…',
+  'sync.driveTitle': 'Google Drive (optional)',
+  'sync.driveWebOnly': 'Available only on the web version.',
+  'sync.driveEnableFirst': 'Turn on "Sync my data" above to use Google Drive.',
+  'sync.driveNotConfigured':
+    'Connecting a real Google account is the human-validation step (F5.27). Nothing is sent to the network in this version.',
+  'sync.driveLink': 'Connect Google Drive',
+  'sync.driveUnlink': 'Disconnect',
+  'sync.driveSyncNow': 'Sync now',
+  'sync.driveStatusLinked': 'Account connected.',
+  'sync.driveStatusUnlinked': 'No account connected.',
+  'sync.statusExported': 'Backup exported: {notes} notes, {highlights} highlights.',
+  'sync.statusImported': 'Backup imported: {notes} notes, {highlights} highlights applied.',
+  'sync.statusError': 'Could not complete: {message}',
+  'a11y.openSync': 'Open sync & backup',
+  'a11y.syncOptIn': 'Enable syncing my data (optional, off by default)',
+  'a11y.syncExport': 'Export a backup file of my data',
+  'a11y.syncImportField': 'Field to paste the contents of a backup',
+  'a11y.syncImport': 'Import the pasted backup',
+  'a11y.syncImportFile': 'Choose a backup file to import',
+  'a11y.syncDriveLink': 'Connect a Google Drive account',
+  'a11y.syncDriveUnlink': 'Disconnect the Google Drive account',
+  'a11y.syncDriveSyncNow': 'Sync now with Google Drive',
+  'a11y.syncClose': 'Close sync & backup',
 };
 
 /** Catálogos por idioma (uma fonte de verdade de texto de UI). */
