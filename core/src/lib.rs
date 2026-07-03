@@ -3193,6 +3193,48 @@ pub struct ReadingPlanDay {
     pub references: Vec<Reference>,
 }
 
+/// O **progresso** do plano de leitura ativo (persistido), na fronteira UniFFI.
+///
+/// Espelha `the_light_core::userdata::plans::PlanProgress` (o ÚNICO plano ativo,
+/// gravado em `reading-plans/active.json`): o [`plan_id`](Self::plan_id) (slug do
+/// CATALOG), a [`start_date`](Self::start_date) do dia 1 e o número de dias
+/// [`completed`](Self::completed). A `start_date` é ISO `YYYY-MM-DD` (`String`) — o
+/// core guarda um `NaiveDate`; o [`From`] mapeia via o `Display`/`FromStr` ISO (o
+/// mesmo formato de [`reading_plan_day_index`]).
+///
+/// **Gating (como [`Note`]/[`Highlight`]/[`ReadingPlanDay`]):** o tipo-fonte
+/// `userdata::plans::PlanProgress` vive no módulo `userdata`, que é
+/// `#[cfg(feature = "embedded")]` (**só no nativo**). Por isso o Record é definido em
+/// **todos** os alvos (só `String`/`u32`, puro — a paridade web em OPFS da F5.10 o
+/// constrói em TS), mas o [`From`] a partir do tipo-fonte do core é
+/// `#[cfg(not(target_arch = "wasm32"))]` (o módulo `userdata` **não** entra no grafo
+/// wasm). NÃO adiciona campos além dos do core (prefs de lembrete são app-side, rp-5).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ReadingPlanProgress {
+    /// Slug do plano ativo (ex.: `"gospels"`), verbatim do CATALOG do core.
+    pub plan_id: String,
+    /// Data de início (dia 1), ISO `YYYY-MM-DD`.
+    pub start_date: String,
+    /// Quantidade de dias marcados como concluídos.
+    pub completed: u32,
+}
+
+// O tipo-fonte `userdata::plans::PlanProgress` é `embedded`-only (módulo `userdata`);
+// este `From` fica fora do grafo wasm. O Record acima é puro e vale p/ todos os alvos.
+// A `start_date` (`NaiveDate` no core) vira `String` ISO via `Display` (`to_string`) —
+// dep TRANSITIVA `chrono` NÃO nomeada (proibido editar `core/Cargo.toml`); o par
+// `Display`/`FromStr` ISO é a mesma convenção de `reading_plan_day_index`.
+#[cfg(not(target_arch = "wasm32"))]
+impl From<the_light_core::userdata::plans::PlanProgress> for ReadingPlanProgress {
+    fn from(p: the_light_core::userdata::plans::PlanProgress) -> Self {
+        ReadingPlanProgress {
+            plan_id: p.plan_id,
+            start_date: p.start_date.to_string(),
+            completed: p.completed,
+        }
+    }
+}
+
 /// Lista os **planos de leitura** disponíveis (resumo), delegando ao core.
 ///
 /// Pipeline no **nativo**: `plans::available_plans()` (ids + nomes PT do CATALOG) +
@@ -3303,6 +3345,182 @@ pub fn reading_plan_day_index(
         let _ = (start_date, today, len);
         Err(CoreError::Generic {
             message: "geração de planos indisponível no alvo web (paridade web = F5.10)"
+                .to_string(),
+        })
+    }
+}
+
+// ── PERSISTÊNCIA DO PROGRESSO DO PLANO (PlanStore fs) — F5.4, fronteira NATIVA ─
+// Molde F1.10 (notas): a fronteira delega ao `userdata::plans::PlanStore` (fs), que é
+// `#[cfg(feature = "embedded")]` (SÓ no nativo) — logo o corpo é
+// `#[cfg(not(target_arch = "wasm32"))]` + **stub web** (paridade web em OPFS = F5.10),
+// mantendo `userdata`/fs FORA do grafo wasm. NADA de serialização/layout/índice do dia é
+// reimplementado aqui: o formato de `active.json` (escrita atômica), o `NaiveDate` e a
+// validação de plano (`plan_by_id` do CATALOG) vivem no core (uma fonte da verdade;
+// anti-alucinação — nomes de plano do CATALOG). O caminho é montado EXATAMENTE como o
+// layout do core (`reading_plans_dir()`): `<data_dir>/reading-plans/active.json`, para
+// que o espelho web (F5.10) leia o MESMO arquivo. Único plano ativo (o core guarda um só
+// `active.json`) — iniciar um novo plano SOBRESCREVE. `data_dir` é o diretório GRAVÁVEL de
+// userdata (o mesmo de notas/highlights), SEPARADO do banco só-leitura.
+
+/// Constrói o [`PlanStore`](the_light_core::userdata::plans::PlanStore) do `data_dir` no
+/// caminho `<data_dir>/reading-plans/active.json` (espelha `reading_plans_dir()` do core).
+#[cfg(not(target_arch = "wasm32"))]
+fn plan_store(data_dir: &str) -> the_light_core::userdata::plans::PlanStore {
+    the_light_core::userdata::plans::PlanStore::new(
+        std::path::Path::new(data_dir)
+            .join("reading-plans")
+            .join("active.json"),
+    )
+}
+
+/// Lê o **progresso** do plano de leitura ativo (se houver), delegando ao core.
+///
+/// Pipeline no **nativo**: `PlanStore::new(data_dir/"reading-plans"/"active.json").load()`
+/// → `Option<PlanProgress>` (ausente → `Ok(None)`, **não** erro; JSON corrompido/erro de
+/// I/O → [`CoreError`], **não** silenciado como `None`). **Nenhuma** desserialização é
+/// reimplementada. Offline-first: só I/O local em `data_dir` — nunca toca `bible.sqlite`.
+///
+/// **Gating por alvo (molde F1.10):** corpo que toca `userdata::plans`
+/// `cfg(not(target_arch = "wasm32"))`; stub web retornando [`CoreError`] (paridade web em
+/// OPFS = F5.10), sem arrastar `userdata`/fs para o grafo wasm.
+#[uniffi::export]
+pub fn reading_plan_progress(data_dir: String) -> Result<Option<ReadingPlanProgress>, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let progress = plan_store(&data_dir)
+            .load()
+            .map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })?;
+        Ok(progress.map(ReadingPlanProgress::from))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = data_dir;
+        Err(CoreError::Generic {
+            message: "persistência de plano indisponível no alvo web (paridade web = F5.10)"
+                .to_string(),
+        })
+    }
+}
+
+/// **Inicia** um plano de leitura (grava `completed = 0`), delegando ao core.
+///
+/// Pipeline no **nativo**: valida `plan_id` via `plans::plan_by_id` (CATALOG do core —
+/// desconhecido → [`CoreError`], **sem** gravar) → parseia `start_date` como ISO
+/// `YYYY-MM-DD` (inválida → [`CoreError`], **sem** gravar) →
+/// `PlanStore::save(PlanProgress { plan_id, start_date, completed: 0 })` (**escrita
+/// atômica** do core; cria `reading-plans/` se preciso; SOBRESCREVE o plano ativo, pois o
+/// core guarda um só `active.json`). **Nenhuma** serialização/layout é reimplementada.
+/// Offline-first; anti-alucinação (o `plan_id` vem do CATALOG).
+///
+/// **Gating por alvo (molde F1.10):** corpo `cfg(not(target_arch = "wasm32"))`; stub web
+/// retornando [`CoreError`] (paridade web = F5.10).
+#[uniffi::export]
+pub fn start_reading_plan(
+    data_dir: String,
+    plan_id: String,
+    start_date: String,
+) -> Result<ReadingPlanProgress, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use the_light_core::userdata::plans;
+        // Valida o slug contra o CATALOG do core ANTES de qualquer I/O (anti-alucinação).
+        if plans::plan_by_id(&plan_id).is_none() {
+            return Err(CoreError::Generic {
+                message: format!("plano de leitura desconhecido: {plan_id}"),
+            });
+        }
+        // `NaiveDate` INFERIDO do campo `PlanProgress::start_date` (dep transitiva `chrono`
+        // NÃO nomeável) via `str::parse` ISO `YYYY-MM-DD` — mesma convenção da F5.1.
+        let progress = plans::PlanProgress {
+            plan_id,
+            start_date: start_date.parse().map_err(|_| CoreError::Generic {
+                message: format!("data de início inválida (esperado YYYY-MM-DD): {start_date}"),
+            })?,
+            completed: 0,
+        };
+        plan_store(&data_dir)
+            .save(&progress)
+            .map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })?;
+        Ok(progress.into())
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (data_dir, plan_id, start_date);
+        Err(CoreError::Generic {
+            message: "persistência de plano indisponível no alvo web (paridade web = F5.10)"
+                .to_string(),
+        })
+    }
+}
+
+/// **Atualiza** os dias concluídos do plano ativo (grava `completed`), delegando ao core.
+///
+/// Pipeline no **nativo**: `PlanStore::load()` (sem plano ativo → [`CoreError`], **não**
+/// panic) → seta `completed` → `PlanStore::save` (**escrita atômica** do core).
+/// **Nenhuma** serialização é reimplementada. Idempotente no valor (regravar o mesmo
+/// `completed` é ok). Offline-first.
+///
+/// **Gating por alvo (molde F1.10):** corpo `cfg(not(target_arch = "wasm32"))`; stub web
+/// retornando [`CoreError`] (paridade web = F5.10).
+#[uniffi::export]
+pub fn set_reading_plan_completed(
+    data_dir: String,
+    completed: u32,
+) -> Result<ReadingPlanProgress, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let store = plan_store(&data_dir);
+        let mut progress = store
+            .load()
+            .map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })?
+            .ok_or_else(|| CoreError::Generic {
+                message: "nenhum plano de leitura ativo".to_string(),
+            })?;
+        progress.completed = completed;
+        store.save(&progress).map_err(|e| CoreError::Generic {
+            message: e.to_string(),
+        })?;
+        Ok(progress.into())
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (data_dir, completed);
+        Err(CoreError::Generic {
+            message: "persistência de plano indisponível no alvo web (paridade web = F5.10)"
+                .to_string(),
+        })
+    }
+}
+
+/// **Remove** o plano de leitura ativo (idempotente), delegando ao core.
+///
+/// Pipeline no **nativo**: `PlanStore::clear()` → `true` se havia um plano, `false` se não
+/// havia (**idempotente**, não erro). **Nenhum** I/O é reimplementado. Offline-first.
+///
+/// **Gating por alvo (molde F1.10):** corpo `cfg(not(target_arch = "wasm32"))`; stub web
+/// retornando [`CoreError`] (paridade web = F5.10).
+#[uniffi::export]
+pub fn clear_reading_plan(data_dir: String) -> Result<bool, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        plan_store(&data_dir)
+            .clear()
+            .map_err(|e| CoreError::Generic {
+                message: e.to_string(),
+            })
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = data_dir;
+        Err(CoreError::Generic {
+            message: "persistência de plano indisponível no alvo web (paridade web = F5.10)"
                 .to_string(),
         })
     }
@@ -6790,5 +7008,179 @@ mod plans_tests {
             reading_plan_day_index("2026-01-01".to_string(), "31/12/2026".to_string(), 365)
                 .is_err()
         );
+    }
+
+    // ── Persistência do progresso (F5.4, PlanStore fs) ──────────────────────────
+    // Prova determinística/headless num `data_dir` temporário ISOLADO (molde do
+    // `TmpDir` das notas, F1.10): cada chamada da fronteira abre um `PlanStore` novo
+    // do disco → prova persistência em DISCO (não em memória). Sem rede/chave; o I/O
+    // (JSON/layout/escrita atômica) vive no core.
+
+    /// `data_dir` temporário do fixture: criado no `new`, removido recursivamente no
+    /// `Drop` (mesmo em panic). Replica o `TmpDir` das notas (F1.10) — o I/O de plano
+    /// vive no core; aqui só criamos/limpamos o diretório gravável.
+    struct TmpDir(std::path::PathBuf);
+
+    impl TmpDir {
+        fn new() -> Self {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static COUNTER: AtomicU64 = AtomicU64::new(0);
+            let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let dir = std::env::temp_dir().join(format!(
+                "the-light-app-f5_4-{}-{nanos}-{n}",
+                std::process::id()
+            ));
+            std::fs::create_dir_all(&dir).expect("criar data_dir temporário");
+            TmpDir(dir)
+        }
+
+        /// Caminho do `data_dir` como `String` (o que a fronteira recebe).
+        fn path(&self) -> String {
+            self.0.to_string_lossy().into_owned()
+        }
+
+        /// Caminho do `active.json` no layout do core (`reading-plans/active.json`).
+        fn active_json(&self) -> std::path::PathBuf {
+            self.0.join("reading-plans").join("active.json")
+        }
+    }
+
+    impl Drop for TmpDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn plan_progress_roundtrips_across_independent_store_handles() {
+        let dir = TmpDir::new();
+
+        // Sem plano ativo → None (não erro).
+        assert!(
+            reading_plan_progress(dir.path())
+                .expect("load sem plano não deve falhar")
+                .is_none(),
+            "data_dir vazio → nenhum plano ativo"
+        );
+
+        // Inicia um plano do CATALOG (gospels, 2026-06-16) → completed = 0.
+        let started =
+            start_reading_plan(dir.path(), "gospels".to_string(), "2026-06-16".to_string())
+                .expect("start_reading_plan deve gravar o progresso");
+        assert_eq!(started.plan_id, "gospels");
+        assert_eq!(started.start_date, "2026-06-16", "ISO YYYY-MM-DD verbatim");
+        assert_eq!(started.completed, 0);
+
+        // Layout do core: <data_dir>/reading-plans/active.json (o espelho web F5.10 lê o mesmo).
+        assert!(
+            dir.active_json().exists(),
+            "o progresso é persistido em reading-plans/active.json (layout do core)"
+        );
+
+        // Chamada SEPARADA → abre um PlanStore NOVO do disco (prova persistência em disco).
+        let reloaded = reading_plan_progress(dir.path())
+            .expect("load não deve falhar")
+            .expect("o plano recém-iniciado deve existir");
+        assert_eq!(
+            reloaded, started,
+            "o progresso relido de outro handle é idêntico ao gravado"
+        );
+
+        // Marca 5 dias concluídos → persiste.
+        let advanced = set_reading_plan_completed(dir.path(), 5)
+            .expect("set_reading_plan_completed deve gravar");
+        assert_eq!(advanced.completed, 5);
+        assert_eq!(advanced.plan_id, "gospels", "plan_id inalterado");
+        assert_eq!(advanced.start_date, "2026-06-16", "start_date inalterada");
+
+        // Novo handle vê o avanço (persistência em disco, não memória).
+        let after = reading_plan_progress(dir.path())
+            .expect("load não deve falhar")
+            .expect("plano ativo");
+        assert_eq!(after.completed, 5, "completed persistido em disco");
+
+        // Limpa: true na 1ª vez (havia plano), false (idempotente) na 2ª.
+        assert!(
+            clear_reading_plan(dir.path()).expect("clear não deve falhar"),
+            "havia um plano ativo a remover"
+        );
+        assert!(
+            !clear_reading_plan(dir.path()).expect("clear não deve falhar"),
+            "clear é idempotente (nada a remover → false)"
+        );
+        assert!(
+            reading_plan_progress(dir.path())
+                .expect("load não deve falhar")
+                .is_none(),
+            "após clear → nenhum plano ativo"
+        );
+        assert!(
+            !dir.active_json().exists(),
+            "active.json removido do disco após clear"
+        );
+    }
+
+    #[test]
+    fn start_reading_plan_overwrites_single_active_plan() {
+        let dir = TmpDir::new();
+        start_reading_plan(dir.path(), "gospels".to_string(), "2026-06-16".to_string())
+            .expect("1º start (gospels)");
+        // Iniciar um novo plano SOBRESCREVE (o core guarda um só active.json).
+        let nt = start_reading_plan(dir.path(), "nt".to_string(), "2026-07-01".to_string())
+            .expect("2º start (nt) sobrescreve");
+        assert_eq!(nt.plan_id, "nt");
+        let active = reading_plan_progress(dir.path())
+            .expect("load")
+            .expect("plano ativo");
+        assert_eq!(
+            active.plan_id, "nt",
+            "único plano ativo = o último iniciado"
+        );
+        assert_eq!(active.start_date, "2026-07-01");
+    }
+
+    #[test]
+    fn start_reading_plan_unknown_id_is_core_error_without_writing() {
+        let dir = TmpDir::new();
+        let err = start_reading_plan(
+            dir.path(),
+            "does-not-exist".to_string(),
+            "2026-06-16".to_string(),
+        )
+        .expect_err("plano fora do CATALOG deve falhar");
+        assert!(matches!(err, CoreError::Generic { .. }));
+        // Falhou ANTES de qualquer I/O: nada foi gravado.
+        assert!(
+            !dir.active_json().exists(),
+            "plano desconhecido não deve gravar active.json"
+        );
+        assert!(
+            reading_plan_progress(dir.path()).expect("load").is_none(),
+            "nenhum plano ativo após start inválido"
+        );
+    }
+
+    #[test]
+    fn start_reading_plan_invalid_iso_date_is_core_error() {
+        let dir = TmpDir::new();
+        let err = start_reading_plan(dir.path(), "gospels".to_string(), "16/06/2026".to_string())
+            .expect_err("data não-ISO deve falhar");
+        assert!(matches!(err, CoreError::Generic { .. }));
+        assert!(
+            !dir.active_json().exists(),
+            "data inválida não deve gravar active.json"
+        );
+    }
+
+    #[test]
+    fn set_completed_without_active_plan_is_core_error() {
+        let dir = TmpDir::new();
+        let err = set_reading_plan_completed(dir.path(), 3)
+            .expect_err("set_completed sem plano ativo deve falhar");
+        assert!(matches!(err, CoreError::Generic { .. }));
     }
 }

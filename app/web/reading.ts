@@ -31,6 +31,10 @@ import {
   listReadingPlans as listReadingPlansNative,
   readingPlanDay as readingPlanDayNative,
   readingPlanDayIndex as readingPlanDayIndexNative,
+  readingPlanProgress as readingPlanProgressNative,
+  startReadingPlan as startReadingPlanNative,
+  setReadingPlanCompleted as setReadingPlanCompletedNative,
+  clearReadingPlan as clearReadingPlanNative,
 } from './native-generated/src/index';
 import type {
   Book,
@@ -50,6 +54,7 @@ import type {
   ChatTurn,
   ReadingPlanSummary,
   ReadingPlanDay,
+  ReadingPlanProgress,
 } from './native-generated/bindings/the_light_app_core';
 import {
   StudyMode,
@@ -75,6 +80,7 @@ export type {
   ChatTurn,
   ReadingPlanSummary,
   ReadingPlanDay,
+  ReadingPlanProgress,
 };
 export { StudyMode, StudyLens, StudyDepth, ChatRole };
 
@@ -451,4 +457,48 @@ export function readingPlanDay(planId: string, day: number): ReadingPlanDay {
  */
 export function readingPlanDayIndex(startDate: string, today: string, len: number): number {
   return readingPlanDayIndexNative(startDate, today, len);
+}
+
+// ── PROGRESSO DO PLANO (persistência PlanStore fs) — F5.4, fronteira NATIVA ────
+// Glue NATIVO da PERSISTÊNCIA do progresso (`readingPlanProgress`/`startReadingPlan`/
+// `setReadingPlanCompleted`/`clearReadingPlan`): delega às funções geradas → JSI → o
+// `the_light_core::userdata::plans::PlanStore` (fs). NÃO reimplementa serialização/layout/
+// escrita atômica de `reading-plans/active.json` em TS — tudo vive no core (uma fonte da
+// verdade; anti-alucinação — o `planId` é validado contra o CATALOG do core). O `dataDir`
+// é o MESMO diretório gravável de userdata (notas/highlights), SEPARADO do banco só-leitura;
+// o core persiste em `<dataDir>/reading-plans/active.json` (único plano ativo — iniciar um
+// novo SOBRESCREVE). I/O local → async (molde das notas F1.10); a paridade web em OPFS é a
+// F5.10 (`reading.web.ts` = stubs que lançam).
+
+/** Lê o PROGRESSO do plano ativo; sem plano ativo → `undefined` (não erro). */
+export async function readingPlanProgress(
+  dataDir: string,
+): Promise<ReadingPlanProgress | undefined> {
+  return readingPlanProgressNative(dataDir);
+}
+
+/**
+ * INICIA um plano (`completed = 0`), gravando o progresso. `planId` fora do CATALOG do
+ * core / `startDate` não-ISO (`YYYY-MM-DD`) → lança (CoreError), sem gravar. SOBRESCREVE o
+ * plano ativo existente (o core guarda um só `active.json`).
+ */
+export async function startReadingPlan(
+  dataDir: string,
+  planId: string,
+  startDate: string,
+): Promise<ReadingPlanProgress> {
+  return startReadingPlanNative(dataDir, planId, startDate);
+}
+
+/** ATUALIZA os dias concluídos do plano ativo; sem plano ativo → lança (CoreError). */
+export async function setReadingPlanCompleted(
+  dataDir: string,
+  completed: number,
+): Promise<ReadingPlanProgress> {
+  return setReadingPlanCompletedNative(dataDir, completed);
+}
+
+/** REMOVE o plano ativo; `true` se removeu, idempotente → `false` se não havia. */
+export async function clearReadingPlan(dataDir: string): Promise<boolean> {
+  return clearReadingPlanNative(dataDir);
 }

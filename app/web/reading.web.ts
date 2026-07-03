@@ -39,6 +39,10 @@ import {
   listReadingPlans as listReadingPlansWasm,
   readingPlanDay as readingPlanDayWasm,
   readingPlanDayIndex as readingPlanDayIndexWasm,
+  readingPlanProgress as readingPlanProgressWasm,
+  startReadingPlan as startReadingPlanWasm,
+  setReadingPlanCompleted as setReadingPlanCompletedWasm,
+  clearReadingPlan as clearReadingPlanWasm,
 } from './generated/index.web';
 import type {
   Book,
@@ -57,6 +61,7 @@ import type {
   ChatTurn,
   ReadingPlanSummary,
   ReadingPlanDay,
+  ReadingPlanProgress,
 } from './generated/the_light_app_core';
 import { StudyMode, StudyLens, StudyDepth, ChatRole } from './generated/the_light_app_core';
 import {
@@ -100,6 +105,7 @@ export type {
   ChatTurn,
   ReadingPlanSummary,
   ReadingPlanDay,
+  ReadingPlanProgress,
 };
 export { StudyMode, StudyLens, StudyDepth, ChatRole };
 
@@ -528,4 +534,41 @@ export function readingPlanDay(planId: string, day: number): ReadingPlanDay {
 /** STUB web (F5.10): lança (CoreError) até a PR `ai-pure` de planos ao core. */
 export function readingPlanDayIndex(startDate: string, today: string, len: number): number {
   return readingPlanDayIndexWasm(startDate, today, len);
+}
+
+// ── PROGRESSO DO PLANO (persistência) — F5.4 (STUB web) ───────────────────────
+// STUB: a persistência do progresso usa `userdata::plans::PlanStore` (fs), nativo-only
+// (`#[cfg(feature="embedded")]`) — os bindings gerados são os STUBS da fronteira (lançam
+// CoreError). A paridade web REAL (F5.10) espelhará `<dataDir>/reading-plans/active.json`
+// em OPFS (mesmo layout do core, byte-a-byte), como notas/highlights (F1.16). Aqui só
+// reexportamos os stubs (assinatura IDÊNTICA ao glue nativo, async), SEM tocar OPFS nem
+// espelhar serialização em TS (zero drift). Os stubs lançam → a Promise rejeita.
+
+/** STUB web (F5.10): lança (CoreError) até o espelho OPFS do progresso. */
+export async function readingPlanProgress(
+  dataDir: string,
+): Promise<ReadingPlanProgress | undefined> {
+  return readingPlanProgressWasm(dataDir);
+}
+
+/** STUB web (F5.10): lança (CoreError) até o espelho OPFS do progresso. */
+export async function startReadingPlan(
+  dataDir: string,
+  planId: string,
+  startDate: string,
+): Promise<ReadingPlanProgress> {
+  return startReadingPlanWasm(dataDir, planId, startDate);
+}
+
+/** STUB web (F5.10): lança (CoreError) até o espelho OPFS do progresso. */
+export async function setReadingPlanCompleted(
+  dataDir: string,
+  completed: number,
+): Promise<ReadingPlanProgress> {
+  return setReadingPlanCompletedWasm(dataDir, completed);
+}
+
+/** STUB web (F5.10): lança (CoreError) até o espelho OPFS do progresso. */
+export async function clearReadingPlan(dataDir: string): Promise<boolean> {
+  return clearReadingPlanWasm(dataDir);
 }
