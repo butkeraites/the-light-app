@@ -34,6 +34,7 @@ import {
   View,
 } from 'react-native';
 
+import { useI18n, type MessageKey } from '../lib/i18n';
 import { buildStudyExport } from '../lib/studyExport';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import {
@@ -73,29 +74,31 @@ type WebBackend = 'off' | 'wikipedia' | 'tavily';
 export const STEP_ATTRIBUTION =
   "Credit it to 'STEP Bible' linked to www.STEPBible.org (data based on work at Tyndale House, Cambridge; CC BY 4.0)";
 
-/** Opção de seletor (rótulo PT + valor do enum + chave estável p/ o `testID`). */
-type Option<T> = { value: T; key: string; label: string };
+// Opção de seletor: valor do enum (fronteira) + `key` estável p/ o `testID` + `labelKey`
+// (chave i18n do CROMO). O RÓTULO é traduzido em render via `t(o.labelKey)`; o `value`/enum
+// e o `key`/testID NÃO mudam com o idioma (uma fonte da verdade da fronteira, F5.11).
+type Option<T> = { value: T; key: string; labelKey: MessageKey };
 
-// Variantes REAIS da fronteira (F3.3) — rótulos PT p/ exibição; `key` = nome da variante
-// (testID estável). Os VALORES são os enums gerados (uma fonte da verdade).
+// Variantes REAIS da fronteira (F3.3) — `key` = nome da variante (testID estável); `labelKey`
+// = chave do rótulo traduzível. Os VALORES são os enums gerados (uma fonte da verdade).
 const MODE_OPTIONS: readonly Option<StudyMode>[] = [
-  { value: StudyMode.Academic, key: 'Academic', label: 'Acadêmico' },
-  { value: StudyMode.Devotional, key: 'Devotional', label: 'Devocional' },
-  { value: StudyMode.Introductory, key: 'Introductory', label: 'Introdutório' },
-  { value: StudyMode.Sermon, key: 'Sermon', label: 'Pregação' },
+  { value: StudyMode.Academic, key: 'Academic', labelKey: 'study.modeAcademic' },
+  { value: StudyMode.Devotional, key: 'Devotional', labelKey: 'study.modeDevotional' },
+  { value: StudyMode.Introductory, key: 'Introductory', labelKey: 'study.modeIntroductory' },
+  { value: StudyMode.Sermon, key: 'Sermon', labelKey: 'study.modeSermon' },
 ];
 const LENS_OPTIONS: readonly Option<StudyLens>[] = [
-  { value: StudyLens.Baptist, key: 'Baptist', label: 'Batista' },
-  { value: StudyLens.Presbyterian, key: 'Presbyterian', label: 'Presbiteriana' },
-  { value: StudyLens.Lutheran, key: 'Lutheran', label: 'Luterana' },
-  { value: StudyLens.Pentecostal, key: 'Pentecostal', label: 'Pentecostal' },
-  { value: StudyLens.Catholic, key: 'Catholic', label: 'Católica' },
-  { value: StudyLens.Orthodox, key: 'Orthodox', label: 'Ortodoxa' },
+  { value: StudyLens.Baptist, key: 'Baptist', labelKey: 'study.lensBaptist' },
+  { value: StudyLens.Presbyterian, key: 'Presbyterian', labelKey: 'study.lensPresbyterian' },
+  { value: StudyLens.Lutheran, key: 'Lutheran', labelKey: 'study.lensLutheran' },
+  { value: StudyLens.Pentecostal, key: 'Pentecostal', labelKey: 'study.lensPentecostal' },
+  { value: StudyLens.Catholic, key: 'Catholic', labelKey: 'study.lensCatholic' },
+  { value: StudyLens.Orthodox, key: 'Orthodox', labelKey: 'study.lensOrthodox' },
 ];
 const DEPTH_OPTIONS: readonly Option<StudyDepth>[] = [
-  { value: StudyDepth.Overview, key: 'Overview', label: 'Visão geral' },
-  { value: StudyDepth.Exegetical, key: 'Exegetical', label: 'Exegético' },
-  { value: StudyDepth.WordStudy, key: 'WordStudy', label: 'Estudo de palavras' },
+  { value: StudyDepth.Overview, key: 'Overview', labelKey: 'study.depthOverview' },
+  { value: StudyDepth.Exegetical, key: 'Exegetical', labelKey: 'study.depthExegetical' },
+  { value: StudyDepth.WordStudy, key: 'WordStudy', labelKey: 'study.depthWordStudy' },
 ];
 
 /** Linha legível de uma entrada léxica (do RETORNO real; nada hardcoded). */
@@ -135,6 +138,7 @@ export function ReaderStudyPanel({
   onClose: () => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [mode, setMode] = useState<StudyMode>(StudyMode.Academic);
@@ -222,7 +226,7 @@ export function ReaderStudyPanel({
     setExportError(null);
     try {
       const exp = buildStudyExport(result, sourceLabel, lexicon?.sources ?? []);
-      await Share.share({ message: exp.message, title: `Estudo — ${sourceLabel}` });
+      await Share.share({ message: exp.message, title: t('study.shareTitle', { source: sourceLabel }) });
     } catch (err) {
       setExportError(err instanceof Error ? err.message : String(err));
     }
@@ -240,15 +244,15 @@ export function ReaderStudyPanel({
       <Pressable style={styles.backdrop} onPress={onClose} testID="study-panel-backdrop" />
       <View style={styles.sheet}>
         <View style={styles.header}>
-          <Text style={styles.title}>Estudo · {sourceLabel}</Text>
+          <Text style={styles.title}>{t('study.title', { source: sourceLabel })}</Text>
           <Pressable onPress={onClose} testID="study-panel-close" accessibilityRole="button">
-            <Text style={styles.close}>Fechar</Text>
+            <Text style={styles.close}>{t('ai.close')}</Text>
           </Pressable>
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           {/* ── MODO ──────────────────────────────────────────────────────── */}
-          <Text style={styles.sectionTitle}>Modo</Text>
+          <Text style={styles.sectionTitle}>{t('study.modeSection')}</Text>
           <View style={styles.chips}>
             {MODE_OPTIONS.map((o) => {
               const active = mode === o.value;
@@ -263,7 +267,7 @@ export function ReaderStudyPanel({
                   accessibilityState={{ selected: active }}
                 >
                   <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>
-                    {o.label}
+                    {t(o.labelKey)}
                   </Text>
                 </Pressable>
               );
@@ -271,7 +275,7 @@ export function ReaderStudyPanel({
           </View>
 
           {/* ── LENTE (denominação) ───────────────────────────────────────── */}
-          <Text style={styles.sectionTitle}>Lente (denominação)</Text>
+          <Text style={styles.sectionTitle}>{t('study.lensSection')}</Text>
           <View style={styles.chips}>
             {LENS_OPTIONS.map((o) => {
               const active = lens === o.value;
@@ -286,7 +290,7 @@ export function ReaderStudyPanel({
                   accessibilityState={{ selected: active }}
                 >
                   <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>
-                    {o.label}
+                    {t(o.labelKey)}
                   </Text>
                 </Pressable>
               );
@@ -294,7 +298,7 @@ export function ReaderStudyPanel({
           </View>
 
           {/* ── PROFUNDIDADE ──────────────────────────────────────────────── */}
-          <Text style={styles.sectionTitle}>Profundidade</Text>
+          <Text style={styles.sectionTitle}>{t('study.depthSection')}</Text>
           <View style={styles.chips}>
             {DEPTH_OPTIONS.map((o) => {
               const active = depth === o.value;
@@ -309,7 +313,7 @@ export function ReaderStudyPanel({
                   accessibilityState={{ selected: active }}
                 >
                   <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>
-                    {o.label}
+                    {t(o.labelKey)}
                   </Text>
                 </Pressable>
               );
@@ -322,13 +326,13 @@ export function ReaderStudyPanel({
                 • Wikipedia — KEYLESS (sem chave/segredo).
                 • Tavily    — BYOK: a chave é SESSION-ONLY (perdida no reload, nunca persistida/
                   logada) e vai SÓ no CORPO do POST. Aviso de privacidade/atribuição abaixo. */}
-          <Text style={styles.sectionTitle}>Pesquisa web (opcional)</Text>
+          <Text style={styles.sectionTitle}>{t('study.webSection')}</Text>
           <View style={styles.chips}>
             {(
               [
-                { value: 'off', key: 'off', label: 'Desligada' },
-                { value: 'wikipedia', key: 'wikipedia', label: 'Wikipedia' },
-                { value: 'tavily', key: 'tavily', label: 'Tavily (chave)' },
+                { value: 'off', key: 'off', labelKey: 'study.webOff' },
+                { value: 'wikipedia', key: 'wikipedia', labelKey: 'study.webWikipedia' },
+                { value: 'tavily', key: 'tavily', labelKey: 'study.webTavily' },
               ] as const
             ).map((o) => {
               const active = webBackend === o.value;
@@ -343,7 +347,7 @@ export function ReaderStudyPanel({
                   accessibilityState={{ selected: active }}
                 >
                   <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>
-                    {o.label}
+                    {t(o.labelKey)}
                   </Text>
                 </Pressable>
               );
@@ -351,9 +355,7 @@ export function ReaderStudyPanel({
           </View>
           {webBackend === 'wikipedia' ? (
             <Text style={styles.hint} testID="study-web-research-privacy">
-              Privacidade: ligada, esta opção consulta a Wikipedia (rede) para citar fontes.
-              Nenhuma chave/segredo é enviada (Wikipedia é keyless). O texto bíblico e as glosas
-              continuam vindo do seu acervo local; as citações são montadas pelo app (não pela IA).
+              {t('study.wikipediaPrivacy')}
             </Text>
           ) : null}
           {webBackend === 'tavily' ? (
@@ -362,27 +364,23 @@ export function ReaderStudyPanel({
                 style={styles.keyInput}
                 value={tavilyKey}
                 onChangeText={setTavilyKey}
-                placeholder="Chave Tavily (BYOK) — só nesta sessão"
+                placeholder={t('study.tavilyKeyPlaceholder')}
                 placeholderTextColor={colors.muted}
                 secureTextEntry
                 autoCapitalize="none"
                 autoCorrect={false}
                 editable={!busy}
                 testID="study-web-research-tavily-key"
-                accessibilityLabel="Chave Tavily (session-only)"
+                accessibilityLabel={t('a11y.tavilyKey')}
               />
               <Text style={styles.hint} testID="study-web-research-privacy">
-                Privacidade: ligada, esta opção consulta o Tavily (rede) usando sua chave BYOK.
-                A chave fica só nesta sessão (na memória, perdida ao recarregar), nunca é salva no
-                dispositivo nem registrada, e viaja apenas no corpo da requisição. As citações Web
-                são montadas pelo app a partir das URLs retornadas (nunca pela IA); o texto bíblico
-                e as glosas continuam vindo do seu acervo local.
+                {t('study.tavilyPrivacy')}
               </Text>
             </>
           ) : null}
 
           {/* Provedor fixo "mock" nesta entrega (offline; sem chave/rede). */}
-          <Text style={styles.hint}>Provedor: mock (offline, sem chave/rede — F3.10 traz BYOK).</Text>
+          <Text style={styles.hint}>{t('ai.mockProviderNote')}</Text>
 
           <Pressable
             style={[styles.btn, studyDisabled ? styles.btnDisabled : styles.btnPrimary]}
@@ -394,7 +392,7 @@ export function ReaderStudyPanel({
             {busy ? (
               <ActivityIndicator color={colors.chipActiveText} />
             ) : (
-              <Text style={styles.btnText}>Estudar</Text>
+              <Text style={styles.btnText}>{t('study.submit')}</Text>
             )}
           </Pressable>
 
@@ -405,7 +403,7 @@ export function ReaderStudyPanel({
               rotulada como texto bíblico — NUNCA como saída do LLM. */}
           {result ? (
             <View style={styles.passageBlock}>
-              <Text style={styles.sectionTitle}>Passagem (texto bíblico)</Text>
+              <Text style={styles.sectionTitle}>{t('ai.citedTitle')}</Text>
               <Text style={styles.passageText} testID="study-passage-text">
                 {result.passageText}
               </Text>
@@ -416,7 +414,7 @@ export function ReaderStudyPanel({
               Rótulo DISTINTO do texto bíblico. É a saída do modelo (mock), separada. */}
           {result ? (
             <View style={styles.interpBlock}>
-              <Text style={styles.sectionTitle}>Interpretação (IA) — confira nas Escrituras</Text>
+              <Text style={styles.sectionTitle}>{t('ai.interpTitle')}</Text>
               <Text style={styles.interpText} testID="study-interpretation">
                 {result.interpretation}
               </Text>
@@ -433,7 +431,7 @@ export function ReaderStudyPanel({
           {/* ── AVISOS de verificação (Strong/[W:n] fora do acervo) ─────────── */}
           {result && result.warnings.length > 0 ? (
             <View style={styles.warnBlock} testID="study-warnings">
-              <Text style={styles.sectionTitle}>Avisos</Text>
+              <Text style={styles.sectionTitle}>{t('study.warnings')}</Text>
               {result.warnings.map((w, i) => (
                 <Text key={i} style={styles.warnText}>
                   ⚠ {w}
@@ -445,7 +443,7 @@ export function ReaderStudyPanel({
           {/* ── CITAÇÕES verificáveis (do banco/URLs — nunca do modelo) ─────── */}
           {result && result.citations.length > 0 ? (
             <View style={styles.citeBlock} testID="study-citations">
-              <Text style={styles.sectionTitle}>Citações</Text>
+              <Text style={styles.sectionTitle}>{t('study.citations')}</Text>
               {result.citations.map((c, i) => (
                 <View key={`${c.kind}-${c.key}-${i}`} style={styles.citeRow}>
                   <Text style={styles.citeText}>
@@ -466,7 +464,7 @@ export function ReaderStudyPanel({
               TBESH–TBESG), nunca do modelo. */}
           {lexicon && lexicon.entries.length > 0 ? (
             <View style={styles.lexBlock} testID="study-lexicon">
-              <Text style={styles.sectionTitle}>Léxico (línguas originais)</Text>
+              <Text style={styles.sectionTitle}>{t('study.lexicon')}</Text>
               {lexicon.entries.map((e) => (
                 <View key={e.strongs} style={styles.lexRow}>
                   <Text style={styles.lexText}>{lexLine(e)}</Text>
@@ -495,12 +493,9 @@ export function ReaderStudyPanel({
           {result ? (
             <View style={styles.metaBlock}>
               <Text style={styles.metaText} testID="study-meta">
-                Provedor: {result.provider} · Modelo: {result.model}
+                {t('ai.meta', { provider: result.provider, model: result.model })}
               </Text>
-              <Text style={styles.disclaimer}>
-                O texto bíblico e as glosas vêm do seu acervo local (verbatim); a IA apenas
-                interpreta.
-              </Text>
+              <Text style={styles.disclaimer}>{t('study.disclaimer')}</Text>
             </View>
           ) : null}
 
@@ -515,7 +510,7 @@ export function ReaderStudyPanel({
                 testID="study-export-academic"
                 accessibilityRole="button"
               >
-                <Text style={styles.btnText}>Exportar (acadêmico)</Text>
+                <Text style={styles.btnText}>{t('study.exportAcademic')}</Text>
               </Pressable>
               {exportError ? <Text style={styles.error}>{exportError}</Text> : null}
             </>

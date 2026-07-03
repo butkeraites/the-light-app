@@ -40,6 +40,7 @@ import {
   View,
 } from 'react-native';
 
+import { useI18n } from '../lib/i18n';
 import { getKey, SUPPORTED_PROVIDERS } from '../lib/keystore';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import { askAnchored, type AiAnswer } from '../web/reading';
@@ -85,6 +86,7 @@ export function ReaderComparePanel({
   onClose: () => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [question, setQuestion] = useState('');
@@ -179,15 +181,15 @@ export function ReaderComparePanel({
       <Pressable style={styles.backdrop} onPress={onClose} testID="compare-panel-backdrop" />
       <View style={styles.sheet}>
         <View style={styles.header}>
-          <Text style={styles.title}>Comparar IA · {sourceLabel}</Text>
+          <Text style={styles.title}>{t('compare.title', { source: sourceLabel })}</Text>
           <Pressable onPress={onClose} testID="compare-panel-close" accessibilityRole="button">
-            <Text style={styles.close}>Fechar</Text>
+            <Text style={styles.close}>{t('ai.close')}</Text>
           </Pressable>
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           {/* ── PROVEDORES (seletor MULTI, ≥2) ────────────────────────────── */}
-          <Text style={styles.sectionTitle}>Provedores (escolha ≥2)</Text>
+          <Text style={styles.sectionTitle}>{t('compare.providersSection')}</Text>
           <View style={styles.chips}>
             {PROVIDER_OPTIONS.map((p) => {
               const active = selectedProviders.includes(p);
@@ -201,35 +203,36 @@ export function ReaderComparePanel({
                   testID={`compare-provider-${p}`}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
-                  accessibilityLabel={`Provedor ${p}${real ? ' (BYOK — chave via cofre)' : ' (offline)'}`}
+                  accessibilityLabel={
+                    real
+                      ? t('a11y.providerByok', { provider: p })
+                      : t('a11y.providerOffline', { provider: p })
+                  }
                 >
                   <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>
                     {p}
                   </Text>
                   <Text style={[styles.chipBadge, active ? styles.chipTextActive : null]}>
-                    {real ? '· BYOK' : '· offline'}
+                    {real ? t('compare.byokBadge') : t('ai.offlineBadge')}
                   </Text>
                 </Pressable>
               );
             })}
           </View>
-          <Text style={styles.hint}>
-            Provedores reais usam a chave do cofre (BYOK); a comparação de respostas reais
-            (diferentes) é a F3.10. O provedor "mock" responde offline (sem chave/rede).
-          </Text>
+          <Text style={styles.hint}>{t('compare.providersHint')}</Text>
 
           {/* ── PERGUNTA (uma, para todas as colunas) ─────────────────────── */}
-          <Text style={styles.sectionTitle}>Pergunta</Text>
+          <Text style={styles.sectionTitle}>{t('ai.questionSection')}</Text>
           <TextInput
             style={styles.questionInput}
             value={question}
             onChangeText={setQuestion}
-            placeholder="O que você quer entender sobre esta passagem?"
+            placeholder={t('ai.questionPlaceholder')}
             placeholderTextColor={colors.muted}
             multiline
             editable={!busy}
             testID="compare-question-input"
-            accessibilityLabel="Campo de pergunta para comparar entre provedores"
+            accessibilityLabel={t('a11y.compareField')}
           />
           <Pressable
             style={[styles.btn, compareDisabled ? styles.btnDisabled : styles.btnPrimary]}
@@ -241,7 +244,9 @@ export function ReaderComparePanel({
             {busy ? (
               <ActivityIndicator color={colors.chipActiveText} />
             ) : (
-              <Text style={styles.btnText}>Comparar ({selectedProviders.length})</Text>
+              <Text style={styles.btnText}>
+                {t('compare.submit', { count: selectedProviders.length })}
+              </Text>
             )}
           </Pressable>
 
@@ -253,7 +258,7 @@ export function ReaderComparePanel({
               SEPARADO das N interpretações abaixo. NUNCA é saída do LLM. */}
           {anchorText != null ? (
             <View style={styles.anchorBlock}>
-              <Text style={styles.sectionTitle}>Passagem (texto bíblico) — âncora comum</Text>
+              <Text style={styles.sectionTitle}>{t('compare.anchorTitle')}</Text>
               <Text style={styles.anchorText} testID="compare-cited-text">
                 {anchorText}
               </Text>
@@ -263,8 +268,8 @@ export function ReaderComparePanel({
                   testID="compare-consistency"
                 >
                   {citedMatch
-                    ? `✓ Mesma passagem do acervo em todas as ${answered.length} colunas`
-                    : '⚠ Passagens divergentes entre as colunas'}
+                    ? t('compare.consistencyOk', { count: answered.length })
+                    : t('compare.consistencyBad')}
                 </Text>
               ) : null}
             </View>
@@ -290,7 +295,7 @@ export function ReaderComparePanel({
                   ) : col.kind === 'no-key' ? (
                     <>
                       <Text style={styles.columnLabel}>{col.provider}</Text>
-                      <Text style={styles.columnNote}>sem chave (BYOK — F3.10)</Text>
+                      <Text style={styles.columnNote}>{t('compare.columnNoKey')}</Text>
                     </>
                   ) : (
                     <>
@@ -306,11 +311,7 @@ export function ReaderComparePanel({
           {/* ── DISCLAIMER (anti-alucinação) ────────────────────────────────── */}
           {columns.length > 0 ? (
             <View style={styles.metaBlock}>
-              <Text style={styles.disclaimer}>
-                IA — confira nas Escrituras. O texto bíblico (âncora) vem do seu acervo
-                local (verbatim), idêntico para todos os modelos; a IA apenas interpreta.
-                Custo estimado indisponível (a fronteira não o expõe).
-              </Text>
+              <Text style={styles.disclaimer}>{t('compare.disclaimer')}</Text>
             </View>
           ) : null}
         </ScrollView>

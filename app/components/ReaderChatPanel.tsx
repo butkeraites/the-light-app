@@ -30,6 +30,7 @@ import {
   View,
 } from 'react-native';
 
+import { useI18n } from '../lib/i18n';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import { askSessionAnchored, ChatRole, type AiAnswer, type ChatTurn } from '../web/reading';
 
@@ -65,6 +66,7 @@ export function ReaderChatPanel({
   onClose: () => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   // Histórico multi-turno (User/Assistant) — a conversa que a UI monta e reenvia a cada
@@ -133,9 +135,9 @@ export function ReaderChatPanel({
       <Pressable style={styles.backdrop} onPress={onClose} testID="chat-panel-backdrop" />
       <View style={styles.sheet}>
         <View style={styles.header}>
-          <Text style={styles.title}>Conversa · {sourceLabel}</Text>
+          <Text style={styles.title}>{t('chat.title', { source: sourceLabel })}</Text>
           <Pressable onPress={onClose} testID="chat-panel-close" accessibilityRole="button">
-            <Text style={styles.close}>Fechar</Text>
+            <Text style={styles.close}>{t('ai.close')}</Text>
           </Pressable>
         </View>
 
@@ -146,16 +148,13 @@ export function ReaderChatPanel({
               Separado e distinto de cada interpretação na thread abaixo. */}
           {answer ? (
             <View style={styles.citedBlock}>
-              <Text style={styles.sectionTitle}>Passagem (texto bíblico)</Text>
+              <Text style={styles.sectionTitle}>{t('ai.citedTitle')}</Text>
               <Text style={styles.citedText} testID="chat-cited-text">
                 {answer.citedText}
               </Text>
             </View>
           ) : (
-            <Text style={styles.hint}>
-              Converse sobre {sourceLabel}. O texto bíblico (âncora) vem do seu acervo local
-              e aparece separado das respostas da IA.
-            </Text>
+            <Text style={styles.hint}>{t('chat.emptyHint', { source: sourceLabel })}</Text>
           )}
 
           {/* ── THREAD DE TURNOS (conversa multi-turno) ───────────────────────
@@ -164,16 +163,16 @@ export function ReaderChatPanel({
               distintas do texto bíblico acima. Nada hardcoded — vem do histórico real. */}
           {turns.length > 0 ? (
             <View style={styles.thread} testID="chat-thread">
-              {turns.map((t, i) =>
-                t.role === ChatRole.User ? (
+              {turns.map((turn, i) =>
+                turn.role === ChatRole.User ? (
                   <View key={i} style={styles.userTurn}>
-                    <Text style={styles.turnRole}>Você</Text>
-                    <Text style={styles.userText}>{t.content}</Text>
+                    <Text style={styles.turnRole}>{t('chat.roleUser')}</Text>
+                    <Text style={styles.userText}>{turn.content}</Text>
                   </View>
                 ) : (
                   <View key={i} style={styles.assistantTurn}>
-                    <Text style={styles.turnRole}>IA — confira nas Escrituras</Text>
-                    <Text style={styles.interpretationText}>{t.content}</Text>
+                    <Text style={styles.turnRole}>{t('chat.roleAssistant')}</Text>
+                    <Text style={styles.interpretationText}>{turn.content}</Text>
                   </View>
                 ),
               )}
@@ -184,7 +183,7 @@ export function ReaderChatPanel({
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           {/* Provedor fixo "mock" nesta entrega (offline; sem chave/rede). */}
-          <Text style={styles.hint}>Provedor: mock (offline, sem chave/rede — F3.10 traz BYOK).</Text>
+          <Text style={styles.hint}>{t('ai.mockProviderNote')}</Text>
 
           {/* ── ENTRADA DO FOLLOW-UP ──────────────────────────────────────── */}
           <TextInput
@@ -192,15 +191,13 @@ export function ReaderChatPanel({
             value={input}
             onChangeText={setInput}
             placeholder={
-              turns.length === 0
-                ? 'O que você quer entender sobre esta passagem?'
-                : 'Faça um follow-up…'
+              turns.length === 0 ? t('ai.questionPlaceholder') : t('chat.followupPlaceholder')
             }
             placeholderTextColor={colors.muted}
             multiline
             editable={!busy}
             testID="chat-input"
-            accessibilityLabel="Campo de conversa sobre a passagem"
+            accessibilityLabel={t('a11y.chatField')}
           />
           <Pressable
             style={[styles.btn, sendDisabled ? styles.btnDisabled : styles.btnPrimary]}
@@ -212,7 +209,9 @@ export function ReaderChatPanel({
             {busy ? (
               <ActivityIndicator color={colors.chipActiveText} />
             ) : (
-              <Text style={styles.btnText}>{turns.length === 0 ? 'Enviar' : 'Enviar follow-up'}</Text>
+              <Text style={styles.btnText}>
+                {turns.length === 0 ? t('chat.send') : t('chat.sendFollowup')}
+              </Text>
             )}
           </Pressable>
 
@@ -220,12 +219,9 @@ export function ReaderChatPanel({
           {answer ? (
             <View style={styles.metaBlock}>
               <Text style={styles.metaText} testID="chat-meta">
-                Provedor: {answer.provider} · Modelo: {answer.model}
+                {t('ai.meta', { provider: answer.provider, model: answer.model })}
               </Text>
-              <Text style={styles.disclaimer}>
-                O texto bíblico (âncora) vem do seu acervo local (verbatim); a IA apenas
-                interpreta.
-              </Text>
+              <Text style={styles.disclaimer}>{t('chat.disclaimer')}</Text>
             </View>
           ) : null}
         </ScrollView>

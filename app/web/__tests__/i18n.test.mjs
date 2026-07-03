@@ -213,6 +213,60 @@ async function main() {
     'a11y.openChapter DIFERE entre pt e en (rótulo de navegação reativo)',
   );
 
+  // ── F5.11: PROVA de que o CROMO dos PAINÉIS DE IA troca de idioma ────────────────────
+  // Botões/títulos dos painéis (Ask/Study/Compare) DIVERGEM PT≠EN → alternar o idioma
+  // re-renderiza o cromo dos painéis de IA de fato. O `citedText`/`interpretation`/
+  // `reference`/atribuições NÃO passam por aqui (nenhuma chave de conteúdo bíblico).
+  assert.equal(translate('pt', 'ask.submit'), 'Perguntar', 'pt ask.submit');
+  assert.equal(translate('en', 'ask.submit'), 'Ask', 'en ask.submit');
+  assert.notEqual(
+    translate('pt', 'ask.submit'),
+    translate('en', 'ask.submit'),
+    'ask.submit DIFERE entre pt e en (botão do painel de IA é reativo ao idioma)',
+  );
+  assert.equal(translate('pt', 'study.submit'), 'Estudar', 'pt study.submit');
+  assert.equal(translate('en', 'study.submit'), 'Study', 'en study.submit');
+  assert.notEqual(
+    translate('pt', 'study.submit'),
+    translate('en', 'study.submit'),
+    'study.submit DIFERE entre pt e en',
+  );
+  assert.notEqual(
+    translate('pt', 'ai.interpTitle'),
+    translate('en', 'ai.interpTitle'),
+    'ai.interpTitle DIFERE entre pt e en (rótulo "Interpretação (IA)" reativo)',
+  );
+  // Interpolação do CROMO com DADOS que entram VERBATIM (nunca traduzidos): `{source}` (rótulo da
+  // passagem, do store), `{count}` (nº de colunas), `{provider}`/`{model}` (ids técnicos do retorno).
+  assert.equal(
+    translate('pt', 'ask.title', { source: 'João 3:16' }),
+    'Perguntar · João 3:16',
+    'pt ask.title interpola {source} VERBATIM (nome do livro vem do store, não de t())',
+  );
+  assert.equal(
+    translate('en', 'ask.title', { source: 'John 3:16' }),
+    'Ask · John 3:16',
+    'en ask.title interpola {source} VERBATIM (âncora canônica EN preservada)',
+  );
+  assert.equal(
+    translate('pt', 'compare.consistencyOk', { count: 3 }),
+    '✓ Mesma passagem do acervo em todas as 3 colunas',
+    'pt compare.consistencyOk interpola {count}',
+  );
+  assert.notEqual(
+    translate('pt', 'compare.consistencyOk', { count: 3 }),
+    translate('en', 'compare.consistencyOk', { count: 3 }),
+    'compare.consistencyOk DIFERE entre pt e en (com o mesmo {count})',
+  );
+  assert.equal(
+    translate('en', 'ai.meta', { provider: 'anthropic', model: 'claude-x' }),
+    'Provider: anthropic · Model: claude-x',
+    'ai.meta interpola provider/model (ids técnicos do retorno) VERBATIM',
+  );
+  // O identificador de provedor/idioma-neutro fica IGUAL nos dois idiomas (marca/acrônimo).
+  assert.equal(translate('pt', 'compare.byokBadge'), '· BYOK', 'pt compare.byokBadge (acrônimo)');
+  assert.equal(translate('en', 'compare.byokBadge'), '· BYOK', 'en compare.byokBadge (idêntico)');
+
   // Sem params, o placeholder de interpolação fica intacto (não quebra).
   assert.ok(
     translate('pt', 'home.resolveError').includes('{message}'),
@@ -260,8 +314,12 @@ async function main() {
   // `read.*` (rótulos das telas read/*) e `theme.*` (a11y do toggle de tema). F5.7 acrescenta
   // `plans.*` (cromo da tela de planos: títulos, botões, contadores, estados). F5.8 acrescenta
   // `search.*` (cromo da BUSCA: placeholder, dicas, sem-resultado) — o TEXTO/refs de RESULTADO
-  // vêm VERBATIM do store, nunca de `t()`; o `{term}` é o dado digitado pelo usuário. Nenhuma
-  // dessas é texto bíblico/versão — nomes de livro/plano e rótulos de dia vêm do store/core.
+  // vêm VERBATIM do store, nunca de `t()`; o `{term}` é o dado digitado pelo usuário. F5.11
+  // acrescenta `ai.*`/`ask.*`/`chat.*`/`compare.*`/`study.*` (cromo dos 4 painéis de IA:
+  // rótulos, botões, estados, dicas) — o `citedText`/versículo (store), a `interpretation`
+  // (modelo, já em `lang={locale}`), a `reference` canônica EN e as atribuições STEP CC-BY
+  // NÃO passam por `t()`; só INTERPOLAM como `{source}`/`{provider}`/`{model}`/`{count}` (dados).
+  // Nenhuma dessas é texto bíblico/versão — nomes de livro/plano e rótulos de dia vêm do store/core.
   const CHROME_NAMESPACES = new Set([
     'home',
     'search',
@@ -272,6 +330,11 @@ async function main() {
     'a11y',
     'language',
     'theme',
+    'ai',
+    'ask',
+    'chat',
+    'compare',
+    'study',
   ]);
   for (const key of MESSAGE_KEYS) {
     const ns = key.split('.')[0];
@@ -298,6 +361,7 @@ async function main() {
   console.log('  translate(): PT/EN corretos; home.readBible DIVERGE (troca observável); interpola {message}');
   console.log('  fluxo de leitura (F5.5): nav.read/read.parallel DIVERGEM PT≠EN; read.bookFallback interpola {number}');
   console.log('  busca + navegação (F5.8): search.inputPlaceholder/a11y.openChapter DIVERGEM PT≠EN; search.noResults/a11y.openBook interpolam {term}/{name} (dados do store/usuário)');
+  console.log('  painéis de IA (F5.11): ask.submit/study.submit/ai.interpTitle DIVERGEM PT≠EN; ask.title/ai.meta/compare.consistencyOk interpolam {source}/{provider}/{model}/{count} VERBATIM (citedText/interpretation/reference/CC-BY nunca via t())');
   console.log('  persistência: setPref→getPref; SOBREVIVE a nova instância (reabrir); removePref volta ao default');
   console.log("  detecção offline: 'pt-BR'→pt, 'en-US'→en, desconhecido/''→pt; detectDeviceLocale() válido");
   console.log(`  anti-alucinação: todas as ${MESSAGE_KEYS.length} chaves são CROMO (home/search/nav/read/plans/ref/a11y/language/theme); nenhuma de versículo`);

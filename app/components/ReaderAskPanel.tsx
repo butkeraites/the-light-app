@@ -27,6 +27,7 @@ import {
   View,
 } from 'react-native';
 
+import { useI18n } from '../lib/i18n';
 import { getKey, listProviders, setKey, SUPPORTED_PROVIDERS } from '../lib/keystore';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import { askAnchoredStream, type AiAnswer } from '../web/reading';
@@ -66,6 +67,7 @@ export function ReaderAskPanel({
   onClose: () => void;
 }) {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [provider, setProvider] = useState<string>(MOCK_PROVIDER);
@@ -131,9 +133,7 @@ export function ReaderAskPanel({
       if (!isMock) {
         const stored = await getKey(provider);
         if (!stored) {
-          throw new Error(
-            `Configure a chave do provedor "${provider}" nas configurações para usar a IA.`,
-          );
+          throw new Error(t('ask.needKeyError', { provider }));
         }
         key = stored;
       }
@@ -192,15 +192,15 @@ export function ReaderAskPanel({
       <Pressable style={styles.backdrop} onPress={onClose} testID="ask-panel-backdrop" />
       <View style={styles.sheet}>
         <View style={styles.header}>
-          <Text style={styles.title}>Perguntar · {sourceLabel}</Text>
+          <Text style={styles.title}>{t('ask.title', { source: sourceLabel })}</Text>
           <Pressable onPress={onClose} testID="ask-panel-close" accessibilityRole="button">
-            <Text style={styles.close}>Fechar</Text>
+            <Text style={styles.close}>{t('ai.close')}</Text>
           </Pressable>
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           {/* ── PROVEDOR / MODELO ─────────────────────────────────────────── */}
-          <Text style={styles.sectionTitle}>Provedor</Text>
+          <Text style={styles.sectionTitle}>{t('ask.providerSection')}</Text>
           <View style={styles.providers}>
             {PROVIDER_OPTIONS.map((p) => {
               const active = provider === p;
@@ -215,18 +215,24 @@ export function ReaderAskPanel({
                   testID={`ask-provider-${p}`}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
-                  accessibilityLabel={`Provedor ${p}${real ? (withKey ? ', com chave' : ', sem chave') : ', offline'}`}
+                  accessibilityLabel={
+                    real
+                      ? withKey
+                        ? t('a11y.providerWithKey', { provider: p })
+                        : t('a11y.providerNoKey', { provider: p })
+                      : t('a11y.providerOffline', { provider: p })
+                  }
                 >
                   <Text style={[styles.provChipText, active ? styles.provChipTextActive : null]}>
                     {p}
                   </Text>
                   {real ? (
                     <Text style={[styles.provKeyBadge, active ? styles.provChipTextActive : null]}>
-                      {withKey ? '· chave ✓' : '· sem chave'}
+                      {withKey ? t('ask.keyBadgeYes') : t('ask.keyBadgeNo')}
                     </Text>
                   ) : (
                     <Text style={[styles.provKeyBadge, active ? styles.provChipTextActive : null]}>
-                      · offline
+                      {t('ai.offlineBadge')}
                     </Text>
                   )}
                 </Pressable>
@@ -235,23 +241,19 @@ export function ReaderAskPanel({
           </View>
           {!isMock && !providerHasKey ? (
             <View style={styles.keyBlock}>
-              <Text style={styles.hint}>
-                Este provedor precisa de uma chave (BYOK). Cole-a abaixo: no navegador ela
-                fica só nesta sessão (some ao recarregar); no app, no cofre do aparelho.
-                Nunca é registrada nem sai do dispositivo, exceto na chamada ao provedor.
-              </Text>
+              <Text style={styles.hint}>{t('ask.byokHint')}</Text>
               <TextInput
                 style={styles.keyInput}
                 value={keyDraft}
                 onChangeText={setKeyDraft}
-                placeholder={`Chave do provedor "${provider}"`}
+                placeholder={t('ask.keyPlaceholder', { provider })}
                 placeholderTextColor={colors.muted}
                 secureTextEntry
                 autoCapitalize="none"
                 autoCorrect={false}
                 editable={!savingKey && !busy}
                 testID="ask-key-input"
-                accessibilityLabel={`Chave BYOK do provedor ${provider}`}
+                accessibilityLabel={t('a11y.byokKey', { provider })}
               />
               <Pressable
                 style={[
@@ -266,24 +268,24 @@ export function ReaderAskPanel({
                 {savingKey ? (
                   <ActivityIndicator color={colors.chipActiveText} />
                 ) : (
-                  <Text style={styles.btnText}>Salvar chave</Text>
+                  <Text style={styles.btnText}>{t('ask.saveKey')}</Text>
                 )}
               </Pressable>
             </View>
           ) : null}
 
           {/* ── PERGUNTA ──────────────────────────────────────────────────── */}
-          <Text style={styles.sectionTitle}>Pergunta</Text>
+          <Text style={styles.sectionTitle}>{t('ai.questionSection')}</Text>
           <TextInput
             style={styles.questionInput}
             value={question}
             onChangeText={setQuestion}
-            placeholder="O que você quer entender sobre esta passagem?"
+            placeholder={t('ai.questionPlaceholder')}
             placeholderTextColor={colors.muted}
             multiline
             editable={!busy}
             testID="ask-question-input"
-            accessibilityLabel="Campo de pergunta sobre a passagem"
+            accessibilityLabel={t('a11y.questionField')}
           />
           <Pressable
             style={[styles.btn, askDisabled ? styles.btnDisabled : styles.btnPrimary]}
@@ -295,7 +297,7 @@ export function ReaderAskPanel({
             {busy ? (
               <ActivityIndicator color={colors.chipActiveText} />
             ) : (
-              <Text style={styles.btnText}>Perguntar</Text>
+              <Text style={styles.btnText}>{t('ask.submit')}</Text>
             )}
           </Pressable>
 
@@ -307,7 +309,7 @@ export function ReaderAskPanel({
               quando o `AiAnswer` retorna (do Rust). */}
           {answer ? (
             <View style={styles.citedBlock}>
-              <Text style={styles.sectionTitle}>Passagem (texto bíblico)</Text>
+              <Text style={styles.sectionTitle}>{t('ai.citedTitle')}</Text>
               <Text style={styles.citedText} testID="ask-cited-text">
                 {answer.citedText}
               </Text>
@@ -319,7 +321,7 @@ export function ReaderAskPanel({
               (streaming) e, ao fim, a `interpretation` do `AiAnswer`. */}
           {hasInterpretation ? (
             <View style={styles.interpBlock}>
-              <Text style={styles.sectionTitle}>Interpretação (IA) — confira nas Escrituras</Text>
+              <Text style={styles.sectionTitle}>{t('ai.interpTitle')}</Text>
               <Text style={styles.interpText} testID="ask-interpretation-text">
                 {interpretationText}
                 {busy ? ' ▍' : ''}
@@ -334,15 +336,12 @@ export function ReaderAskPanel({
           {answer ? (
             <View style={styles.metaBlock}>
               <Text style={styles.metaText} testID="ask-meta">
-                Provedor: {answer.provider} · Modelo: {answer.model}
+                {t('ai.meta', { provider: answer.provider, model: answer.model })}
               </Text>
               <Text style={styles.metaText}>
-                Estimativa: ~{approxTokens(answer.interpretation)} tokens de interpretação
-                (custo exato indisponível).
+                {t('ask.estimate', { tokens: approxTokens(answer.interpretation) })}
               </Text>
-              <Text style={styles.disclaimer}>
-                O texto bíblico vem do seu acervo local (verbatim); a IA apenas interpreta.
-              </Text>
+              <Text style={styles.disclaimer}>{t('ask.disclaimer')}</Text>
             </View>
           ) : null}
         </ScrollView>

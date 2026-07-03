@@ -75,6 +75,18 @@ function ChapterContent() {
   const bookNumber = Number(book);
   const chapterNumber = Number(chapter);
 
+  // F5.11: nome do livro NO IDIOMA da UI, para o `sourceLabel` (cabeçalho) dos painéis de IA.
+  // Anti-alucinação: o nome vem SEMPRE do STORE (`namePt`/`nameEn`) — o `locale` só ESCOLHE o
+  // campo, NUNCA traduz via `t()`; o fallback (livro ausente do store) é cromo com `{number}`.
+  // A `reference` canônica passada às fronteiras permanece EN (`bookNameEn`), a âncora.
+  const bookLabel = useCallback(
+    (bookNum: number): string => {
+      const b = listBooks().find((x) => x.number === bookNum);
+      return b ? (locale === 'en' ? b.nameEn : b.namePt) : t('read.bookFallback', { number: bookNum });
+    },
+    [locale, t],
+  );
+
   const [translation, setTranslation] = useState(DEFAULT_TRANSLATION);
   const [translations, setTranslations] = useState<Translation[]>([]);
   const [passage, setPassage] = useState<Passage | null>(null);
@@ -453,7 +465,7 @@ function ChapterContent() {
       <ReaderAskPanel
         visible={askVerse != null}
         sourceLabel={
-          askVerse != null ? `${bookNamePt(bookNumber)} ${chapterNumber}:${askVerse}` : ''
+          askVerse != null ? `${bookLabel(bookNumber)} ${chapterNumber}:${askVerse}` : ''
         }
         reference={
           askVerse != null ? `${bookNameEn(bookNumber)} ${chapterNumber}:${askVerse}` : ''
@@ -473,7 +485,7 @@ function ChapterContent() {
       <ReaderStudyPanel
         visible={studyVerse != null}
         sourceLabel={
-          studyVerse != null ? `${bookNamePt(bookNumber)} ${chapterNumber}:${studyVerse}` : ''
+          studyVerse != null ? `${bookLabel(bookNumber)} ${chapterNumber}:${studyVerse}` : ''
         }
         book={bookNumber}
         chapter={chapterNumber}
@@ -492,7 +504,7 @@ function ChapterContent() {
       <ReaderChatPanel
         visible={chatVerse != null}
         sourceLabel={
-          chatVerse != null ? `${bookNamePt(bookNumber)} ${chapterNumber}:${chatVerse}` : ''
+          chatVerse != null ? `${bookLabel(bookNumber)} ${chapterNumber}:${chatVerse}` : ''
         }
         book={bookNumber}
         chapter={chapterNumber}
@@ -513,7 +525,7 @@ function ChapterContent() {
       <ReaderComparePanel
         visible={compareVerse != null}
         sourceLabel={
-          compareVerse != null ? `${bookNamePt(bookNumber)} ${chapterNumber}:${compareVerse}` : ''
+          compareVerse != null ? `${bookLabel(bookNumber)} ${chapterNumber}:${compareVerse}` : ''
         }
         reference={
           compareVerse != null

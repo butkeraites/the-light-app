@@ -115,7 +115,99 @@ export type MessageKey =
   | 'language.switchToOther'
   // Rótulos de acessibilidade do toggle de TEMA (mostra o modo-ALVO).
   | 'theme.switchToLight'
-  | 'theme.switchToDark';
+  | 'theme.switchToDark'
+  // ─── CROMO dos PAINÉIS DE IA (F5.11) ─────────────────────────────────────────────────
+  // ANTI-ALUCINAÇÃO (LEI, crítico p/ IA): estas chaves traduzem SÓ o CROMO (rótulos, botões,
+  // estados, dicas, a11y). O `citedText`/versículo citado vem VERBATIM do store (nunca via
+  // `t()`); a `interpretation` é a saída do modelo (já produzida no `lang={locale}`, F5.5 —
+  // NÃO retraduzida pós-hoc); a `reference` canônica permanece EN (âncora); as atribuições/
+  // licenças (STEP CC-BY) são VERBATIM. `{source}` = rótulo da passagem (nome do livro do
+  // STORE + capítulo:versículo, dados); `{provider}`/`{model}`/`{tokens}`/`{count}` = dados
+  // técnicos do retorno — só INTERPOLADOS, nunca traduzidos.
+  // Comum aos 4 painéis (texto idêntico entre eles).
+  | 'ai.close'
+  | 'ai.citedTitle'
+  | 'ai.interpTitle'
+  | 'ai.meta'
+  | 'ai.questionSection'
+  | 'ai.questionPlaceholder'
+  | 'ai.mockProviderNote'
+  | 'ai.offlineBadge'
+  // Painel PERGUNTAR (Ask, F2.5).
+  | 'ask.title'
+  | 'ask.providerSection'
+  | 'ask.keyBadgeYes'
+  | 'ask.keyBadgeNo'
+  | 'ask.byokHint'
+  | 'ask.keyPlaceholder'
+  | 'ask.saveKey'
+  | 'ask.submit'
+  | 'ask.estimate'
+  | 'ask.disclaimer'
+  | 'ask.needKeyError'
+  // Painel CONVERSA (Chat, F3.6).
+  | 'chat.title'
+  | 'chat.emptyHint'
+  | 'chat.roleUser'
+  | 'chat.roleAssistant'
+  | 'chat.followupPlaceholder'
+  | 'chat.send'
+  | 'chat.sendFollowup'
+  | 'chat.disclaimer'
+  // Painel COMPARAR (Compare, F3.7).
+  | 'compare.title'
+  | 'compare.providersSection'
+  | 'compare.byokBadge'
+  | 'compare.providersHint'
+  | 'compare.submit'
+  | 'compare.anchorTitle'
+  | 'compare.consistencyOk'
+  | 'compare.consistencyBad'
+  | 'compare.columnNoKey'
+  | 'compare.disclaimer'
+  // Painel ESTUDO (Study, F3.5). Rótulos de MODO/LENTE/PROFUNDIDADE (o `value`/enum vem da
+  // fronteira; aqui só o RÓTULO de exibição é traduzido).
+  | 'study.title'
+  | 'study.modeSection'
+  | 'study.modeAcademic'
+  | 'study.modeDevotional'
+  | 'study.modeIntroductory'
+  | 'study.modeSermon'
+  | 'study.lensSection'
+  | 'study.lensBaptist'
+  | 'study.lensPresbyterian'
+  | 'study.lensLutheran'
+  | 'study.lensPentecostal'
+  | 'study.lensCatholic'
+  | 'study.lensOrthodox'
+  | 'study.depthSection'
+  | 'study.depthOverview'
+  | 'study.depthExegetical'
+  | 'study.depthWordStudy'
+  | 'study.webSection'
+  | 'study.webOff'
+  | 'study.webWikipedia'
+  | 'study.webTavily'
+  | 'study.wikipediaPrivacy'
+  | 'study.tavilyKeyPlaceholder'
+  | 'study.tavilyPrivacy'
+  | 'study.submit'
+  | 'study.warnings'
+  | 'study.citations'
+  | 'study.lexicon'
+  | 'study.disclaimer'
+  | 'study.exportAcademic'
+  | 'study.shareTitle'
+  // A11Y adicional dos painéis de IA (`{provider}` = id técnico do provedor, verbatim).
+  | 'a11y.providerWithKey'
+  | 'a11y.providerNoKey'
+  | 'a11y.providerOffline'
+  | 'a11y.providerByok'
+  | 'a11y.byokKey'
+  | 'a11y.questionField'
+  | 'a11y.chatField'
+  | 'a11y.compareField'
+  | 'a11y.tavilyKey';
 
 // Catálogo PORTUGUÊS (default do app). "The Light" é o NOME do produto (marca),
 // idêntico nos dois idiomas de propósito.
@@ -173,6 +265,94 @@ const pt: Record<MessageKey, string> = {
   'language.switchToOther': 'Mudar para Inglês',
   'theme.switchToLight': 'Mudar para tema claro',
   'theme.switchToDark': 'Mudar para tema escuro',
+  // ─── Painéis de IA (F5.11) — só CROMO (ver nota na união de chaves) ───────────────────
+  'ai.close': 'Fechar',
+  'ai.citedTitle': 'Passagem (texto bíblico)',
+  'ai.interpTitle': 'Interpretação (IA) — confira nas Escrituras',
+  'ai.meta': 'Provedor: {provider} · Modelo: {model}',
+  'ai.questionSection': 'Pergunta',
+  'ai.questionPlaceholder': 'O que você quer entender sobre esta passagem?',
+  'ai.mockProviderNote': 'Provedor: mock (offline, sem chave/rede — F3.10 traz BYOK).',
+  'ai.offlineBadge': '· offline',
+  'ask.title': 'Perguntar · {source}',
+  'ask.providerSection': 'Provedor',
+  'ask.keyBadgeYes': '· chave ✓',
+  'ask.keyBadgeNo': '· sem chave',
+  'ask.byokHint':
+    'Este provedor precisa de uma chave (BYOK). Cole-a abaixo: no navegador ela fica só nesta sessão (some ao recarregar); no app, no cofre do aparelho. Nunca é registrada nem sai do dispositivo, exceto na chamada ao provedor.',
+  'ask.keyPlaceholder': 'Chave do provedor "{provider}"',
+  'ask.saveKey': 'Salvar chave',
+  'ask.submit': 'Perguntar',
+  'ask.estimate': 'Estimativa: ~{tokens} tokens de interpretação (custo exato indisponível).',
+  'ask.disclaimer':
+    'O texto bíblico vem do seu acervo local (verbatim); a IA apenas interpreta.',
+  'ask.needKeyError':
+    'Configure a chave do provedor "{provider}" nas configurações para usar a IA.',
+  'chat.title': 'Conversa · {source}',
+  'chat.emptyHint':
+    'Converse sobre {source}. O texto bíblico (âncora) vem do seu acervo local e aparece separado das respostas da IA.',
+  'chat.roleUser': 'Você',
+  'chat.roleAssistant': 'IA — confira nas Escrituras',
+  'chat.followupPlaceholder': 'Faça um follow-up…',
+  'chat.send': 'Enviar',
+  'chat.sendFollowup': 'Enviar follow-up',
+  'chat.disclaimer':
+    'O texto bíblico (âncora) vem do seu acervo local (verbatim); a IA apenas interpreta.',
+  'compare.title': 'Comparar IA · {source}',
+  'compare.providersSection': 'Provedores (escolha ≥2)',
+  'compare.byokBadge': '· BYOK',
+  'compare.providersHint':
+    'Provedores reais usam a chave do cofre (BYOK); a comparação de respostas reais (diferentes) é a F3.10. O provedor "mock" responde offline (sem chave/rede).',
+  'compare.submit': 'Comparar ({count})',
+  'compare.anchorTitle': 'Passagem (texto bíblico) — âncora comum',
+  'compare.consistencyOk': '✓ Mesma passagem do acervo em todas as {count} colunas',
+  'compare.consistencyBad': '⚠ Passagens divergentes entre as colunas',
+  'compare.columnNoKey': 'sem chave (BYOK — F3.10)',
+  'compare.disclaimer':
+    'IA — confira nas Escrituras. O texto bíblico (âncora) vem do seu acervo local (verbatim), idêntico para todos os modelos; a IA apenas interpreta. Custo estimado indisponível (a fronteira não o expõe).',
+  'study.title': 'Estudo · {source}',
+  'study.modeSection': 'Modo',
+  'study.modeAcademic': 'Acadêmico',
+  'study.modeDevotional': 'Devocional',
+  'study.modeIntroductory': 'Introdutório',
+  'study.modeSermon': 'Pregação',
+  'study.lensSection': 'Lente (denominação)',
+  'study.lensBaptist': 'Batista',
+  'study.lensPresbyterian': 'Presbiteriana',
+  'study.lensLutheran': 'Luterana',
+  'study.lensPentecostal': 'Pentecostal',
+  'study.lensCatholic': 'Católica',
+  'study.lensOrthodox': 'Ortodoxa',
+  'study.depthSection': 'Profundidade',
+  'study.depthOverview': 'Visão geral',
+  'study.depthExegetical': 'Exegético',
+  'study.depthWordStudy': 'Estudo de palavras',
+  'study.webSection': 'Pesquisa web (opcional)',
+  'study.webOff': 'Desligada',
+  'study.webWikipedia': 'Wikipedia',
+  'study.webTavily': 'Tavily (chave)',
+  'study.wikipediaPrivacy':
+    'Privacidade: ligada, esta opção consulta a Wikipedia (rede) para citar fontes. Nenhuma chave/segredo é enviada (Wikipedia é keyless). O texto bíblico e as glosas continuam vindo do seu acervo local; as citações são montadas pelo app (não pela IA).',
+  'study.tavilyKeyPlaceholder': 'Chave Tavily (BYOK) — só nesta sessão',
+  'study.tavilyPrivacy':
+    'Privacidade: ligada, esta opção consulta o Tavily (rede) usando sua chave BYOK. A chave fica só nesta sessão (na memória, perdida ao recarregar), nunca é salva no dispositivo nem registrada, e viaja apenas no corpo da requisição. As citações Web são montadas pelo app a partir das URLs retornadas (nunca pela IA); o texto bíblico e as glosas continuam vindo do seu acervo local.',
+  'study.submit': 'Estudar',
+  'study.warnings': 'Avisos',
+  'study.citations': 'Citações',
+  'study.lexicon': 'Léxico (línguas originais)',
+  'study.disclaimer':
+    'O texto bíblico e as glosas vêm do seu acervo local (verbatim); a IA apenas interpreta.',
+  'study.exportAcademic': 'Exportar (acadêmico)',
+  'study.shareTitle': 'Estudo — {source}',
+  'a11y.providerWithKey': 'Provedor {provider}, com chave',
+  'a11y.providerNoKey': 'Provedor {provider}, sem chave',
+  'a11y.providerOffline': 'Provedor {provider}, offline',
+  'a11y.providerByok': 'Provedor {provider} (BYOK — chave via cofre)',
+  'a11y.byokKey': 'Chave BYOK do provedor {provider}',
+  'a11y.questionField': 'Campo de pergunta sobre a passagem',
+  'a11y.chatField': 'Campo de conversa sobre a passagem',
+  'a11y.compareField': 'Campo de pergunta para comparar entre provedores',
+  'a11y.tavilyKey': 'Chave Tavily (session-only)',
 };
 
 // Catálogo ENGLISH. As MESMAS chaves de `pt` (paridade forçada pelo tipo).
@@ -230,6 +410,94 @@ const en: Record<MessageKey, string> = {
   'language.switchToOther': 'Switch to Portuguese',
   'theme.switchToLight': 'Switch to light theme',
   'theme.switchToDark': 'Switch to dark theme',
+  // ─── AI panels (F5.11) — CHROME only (see note on the key union) ──────────────────────
+  'ai.close': 'Close',
+  'ai.citedTitle': 'Passage (biblical text)',
+  'ai.interpTitle': 'Interpretation (AI) — verify against Scripture',
+  'ai.meta': 'Provider: {provider} · Model: {model}',
+  'ai.questionSection': 'Question',
+  'ai.questionPlaceholder': 'What would you like to understand about this passage?',
+  'ai.mockProviderNote': 'Provider: mock (offline, no key/network — F3.10 brings BYOK).',
+  'ai.offlineBadge': '· offline',
+  'ask.title': 'Ask · {source}',
+  'ask.providerSection': 'Provider',
+  'ask.keyBadgeYes': '· key ✓',
+  'ask.keyBadgeNo': '· no key',
+  'ask.byokHint':
+    'This provider requires a key (BYOK). Paste it below: in the browser it stays only in this session (lost on reload); in the app, in the device vault. It is never logged and never leaves the device, except in the call to the provider.',
+  'ask.keyPlaceholder': 'Key for provider "{provider}"',
+  'ask.saveKey': 'Save key',
+  'ask.submit': 'Ask',
+  'ask.estimate': 'Estimate: ~{tokens} interpretation tokens (exact cost unavailable).',
+  'ask.disclaimer':
+    'The biblical text comes from your local library (verbatim); the AI only interprets.',
+  'ask.needKeyError':
+    'Configure the "{provider}" provider key in settings to use the AI.',
+  'chat.title': 'Conversation · {source}',
+  'chat.emptyHint':
+    'Chat about {source}. The biblical text (anchor) comes from your local library and appears separate from the AI responses.',
+  'chat.roleUser': 'You',
+  'chat.roleAssistant': 'AI — verify against Scripture',
+  'chat.followupPlaceholder': 'Ask a follow-up…',
+  'chat.send': 'Send',
+  'chat.sendFollowup': 'Send follow-up',
+  'chat.disclaimer':
+    'The biblical text (anchor) comes from your local library (verbatim); the AI only interprets.',
+  'compare.title': 'Compare AI · {source}',
+  'compare.providersSection': 'Providers (choose ≥2)',
+  'compare.byokBadge': '· BYOK',
+  'compare.providersHint':
+    'Real providers use the vault key (BYOK); comparing real (different) responses is F3.10. The "mock" provider answers offline (no key/network).',
+  'compare.submit': 'Compare ({count})',
+  'compare.anchorTitle': 'Passage (biblical text) — common anchor',
+  'compare.consistencyOk': '✓ Same passage from the library across all {count} columns',
+  'compare.consistencyBad': '⚠ Divergent passages across columns',
+  'compare.columnNoKey': 'no key (BYOK — F3.10)',
+  'compare.disclaimer':
+    'AI — verify against Scripture. The biblical text (anchor) comes from your local library (verbatim), identical for all models; the AI only interprets. Estimated cost unavailable (the boundary does not expose it).',
+  'study.title': 'Study · {source}',
+  'study.modeSection': 'Mode',
+  'study.modeAcademic': 'Academic',
+  'study.modeDevotional': 'Devotional',
+  'study.modeIntroductory': 'Introductory',
+  'study.modeSermon': 'Sermon',
+  'study.lensSection': 'Lens (denomination)',
+  'study.lensBaptist': 'Baptist',
+  'study.lensPresbyterian': 'Presbyterian',
+  'study.lensLutheran': 'Lutheran',
+  'study.lensPentecostal': 'Pentecostal',
+  'study.lensCatholic': 'Catholic',
+  'study.lensOrthodox': 'Orthodox',
+  'study.depthSection': 'Depth',
+  'study.depthOverview': 'Overview',
+  'study.depthExegetical': 'Exegetical',
+  'study.depthWordStudy': 'Word study',
+  'study.webSection': 'Web research (optional)',
+  'study.webOff': 'Off',
+  'study.webWikipedia': 'Wikipedia',
+  'study.webTavily': 'Tavily (key)',
+  'study.wikipediaPrivacy':
+    'Privacy: when on, this option queries Wikipedia (network) to cite sources. No key/secret is sent (Wikipedia is keyless). The biblical text and glosses still come from your local library; the citations are assembled by the app (not by the AI).',
+  'study.tavilyKeyPlaceholder': 'Tavily key (BYOK) — this session only',
+  'study.tavilyPrivacy':
+    'Privacy: when on, this option queries Tavily (network) using your BYOK key. The key stays only in this session (in memory, lost on reload), is never saved on the device nor logged, and travels only in the request body. Web citations are assembled by the app from the returned URLs (never by the AI); the biblical text and glosses still come from your local library.',
+  'study.submit': 'Study',
+  'study.warnings': 'Warnings',
+  'study.citations': 'Citations',
+  'study.lexicon': 'Lexicon (original languages)',
+  'study.disclaimer':
+    'The biblical text and glosses come from your local library (verbatim); the AI only interprets.',
+  'study.exportAcademic': 'Export (academic)',
+  'study.shareTitle': 'Study — {source}',
+  'a11y.providerWithKey': 'Provider {provider}, with key',
+  'a11y.providerNoKey': 'Provider {provider}, without key',
+  'a11y.providerOffline': 'Provider {provider}, offline',
+  'a11y.providerByok': 'Provider {provider} (BYOK — key via vault)',
+  'a11y.byokKey': 'BYOK key for provider {provider}',
+  'a11y.questionField': 'Question field about the passage',
+  'a11y.chatField': 'Conversation field about the passage',
+  'a11y.compareField': 'Question field to compare across providers',
+  'a11y.tavilyKey': 'Tavily key (session-only)',
 };
 
 /** Catálogos por idioma (uma fonte de verdade de texto de UI). */
