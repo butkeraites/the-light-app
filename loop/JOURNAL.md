@@ -259,3 +259,19 @@
   unlink → offline-first). F5.27 seedada (gate:true) em `loop/queue/`.
 - **Retomar:** humano valida + registra sign-off + remove/edita `loop/HALT`. Se achar bug (shape Drive ≠ mock) → seedar correção antes de fechar
   a Fase 5. Sem bug → F5.27 fecha a trilha de sync e a **Fase 5 (Refinamento e abertura)**. Próximo ADR livre = **ADR-0055**.
+
+## Ciclo — 2026-07-03T17:45Z — HALT F5.27 LIBERADO (deferido pelo humano) → varredura de refinamento
+
+- **Heartbeat:** 2026-07-03T17:45:00Z.
+- **Decisão humana (Renan):** "pode seguir sem validar agora" — ele mesmo criará o app OAuth na GCP e passará o
+  `EXPO_PUBLIC_GOOGLE_DRIVE_CLIENT_ID` depois. Portanto: **HALT do gate F5.27 liberado**; a F5.27 (validação com
+  conta Google real) foi movida para `loop/deferred/` (fora da queue elegível, para não re-HALTar), permanecendo
+  registrada à espera do client-id. O app já trata a integração ausente de forma graciosa (sync opt-in OFF por
+  padrão, Connect disabled sem client-id, tudo 100% offline — F5.26/`c2dc1f5`). Memória salva (`f527-deferred-gcp`).
+- **Estado do plano:** IMPLEMENTATION_PLAN (Fases 0–5) CONSTRUÍDO. Fase 5 "Refinamento e abertura" é a última;
+  seus 27 itens estão aceitos, exceto a F5.27 (deferida). Não há Fase 6 → "seguir" = varredura de refinamento.
+- **Ação:** disparado o workflow `fase5-refinement-sweep` (ultracode) — 4 sweeps paralelos (journal/STATUS, ADRs,
+  TODO/gaps de código, i18n/a11y/perf + abertura) → síntese que dedupe vs. `loop/archive/`, filtra p/ AUTÔNOMO
+  (offline, sem the-light, sem segredo) e propõe tarefas concretas F5.28+. Resultado alimenta a próxima rodada.
+- **Próximo:** revisar a síntese, seedar as tarefas de refinamento priorizadas na queue e retomar executor→reviewer.
+  Loop **LIVE** — sem HALT. the-light `225b8c9`. Próximo ADR livre = **ADR-0055**.
