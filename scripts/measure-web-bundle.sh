@@ -161,9 +161,22 @@ const BUDGET = {
   // `eagerBrotliBytes` (o entry servido com `Content-Encoding: br`). O `firstPaintTransfer`
   // (headline de 1º paint over-the-wire) = eagerGzip (piso universal) / eagerBrotli (default
   // moderno). Tolerâncias folgadas p/ o flutter, apertadas p/ pegar regressão real.
+  //
+  // NOTA F5.19 (ADR-0047) — LOCK do orçamento + re-baseline do moduleCount 837 → 838:
+  // a F5.18 (ADR-0046) extraiu os TOKENS de cor p/ um módulo PURO novo
+  // (`app/lib/themePalettes.ts`, importado por `app/lib/theme.ts`, que é EAGER no 1º
+  // paint) — +1 módulo EAGER estrutural (837 → 838; verificado determinístico em 2+
+  // exports). A F5.18 só rodou `expo export` (exit 0), NÃO o `measure-web-bundle.sh`, então
+  // essa drift ESTRUTURAL passou sem ser vista — é EXATAMENTE a regressão que esta guarda
+  // trava. Re-baseline DELIBERADO/justificado (git-provável: +1 módulo exato). Os bytes NÃO
+  // mudaram de forma relevante: o wrapper `__d(...)` extra (~600 B raw) é absorvido pela
+  // banda ±1024 do eagerBytes; os centros de gzip/brotli não se moveram (boilerplate
+  // altamente compressível) → bandas re-verificadas, mantidas. Este é o LOCK final do
+  // workstream perf: os limites abaixo são o CONTRATO congelado (espelhado em
+  // `loop/perf/web-bundle-budget.json`, cross-check por `scripts/check-web-bundle-budget.sh`).
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 837,
+    moduleCount: 838,
     eagerBytes: { nominal: 1314270, tolerance: 1024 },
     eagerGzipBytes: { nominal: 332884, tolerance: 2048 },
     eagerBrotliBytes: { nominal: 262639, tolerance: 1024 },

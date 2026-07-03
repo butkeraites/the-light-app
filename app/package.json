@@ -28,7 +28,8 @@
     "test:web:research-tavily": "node web/__tests__/research-tavily.web.test.mjs",
     "test:web:compare": "node web/__tests__/compare.web.test.mjs",
     "test:web:firstpaint": "node web/__tests__/firstpaint.web.test.mjs",
-    "test:web:reminders": "node web/__tests__/planReminders.web.test.mjs"
+    "test:web:reminders": "node web/__tests__/planReminders.web.test.mjs",
+    "test:web:perf-budget": "../scripts/check-web-bundle-budget.sh"
   },
   "dependencies": {
     "@expo/metro-runtime": "~56.0.15",

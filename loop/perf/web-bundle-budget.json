@@ -1,0 +1,33 @@
+{
+  "lock": "web-perf-budget",
+  "task": "F5.19",
+  "adr": "ADR-0047",
+  "lockedAt": "2026-07-03",
+  "description": "CONTRATO CONGELADO (locked) do orçamento de performance do bundle WEB — a SAÍDA do workstream perf (F5.3 métrica → F5.6 wasm release → F5.9 code-split → F5.12 dead-assets → F5.15 léxico on-demand → F5.17 precompress/transfer → F5.19 LOCK). Estes são os LIMITES FINAIS. A guarda oficial é `scripts/measure-web-bundle.sh` (exporta + mede + FALHA em breach, exit != 0); `scripts/check-web-bundle-budget.sh` a executa E cross-checa a `web-bundle-baseline.json` produzida contra ESTE arquivo — detectando qualquer drift entre o enforcer e o contrato congelado (ex.: um re-baseline não documentado). Wired em `app/package.json` como `test:web:perf-budget`. Offline: só assets locais, sem rede.",
+  "sourceOfTruth": "scripts/measure-web-bundle.sh embute o BUDGET vivo (enforcer); ESTE arquivo é o espelho CONGELADO (contrato). Os dois DEVEM concordar — `check-web-bundle-budget.sh` falha se divergirem. Re-baseline deliberado = atualizar AMBOS + ADR (ver reBaselinePolicy).",
+  "reBaselinePolicy": "Re-baselinear SÓ deliberadamente e com justificativa. Passos: (1) confirme que a mudança do app é intencional/aceita (não uma regressão acidental); (2) rode `./scripts/measure-web-bundle.sh` e leia os valores VIVOS; (3) atualize a const BUDGET em `scripts/measure-web-bundle.sh` E os campos correspondentes AQUI (moduleCount é EXATO; bytes crus dos assets content-addressed são EXATOS; o entry-JS é nominal±tolerância — re-centre o nominal no centro do flutter medido em >=2 exports); (4) registre o porquê num ADR (como ADR-0047) e no commit. moduleCount muda = mudança ESTRUTURAL (code-split, extração de módulo eager); bytes de asset estável mudam = conteúdo do asset mudou (novo build wasm/DB).",
+  "note838": "F5.19 (ADR-0047): moduleCount 837 → 838 é um re-baseline DELIBERADO/justificado — a F5.18 (ADR-0046) extraiu os tokens de cor p/ o módulo PURO `app/lib/themePalettes.ts` (importado por `theme.ts`, eager no 1º paint): +1 módulo eager estrutural (git-provável, +1 exato; determinístico em 2+ exports). Os bytes NÃO mudaram de forma relevante (o wrapper extra ~600 B raw é absorvido pela banda ±1024; centros gzip/brotli inalterados). A F5.18 não rodou a métrica → a drift passou sem ser vista; esta guarda a trava.",
+  "exact": {
+    "frontierWasmBytes": 1198888,
+    "frontierWasmBytesGzip": 430849,
+    "frontierWasmBytesBrotli": 311729,
+    "readingLiteDbBytes": 4530176,
+    "lexiconDbBytes": 9502720,
+    "waSqliteFts5Bytes": 666267
+  },
+  "entry": {
+    "moduleCount": 838,
+    "eagerBytes": { "nominal": 1314270, "tolerance": 1024 },
+    "eagerGzipBytes": { "nominal": 332884, "tolerance": 2048 },
+    "eagerBrotliBytes": { "nominal": 262639, "tolerance": 1024 }
+  },
+  "transferHeadline": {
+    "firstPaintTransferBytes": 332884,
+    "firstPaintTransferBytesBrotli": 262639
+  },
+  "removedAssets": [
+    "waSqliteNpm",
+    "sampleDb",
+    "readingSampleCombined"
+  ]
+}

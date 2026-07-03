@@ -31,7 +31,7 @@
   "entryJs": {
     "note": "Entry-JS \"eager\" carregado no 1º paint. moduleCount (nº de `__d(`) é EXATO e independe da ordem — a grandeza de budget do JS (code-split futuro a reduz de forma medível). eagerBytes/eagerGzipBytes/eagerBrotliBytes são NOMINAL ± TOLERÂNCIA (Metro não é byte-determinístico); o script mede o valor vivo e falha se sair da faixa. O gzip/brotli é o TAMANHO DE TRANSFER do 1º paint (ver firstPaintTransferBytes).",
     "glob": "_expo/static/js/web/entry-*.js",
-    "moduleCount": 837,
+    "moduleCount": 838,
     "eagerBytes": {
       "nominal": 1314270,
       "tolerance": 1024
