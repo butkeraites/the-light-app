@@ -1,16 +1,30 @@
-// app/app/read/index.tsx — F1.3 (ADR-0014)
+// app/app/read/index.tsx — F1.3 (ADR-0014) · perf F5.3
 //
 // Tela 1 do fluxo de leitura: LISTA DE LIVROS (66, de `listBooks()` — PURO, pela
 // fronteira nativa). Selecionar um livro navega para a lista de capítulos.
+//
+// F5.3: `listBooks()` é SÍNCRONO e exige o wasm da fronteira já pronto (no web). Como
+// o `_layout.tsx` não bloqueia mais o 1º paint no wasm, esta rota se auto-gateia com
+// `<WasmGate>` — o conteúdo (que chama `listBooks()`) só MONTA quando o wasm está
+// pronto. No nativo o gate é transparente (pronto de imediato).
 import { useEffect, useMemo, useState } from 'react';
 import { router, useNavigation } from 'expo-router';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { ReaderBookList } from '../../components/ReaderBookList';
+import { WasmGate } from '../../components/WasmGate';
 import { useTheme, type ThemeColors } from '../../lib/theme';
 import { listBooks, type Book } from '../../web/reading';
 
 export default function BooksScreen() {
+  return (
+    <WasmGate>
+      <BooksContent />
+    </WasmGate>
+  );
+}
+
+function BooksContent() {
   const navigation = useNavigation();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);

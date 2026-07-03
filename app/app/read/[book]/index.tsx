@@ -1,13 +1,19 @@
-// app/app/read/[book]/index.tsx — F1.3 (ADR-0014)
+// app/app/read/[book]/index.tsx — F1.3 (ADR-0014) · perf F5.3
 //
 // Tela 2 do fluxo de leitura: LISTA DE CAPÍTULOS do livro. A quantidade vem de
 // `chapterCount(db, translation, book)` (DB-backed — quantos capítulos do livro
 // estão PRESENTES no store). Selecionar um capítulo abre o texto.
+//
+// F5.3: esta rota chama `listBooks()` (síncrono, exige o wasm da fronteira) para
+// resolver o nome do livro. Como o 1º paint não bloqueia mais no wasm, ela se
+// auto-gateia com `<WasmGate>` (o conteúdo só monta com o wasm pronto). No nativo o
+// gate é transparente.
 import { useEffect, useMemo, useState } from 'react';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { ReaderChapterGrid } from '../../../components/ReaderChapterGrid';
+import { WasmGate } from '../../../components/WasmGate';
 import { ensureReadingDb } from '../../../lib/db';
 import { useTheme, type ThemeColors } from '../../../lib/theme';
 import { chapterCount, listBooks } from '../../../web/reading';
@@ -17,6 +23,14 @@ import { chapterCount, listBooks } from '../../../web/reading';
 const DEFAULT_TRANSLATION = 'kjv';
 
 export default function ChaptersScreen() {
+  return (
+    <WasmGate>
+      <ChaptersContent />
+    </WasmGate>
+  );
+}
+
+function ChaptersContent() {
   const navigation = useNavigation();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);

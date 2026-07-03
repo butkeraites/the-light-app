@@ -16,6 +16,7 @@ import { router } from 'expo-router';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ReaderSearchResultItem } from '../../components/ReaderSearchResultItem';
+import { WasmGate } from '../../components/WasmGate';
 import { ensureReadingDb } from '../../lib/db';
 import { useTheme, type ThemeColors } from '../../lib/theme';
 import { listBooks, search, type Book, type SearchHit } from '../../web/reading';
@@ -37,6 +38,18 @@ function keyOf(hit: SearchHit): string {
 }
 
 export default function SearchScreen() {
+  // F5.3: a busca resolve o nome do livro via `listBooks()` (síncrono, exige o wasm da
+  // fronteira). Antes o `_layout.tsx` gateava tudo no wasm; agora, com o 1º paint
+  // liberado, esta rota se auto-gateia para não montar (e cair no fallback "Book N")
+  // antes do wasm pronto. No nativo o gate é transparente.
+  return (
+    <WasmGate>
+      <SearchContent />
+    </WasmGate>
+  );
+}
+
+function SearchContent() {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 

@@ -1,0 +1,59 @@
+{
+  "metric": "web-bundle-baseline",
+  "task": "F5.3",
+  "description": "Orçamento (budget) repetível do bundle web do The Light App: bytes crus + gzip(-9) por asset-chave, JS \"eager\" do 1º paint, e total do dist/. Métrica de recorde para as tarefas de performance web seguintes (F5.6/F5.9/F5.19). Regenerar com scripts/measure-web-bundle.sh. Offline: todos os assets são locais (sem rede).",
+  "generatedBy": "scripts/measure-web-bundle.sh",
+  "distDir": "app/dist",
+  "fileCount": 32,
+  "entryJsBytes": 1435971,
+  "frontierWasmBytes": 4244884,
+  "readingDbBytes": 14409728,
+  "waSqliteFts5Bytes": 666267,
+  "waSqliteNpmBytes": 558343,
+  "sampleDbBytes": 131072,
+  "totalBytes": 21603577,
+  "assets": {
+    "entryJs": {
+      "bytes": 1435971,
+      "gzipBytes": 370192,
+      "fileCount": 1,
+      "files": [
+        {
+          "path": "app/dist/_expo/static/js/web/entry-73dfaa2731c416bdb353fa9a06a889d3.js",
+          "bytes": 1435971,
+          "gzipBytes": 370192
+        }
+      ]
+    },
+    "frontierWasm": {
+      "path": "app/dist/assets/web/generated/wasm-bindgen/index_bg.f03f474511f486de4c36302cb415008a.wasm",
+      "bytes": 4244884,
+      "gzipBytes": 1136449
+    },
+    "readingDb": {
+      "path": "app/dist/assets/_assets/data/reading-sample.f875f829555c11254b76df84bf4861e8.sqlite",
+      "bytes": 14409728,
+      "gzipBytes": 5200087
+    },
+    "waSqliteFts5": {
+      "path": "app/dist/assets/web/vendor/wa-sqlite-fts5/wa-sqlite.6a09cc3e685430e6e8cec82e0e4132fb.wasm",
+      "bytes": 666267,
+      "gzipBytes": 327579
+    },
+    "waSqliteNpm": {
+      "path": "app/dist/assets/node_modules/wa-sqlite/dist/wa-sqlite.929521d6e107108ed41c2a731fad8bab.wasm",
+      "bytes": 558343,
+      "gzipBytes": 272993
+    },
+    "sampleDb": {
+      "path": "app/dist/assets/_assets/data/sample.dd7cb891bf33389b6f8db677858f4b0a.sqlite",
+      "bytes": 131072,
+      "gzipBytes": 4226
+    }
+  },
+  "totals": {
+    "bytes": 21603577,
+    "gzipBytes": 7366532,
+    "fileCount": 32
+  }
+}

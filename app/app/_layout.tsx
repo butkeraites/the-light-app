@@ -1,18 +1,27 @@
-// app/app/_layout.tsx — F1.3 · tema F1.4 (ADR-0015) · i18n F5.2 (ADR-0038)
+// app/app/_layout.tsx — F1.3 · tema F1.4 (ADR-0015) · i18n F5.2 (ADR-0038) · perf F5.3
 //
 // Raiz do expo-router. Envolve a navegação no `I18nProvider` (idioma da UI PT/EN,
 // persistido offline) e no `ThemeProvider` (tema claro/escuro respeitando
 // `useColorScheme` + override por sessão). O header de TODAS as telas ganha os dois
 // toggles (idioma + tema) e cores dos tokens de tema. A HOME (`index`) passa a ser
 // temática e a hospedar o toggle de idioma que re-renderiza suas strings via `t()`.
+//
+// F5.3 (perf web): o shell do app NÃO bloqueia mais o 1º paint no wasm da fronteira
+// (~4 MB). Antes, `_layout.tsx` gateava TODA a renderização em `useWasmReady()` — a
+// stack só aparecia depois do fetch+instanciação do wasm. Agora a stack pinta na
+// hora e o wasm apenas AQUECE em segundo plano (`ensureWasmReady()`, não-bloqueante).
+// As telas de leitura que chamam `listBooks()` (síncrono, exige wasm) se gateiam com
+// `<WasmGate>` (spinner por-rota até o wasm ficar pronto). No nativo nada disso pesa:
+// `ensureWasmReady()` é no-op e `useWasmReady()` é sempre `true`.
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 
 import { LanguageToggleButton } from '../components/LanguageToggleButton';
 import { ThemeToggleButton } from '../components/ThemeToggleButton';
 import { I18nProvider } from '../lib/i18n';
 import { ThemeProvider, useTheme } from '../lib/theme';
-import { useWasmReady } from '../web/wasm';
+import { ensureWasmReady } from '../web/wasm';
 
 export default function RootLayout() {
   // I18nProvider por FORA do ThemeProvider: idioma e tema são camadas de UI
@@ -39,18 +48,14 @@ function HeaderControls() {
 
 function RootNavigator() {
   const { colors } = useTheme();
-  // F1.13: no WEB, `listBooks()` (cânon de 66) vem do wasm e é síncrono — pré-
-  // aquecemos o wasm antes de renderizar a stack para que as telas de leitura o
-  // chamem sem erro. No NATIVO `useWasmReady()` é sempre `true` (no-op, sem
-  // regressão): o cânon vem do JSI e a stack renderiza de imediato.
-  const wasmReady = useWasmReady();
-  if (!wasmReady) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
-        <ActivityIndicator color={colors.text} />
-      </View>
-    );
-  }
+  // F5.3: AQUECE o wasm da fronteira em SEGUNDO PLANO (não-bloqueante). A stack pinta
+  // de imediato; as telas de leitura que chamam `listBooks()` (síncrono, exige wasm)
+  // se gateiam com `<WasmGate>`. No NATIVO `ensureWasmReady()` é no-op (o cânon vem do
+  // JSI) — este efeito resolve na hora, sem custo. Init idempotente (memoizado em
+  // `wasm.web.ts`), então o warm dispara UMA vez mesmo sob hot-reload.
+  useEffect(() => {
+    void ensureWasmReady();
+  }, []);
   // Opções comuns a todas as telas: header e fundo seguindo os tokens de tema, com os
   // toggles (idioma + tema) visíveis no header.
   const screenChrome = {

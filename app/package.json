@@ -23,7 +23,8 @@
     "test:web:session": "node web/__tests__/askSession.web.test.mjs",
     "test:web:research": "node web/__tests__/research.web.test.mjs",
     "test:web:research-tavily": "node web/__tests__/research-tavily.web.test.mjs",
-    "test:web:compare": "node web/__tests__/compare.web.test.mjs"
+    "test:web:compare": "node web/__tests__/compare.web.test.mjs",
+    "test:web:firstpaint": "node web/__tests__/firstpaint.web.test.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~56.0.15",
@@ -48,6 +49,7 @@
   "devDependencies": {
     "@types/react": "^19.2.17",
     "esbuild": "^0.25.12",
+    "react-test-renderer": "19.2.3",
     "typescript": "^6.0.3"
   }
 }

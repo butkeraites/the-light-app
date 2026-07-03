@@ -15,6 +15,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 
 import { ReaderChapterView } from '../../../components/ReaderChapterView';
 import { ReaderParallelView } from '../../../components/ReaderParallelView';
+import { WasmGate } from '../../../components/WasmGate';
 import { ReaderVersionPicker } from '../../../components/ReaderVersionPicker';
 import { ReaderVersePanel } from '../../../components/ReaderVersePanel';
 import { ReaderAskPanel } from '../../../components/ReaderAskPanel';
@@ -50,6 +51,18 @@ function bookNameEn(book: number): string {
 }
 
 export default function ChapterScreen() {
+  // F5.3: esta tela chama `listBooks()` (síncrono, exige o wasm da fronteira) tanto no
+  // RENDER (via `bookNamePt`/`bookNameEn`) quanto em efeito. Como o 1º paint não bloqueia
+  // mais no wasm (`_layout.tsx`), ela se auto-gateia: o conteúdo só monta com o wasm
+  // pronto. No nativo o gate é transparente (pronto de imediato).
+  return (
+    <WasmGate>
+      <ChapterContent />
+    </WasmGate>
+  );
+}
+
+function ChapterContent() {
   const navigation = useNavigation();
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
