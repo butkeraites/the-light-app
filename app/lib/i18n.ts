@@ -249,6 +249,17 @@ export type MessageKey =
   | 'versePanel.chatButton'
   | 'versePanel.compareLabel'
   | 'versePanel.compareButton'
+  // ─── CROMO dos NOMES das cores de destaque (F5.28) ───────────────────────────────────
+  // Nomes de EXIBIÇÃO das 4 cores da paleta de marcação (`highlightColors.ts`). São CROMO
+  // puro (não texto bíblico): antes ficavam hardcoded em PT (`label: 'Amarelo'`) e vazavam
+  // para o `accessibilityLabel` do swatch — um leitor de tela em EN anunciava "Highlight
+  // with Amarelo". Agora o swatch resolve o nome via `t(`highlight.${cor.name}`)`, então EN
+  // lê "Highlight with Yellow" e PT "Marcar com Amarelo". A chave `name` (yellow/green/…) é
+  // dado do usuário/persistência; só o rótulo humano passa por `t()`.
+  | 'highlight.yellow'
+  | 'highlight.green'
+  | 'highlight.blue'
+  | 'highlight.pink'
   // ─── CROMO da SINCRONIZAÇÃO OPT-IN + backup (F5.26, ADR-0054/0036) ───────────────────
   // OFFLINE-FIRST explícito: a tela DIZ que o app funciona 100% offline sem sync (OFF por
   // padrão). Aviso de PRIVACIDADE: o que sincroniza (notas + marcações + progresso de plano)
@@ -472,6 +483,10 @@ const pt: Record<MessageKey, string> = {
   'versePanel.chatButton': 'Conversa (IA)',
   'versePanel.compareLabel': 'Comparar respostas de várias IAs sobre esta passagem',
   'versePanel.compareButton': 'Comparar (IA)',
+  'highlight.yellow': 'Amarelo',
+  'highlight.green': 'Verde',
+  'highlight.blue': 'Azul',
+  'highlight.pink': 'Rosa',
   // ─── Sincronização opt-in + backup (F5.26) — só CROMO (ver nota na união de chaves) ───
   'home.syncBackup': 'Sincronização e backup →',
   'sync.title': 'Sincronização e backup',
@@ -695,6 +710,10 @@ const en: Record<MessageKey, string> = {
   'versePanel.chatButton': 'Chat (AI)',
   'versePanel.compareLabel': 'Compare answers from multiple AIs about this passage',
   'versePanel.compareButton': 'Compare (AI)',
+  'highlight.yellow': 'Yellow',
+  'highlight.green': 'Green',
+  'highlight.blue': 'Blue',
+  'highlight.pink': 'Pink',
   // ─── Opt-in sync + backup (F5.26) — CHROME only (see note on the key union) ───────────
   'home.syncBackup': 'Sync & backup →',
   'sync.title': 'Sync & backup',

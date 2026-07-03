@@ -10,11 +10,16 @@
 // highlights de usuário. Aqui só guardamos a paleta de apresentação; a fonte da
 // verdade do dado é a fronteira `userdata` (o nome da cor é persistido pelo core).
 
+/** Nomes canônicos das 4 cores da paleta (persistidos como `Highlight.color`). */
+export type HighlightColorName = 'yellow' | 'green' | 'blue' | 'pink';
+
 export type HighlightColor = {
-  /** Nome livre persistido como `Highlight.color` (ex.: `"yellow"`). */
-  name: string;
-  /** Rótulo amigável p/ a UI. */
-  label: string;
+  /**
+   * Nome canônico persistido como `Highlight.color` (ex.: `"yellow"`). É o dado do
+   * usuário e a CHAVE de i18n do rótulo de a11y (`t(`highlight.${name}`)`) — o nome de
+   * EXIBIÇÃO (Amarelo/Yellow) vem do catálogo `i18n.ts`, nunca hardcoded aqui.
+   */
+  name: HighlightColorName;
   /** Cor de fundo no tema claro. */
   light: string;
   /** Cor de fundo no tema escuro. */
@@ -23,10 +28,10 @@ export type HighlightColor = {
 
 /** Pequena paleta nomeada (4 cores) oferecida na UI de marcação. */
 export const HIGHLIGHT_COLORS: HighlightColor[] = [
-  { name: 'yellow', label: 'Amarelo', light: '#fff1a8', dark: '#5c4d00' },
-  { name: 'green', label: 'Verde', light: '#bdf0c0', dark: '#1f4d22' },
-  { name: 'blue', label: 'Azul', light: '#bcdcff', dark: '#1d3a5c' },
-  { name: 'pink', label: 'Rosa', light: '#ffc9de', dark: '#5c2438' },
+  { name: 'yellow', light: '#fff1a8', dark: '#5c4d00' },
+  { name: 'green', light: '#bdf0c0', dark: '#1f4d22' },
+  { name: 'blue', light: '#bcdcff', dark: '#1d3a5c' },
+  { name: 'pink', light: '#ffc9de', dark: '#5c2438' },
 ];
 
 /**

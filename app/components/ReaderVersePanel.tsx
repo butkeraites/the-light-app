@@ -288,7 +288,9 @@ export function ReaderVersePanel({
                   testID={`highlight-${c.name}`}
                   hitSlop={{ top: 8, bottom: 8, left: 5, right: 5 }}
                   accessibilityRole="button"
-                  accessibilityLabel={t('versePanel.highlightWith', { color: c.label })}
+                  accessibilityLabel={t('versePanel.highlightWith', {
+                    color: t(`highlight.${c.name}`),
+                  })}
                   accessibilityState={{ selected: active }}
                 >
                   {active ? <Text style={styles.swatchCheck}>✓</Text> : null}

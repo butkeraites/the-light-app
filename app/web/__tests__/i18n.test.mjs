@@ -322,6 +322,30 @@ async function main() {
     translate('en', 'versePanel.highlightWith', { color: 'Amarelo' }),
     'versePanel.highlightWith DIFERE entre pt e en (com o mesmo {color})',
   );
+  // ── F5.28: nomes de EXIBIÇÃO das cores de destaque via t() (não mais hardcoded em PT) ──
+  // Antes, o `label` PT ('Amarelo') era a fonte do a11y do swatch → EN anunciava "Highlight
+  // with Amarelo". Agora o swatch resolve o nome via `t(`highlight.${name}`)`, então cada
+  // idioma traduz o nome da cor. `name` (yellow/green/…) é dado do usuário; só o rótulo passa.
+  assert.equal(translate('pt', 'highlight.yellow'), 'Amarelo', 'pt highlight.yellow');
+  assert.equal(translate('en', 'highlight.yellow'), 'Yellow', 'en highlight.yellow');
+  assert.equal(translate('pt', 'highlight.green'), 'Verde', 'pt highlight.green');
+  assert.equal(translate('en', 'highlight.green'), 'Green', 'en highlight.green');
+  assert.equal(translate('pt', 'highlight.blue'), 'Azul', 'pt highlight.blue');
+  assert.equal(translate('en', 'highlight.blue'), 'Blue', 'en highlight.blue');
+  assert.equal(translate('pt', 'highlight.pink'), 'Rosa', 'pt highlight.pink');
+  assert.equal(translate('en', 'highlight.pink'), 'Pink', 'en highlight.pink');
+  // COMPOSIÇÃO REAL do a11y do swatch (como ReaderVersePanel monta): o nome da cor entra
+  // como {color} já traduzido → EN diz "Highlight with Yellow", PT "Marcar com Amarelo".
+  assert.equal(
+    translate('en', 'versePanel.highlightWith', { color: translate('en', 'highlight.yellow') }),
+    'Highlight with Yellow',
+    'en: leitor de tela anuncia "Highlight with Yellow" (não "Amarelo")',
+  );
+  assert.equal(
+    translate('pt', 'versePanel.highlightWith', { color: translate('pt', 'highlight.yellow') }),
+    'Marcar com Amarelo',
+    'pt: segue "Marcar com Amarelo"',
+  );
 
   // Sem params, o placeholder de interpolação fica intacto (não quebra).
   assert.ok(
@@ -396,6 +420,9 @@ async function main() {
     'common',
     'versePanel',
     'xref',
+    // F5.28: nomes de EXIBIÇÃO das cores da paleta de marcação (highlight.yellow/green/…).
+    // CROMO puro (Amarelo/Yellow …) — não texto bíblico; a `name` (yellow) é dado do usuário.
+    'highlight',
     // F5.26 (ADR-0054): cromo da sincronização opt-in + backup (privacidade / offline-first).
     'sync',
   ]);
