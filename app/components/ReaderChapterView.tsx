@@ -7,6 +7,7 @@
 import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text } from 'react-native';
 
+import { useI18n } from '../lib/i18n';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import type { Passage } from '../web/reading';
 
@@ -44,12 +45,16 @@ export function ReaderChapterView({
   notedVerses?: Set<number>;
 }) {
   const { colors } = useTheme();
+  // F5.8: só o CROMO (estado-vazio + hint do gesto no versículo) passa por `t()`. O TEXTO do
+  // versículo é VERBATIM do store — permanece como conteúdo do <Text> (rótulo lido pelo
+  // leitor de tela), nunca substituído por `t()`. O hint só descreve a AÇÃO (abrir opções).
+  const { t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   if (passage.verses.length === 0) {
     return (
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.empty}>Capítulo não encontrado no banco de leitura.</Text>
+        <Text style={styles.empty}>{t('read.chapterNotFound')}</Text>
       </ScrollView>
     );
   }
@@ -74,6 +79,7 @@ export function ReaderChapterView({
             testID={n != null ? `verse-${n}` : undefined}
             onPress={selectable ? () => onVersePress!(n!) : undefined}
             accessibilityRole={selectable ? 'button' : undefined}
+            accessibilityHint={selectable ? t('a11y.verseOptions') : undefined}
           >
             {n != null ? <Text style={styles.verseNumber}>{n} </Text> : null}
             {isNoted ? <Text style={styles.noteMark}>✎ </Text> : null}

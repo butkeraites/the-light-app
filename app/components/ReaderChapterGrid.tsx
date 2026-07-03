@@ -7,6 +7,7 @@
 import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { useI18n } from '../lib/i18n';
 import { useTheme, type ThemeColors } from '../lib/theme';
 
 export function ReaderChapterGrid({
@@ -17,14 +18,15 @@ export function ReaderChapterGrid({
   onSelect: (chapter: number) => void;
 }) {
   const { colors } = useTheme();
+  // F5.8: cromo do estado-vazio + rótulo de acessibilidade da célula. O NÚMERO do capítulo
+  // é DADO; só o cromo ("Nenhum capítulo…"/"Abrir o capítulo N") passa por `t()`.
+  const { t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   if (count <= 0) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyText}>
-          Nenhum capítulo disponível nesta versão do banco de leitura.
-        </Text>
+        <Text style={styles.emptyText}>{t('read.emptyChapters')}</Text>
       </View>
     );
   }
@@ -37,6 +39,8 @@ export function ReaderChapterGrid({
           style={styles.cell}
           onPress={() => onSelect(c)}
           testID={`chapter-${c}`}
+          accessibilityRole="button"
+          accessibilityLabel={t('a11y.openChapter', { chapter: c })}
         >
           <Text style={styles.cellText}>{c}</Text>
         </Pressable>

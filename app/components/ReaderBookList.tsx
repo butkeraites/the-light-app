@@ -6,6 +6,7 @@
 import { useMemo } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useI18n } from '../lib/i18n';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import type { Book } from '../web/reading';
 
@@ -17,6 +18,10 @@ export function ReaderBookList({
   onSelect: (book: Book) => void;
 }) {
   const { colors } = useTheme();
+  // F5.8: `locale` só ESCOLHE o campo do nome do livro (namePt/nameEn) para o rótulo de
+  // acessibilidade — o nome vem do STORE, NUNCA de `t()` (anti-alucinação). A linha exibe
+  // ambos os nomes; o `t('a11y.openBook')` é apenas o CROMO do rótulo do gesto.
+  const { locale, t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   return (
@@ -30,6 +35,10 @@ export function ReaderBookList({
           style={styles.row}
           onPress={() => onSelect(item)}
           testID={`book-${item.number}`}
+          accessibilityRole="button"
+          accessibilityLabel={t('a11y.openBook', {
+            name: locale === 'en' ? item.nameEn : item.namePt,
+          })}
         >
           <Text style={styles.number}>{item.number}</Text>
           <View style={styles.names}>

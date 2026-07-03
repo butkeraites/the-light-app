@@ -13,7 +13,7 @@
 //   4) DETECÇÃO/FALLBACK offline: `normalizeLocale` 'pt-BR'→'pt','en-US'→'en',
 //      desconhecido/vazio→'pt'; `detectDeviceLocale()` devolve um Locale válido (sem rede);
 //   5) ANTI-ALUCINAÇÃO (estrutural): TODA chave de mensagem é CROMO de UI (namespaces
-//      home/ref/a11y/language) — nenhuma chave de "versículo"/"tradução bíblica";
+//      home/search/nav/read/plans/ref/a11y/language/theme) — nenhuma de "versículo"/"tradução";
 //   6) HIGIENE: `i18n.ts`/`prefs.ts`/`prefs.web.ts` não contêm `console.*` (prefs nunca loga).
 //
 // Sai 0 se tudo bater; ≠0 caso contrário.
@@ -166,6 +166,53 @@ async function main() {
     'Book 5',
     'en read.bookFallback interpola {number}',
   );
+  // ── F5.8: PROVA de que o CROMO da BUSCA + navegação troca de idioma ──────────────────
+  // Placeholder da busca DIVERGE PT≠EN → alternar idioma re-renderiza o cromo da busca.
+  assert.equal(
+    translate('pt', 'search.inputPlaceholder'),
+    'Buscar na Bíblia (ex.: God, amor, light)',
+    'pt search.inputPlaceholder',
+  );
+  assert.equal(
+    translate('en', 'search.inputPlaceholder'),
+    'Search the Bible (e.g., God, love, light)',
+    'en search.inputPlaceholder',
+  );
+  assert.notEqual(
+    translate('pt', 'search.inputPlaceholder'),
+    translate('en', 'search.inputPlaceholder'),
+    'search.inputPlaceholder DIFERE entre pt e en (cromo da busca é reativo ao idioma)',
+  );
+  // `search.noResults` interpola o TERMO do usuário (dado dele) — traduzido é só o cromo à
+  // volta; o `{term}` entra VERBATIM (aqui provamos com um termo arbitrário).
+  assert.equal(
+    translate('pt', 'search.noResults', { term: 'graça' }),
+    'Nenhum resultado para “graça”.',
+    'pt search.noResults interpola o {term} do usuário',
+  );
+  assert.equal(
+    translate('en', 'search.noResults', { term: 'grace' }),
+    'No results for “grace”.',
+    'en search.noResults interpola o {term} do usuário',
+  );
+  // A11Y de navegação: rótulo de gesto com o NOME do livro (vem do store; aqui só provamos a
+  // interpolação do cromo) e do CAPÍTULO (número, dado) — DIVERGEM PT≠EN.
+  assert.equal(
+    translate('pt', 'a11y.openBook', { name: 'Gênesis' }),
+    'Abrir o livro Gênesis',
+    'pt a11y.openBook interpola {name} (nome do livro vem do store)',
+  );
+  assert.equal(
+    translate('en', 'a11y.openBook', { name: 'Genesis' }),
+    'Open the Genesis book',
+    'en a11y.openBook interpola {name} (nome do livro vem do store)',
+  );
+  assert.notEqual(
+    translate('pt', 'a11y.openChapter', { chapter: 3 }),
+    translate('en', 'a11y.openChapter', { chapter: 3 }),
+    'a11y.openChapter DIFERE entre pt e en (rótulo de navegação reativo)',
+  );
+
   // Sem params, o placeholder de interpolação fica intacto (não quebra).
   assert.ok(
     translate('pt', 'home.resolveError').includes('{message}'),
@@ -211,11 +258,13 @@ async function main() {
   // ══ (5) ANTI-ALUCINAÇÃO estrutural: TODA chave é CROMO de UI (nenhum "versículo") ══════
   // F5.5 estendeu o cromo ao fluxo de leitura: `nav.*` (títulos de header do expo-router),
   // `read.*` (rótulos das telas read/*) e `theme.*` (a11y do toggle de tema). F5.7 acrescenta
-  // `plans.*` (cromo da tela de planos: títulos, botões, contadores, estados). Nenhuma delas
-  // é texto bíblico/versão — os NOMES de livro/plano e os rótulos de dia vêm do store/core,
-  // nunca de `t()`.
+  // `plans.*` (cromo da tela de planos: títulos, botões, contadores, estados). F5.8 acrescenta
+  // `search.*` (cromo da BUSCA: placeholder, dicas, sem-resultado) — o TEXTO/refs de RESULTADO
+  // vêm VERBATIM do store, nunca de `t()`; o `{term}` é o dado digitado pelo usuário. Nenhuma
+  // dessas é texto bíblico/versão — nomes de livro/plano e rótulos de dia vêm do store/core.
   const CHROME_NAMESPACES = new Set([
     'home',
+    'search',
     'nav',
     'read',
     'plans',
@@ -248,9 +297,10 @@ async function main() {
   console.log(`  paridade de catálogo pt↔en: ${MESSAGE_KEYS.length} chaves, mesmos conjuntos (sem órfã)`);
   console.log('  translate(): PT/EN corretos; home.readBible DIVERGE (troca observável); interpola {message}');
   console.log('  fluxo de leitura (F5.5): nav.read/read.parallel DIVERGEM PT≠EN; read.bookFallback interpola {number}');
+  console.log('  busca + navegação (F5.8): search.inputPlaceholder/a11y.openChapter DIVERGEM PT≠EN; search.noResults/a11y.openBook interpolam {term}/{name} (dados do store/usuário)');
   console.log('  persistência: setPref→getPref; SOBREVIVE a nova instância (reabrir); removePref volta ao default');
   console.log("  detecção offline: 'pt-BR'→pt, 'en-US'→en, desconhecido/''→pt; detectDeviceLocale() válido");
-  console.log(`  anti-alucinação: todas as ${MESSAGE_KEYS.length} chaves são CROMO (home/nav/read/plans/ref/a11y/language/theme); nenhuma de versículo`);
+  console.log(`  anti-alucinação: todas as ${MESSAGE_KEYS.length} chaves são CROMO (home/search/nav/read/plans/ref/a11y/language/theme); nenhuma de versículo`);
   console.log('  higiene: i18n.ts / prefs.ts / prefs.web.ts sem console.* (prefs nunca loga)');
 }
 

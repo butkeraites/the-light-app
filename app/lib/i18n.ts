@@ -55,6 +55,12 @@ export type MessageKey =
   | 'home.readingPlans'
   | 'home.resolveError'
   | 'home.verseNotFound'
+  // CROMO da tela de BUSCA (F5.8). O texto/refs de RESULTADO vêm SEMPRE do store (verbatim,
+  // via `search`), NUNCA de `t()` (anti-alucinação); o `{term}` de `search.noResults` é o
+  // TERMO digitado pelo usuário (dado dele), só INTERPOLADO no cromo — não traduzido.
+  | 'search.inputPlaceholder'
+  | 'search.hintEmpty'
+  | 'search.noResults'
   // Títulos de header do expo-router (fluxo de leitura + busca + planos). "The Light"
   // é a MARCA — idêntica nos dois idiomas de propósito.
   | 'nav.home'
@@ -88,6 +94,10 @@ export type MessageKey =
   // (namePt/nameEn), NUNCA de `t()` (anti-alucinação).
   | 'read.parallel'
   | 'read.bookFallback'
+  // Estados-VAZIO das telas/componentes de navegação (F5.8) — CROMO puro (sem texto
+  // bíblico): grade de capítulos sem itens e capítulo ausente do banco de leitura.
+  | 'read.emptyChapters'
+  | 'read.chapterNotFound'
   | 'ref.book'
   | 'ref.chapter'
   | 'ref.verseSingle'
@@ -95,6 +105,13 @@ export type MessageKey =
   | 'ref.wholeChapter'
   | 'a11y.searchInput'
   | 'a11y.result'
+  // A11Y da BUSCA + navegação de leitura (F5.8). `{name}` (livro) vem do STORE
+  // (namePt/nameEn; `locale` só ESCOLHE o campo), `{chapter}` é DADO — nada aqui é texto
+  // bíblico. `a11y.verseOptions` é HINT do gesto no versículo (não substitui o texto lido).
+  | 'a11y.searchTextInput'
+  | 'a11y.openBook'
+  | 'a11y.openChapter'
+  | 'a11y.verseOptions'
   | 'language.switchToOther'
   // Rótulos de acessibilidade do toggle de TEMA (mostra o modo-ALVO).
   | 'theme.switchToLight'
@@ -112,6 +129,9 @@ const pt: Record<MessageKey, string> = {
   'home.readingPlans': 'Planos de leitura →',
   'home.resolveError': 'Não foi possível resolver: {message}',
   'home.verseNotFound': 'Versículo não encontrado no store local.',
+  'search.inputPlaceholder': 'Buscar na Bíblia (ex.: God, amor, light)',
+  'search.hintEmpty': 'Digite um termo para buscar no texto bíblico.',
+  'search.noResults': 'Nenhum resultado para “{term}”.',
   'nav.home': 'The Light',
   'nav.read': 'Ler a Bíblia',
   'nav.chapters': 'Capítulos',
@@ -133,6 +153,8 @@ const pt: Record<MessageKey, string> = {
   'plans.webUnavailable': 'Os planos de leitura estão disponíveis no app nativo (paridade web = F5.10).',
   'read.parallel': 'Lado a lado',
   'read.bookFallback': 'Livro {number}',
+  'read.emptyChapters': 'Nenhum capítulo disponível nesta versão do banco de leitura.',
+  'read.chapterNotFound': 'Capítulo não encontrado no banco de leitura.',
   'ref.book': 'livro',
   'ref.chapter': 'cap.',
   'ref.verseSingle': 'v.',
@@ -140,6 +162,10 @@ const pt: Record<MessageKey, string> = {
   'ref.wholeChapter': 'capítulo inteiro',
   'a11y.searchInput': 'Campo de busca de passagem bíblica',
   'a11y.result': 'Resultado da interpretação',
+  'a11y.searchTextInput': 'Campo de busca no texto bíblico',
+  'a11y.openBook': 'Abrir o livro {name}',
+  'a11y.openChapter': 'Abrir o capítulo {chapter}',
+  'a11y.verseOptions': 'Abrir opções do versículo',
   'a11y.startPlan': 'Começar o plano {name}',
   'a11y.openDay': 'Abrir a leitura do dia {day}: {label}',
   'a11y.markDone': 'Marcar o dia de hoje como lido',
@@ -160,6 +186,9 @@ const en: Record<MessageKey, string> = {
   'home.readingPlans': 'Reading plans →',
   'home.resolveError': 'Could not resolve: {message}',
   'home.verseNotFound': 'Verse not found in the local store.',
+  'search.inputPlaceholder': 'Search the Bible (e.g., God, love, light)',
+  'search.hintEmpty': 'Type a term to search the biblical text.',
+  'search.noResults': 'No results for “{term}”.',
   'nav.home': 'The Light',
   'nav.read': 'Read the Bible',
   'nav.chapters': 'Chapters',
@@ -181,6 +210,8 @@ const en: Record<MessageKey, string> = {
   'plans.webUnavailable': 'Reading plans are available in the native app (web parity = F5.10).',
   'read.parallel': 'Side by side',
   'read.bookFallback': 'Book {number}',
+  'read.emptyChapters': 'No chapters available in this version of the reading database.',
+  'read.chapterNotFound': 'Chapter not found in the reading database.',
   'ref.book': 'book',
   'ref.chapter': 'ch.',
   'ref.verseSingle': 'v.',
@@ -188,6 +219,10 @@ const en: Record<MessageKey, string> = {
   'ref.wholeChapter': 'whole chapter',
   'a11y.searchInput': 'Bible passage search field',
   'a11y.result': 'Interpretation result',
+  'a11y.searchTextInput': 'Biblical text search field',
+  'a11y.openBook': 'Open the {name} book',
+  'a11y.openChapter': 'Open chapter {chapter}',
+  'a11y.verseOptions': 'Open verse options',
   'a11y.startPlan': 'Start the {name} plan',
   'a11y.openDay': 'Open the reading for day {day}: {label}',
   'a11y.markDone': "Mark today's day as read",

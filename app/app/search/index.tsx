@@ -18,6 +18,7 @@ import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, View } from '
 import { ReaderSearchResultItem } from '../../components/ReaderSearchResultItem';
 import { WasmGate } from '../../components/WasmGate';
 import { ensureReadingDb } from '../../lib/db';
+import { useI18n } from '../../lib/i18n';
 import { useTheme, type ThemeColors } from '../../lib/theme';
 import { listBooks, search, type Book, type SearchHit } from '../../web/reading';
 
@@ -51,6 +52,10 @@ export default function SearchScreen() {
 
 function SearchContent() {
   const { colors } = useTheme();
+  // F5.8: `locale` da UI traduz o CROMO da busca e ESCOLHE o campo de nome do livro no
+  // STORE (namePt/nameEn) p/ a referência do item — NUNCA traduz o texto/ref de resultado
+  // (que vem VERBATIM da fronteira `search`). O TERMO digitado também é dado do usuário.
+  const { locale, t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [query, setQuery] = useState('');
@@ -64,13 +69,15 @@ function SearchContent() {
     try {
       setBooks(listBooks());
     } catch {
-      // Sem cânon → o item cai no rótulo "Book N"; não bloqueia a busca.
+      // Sem cânon → o item cai no rótulo de fallback (CROMO `read.bookFallback`); não bloqueia a busca.
     }
   }, []);
+  // Nome do livro p/ a referência do item: vem SEMPRE do STORE (namePt/nameEn) — o `locale`
+  // só ESCOLHE o campo, nunca traduz. O fallback (livro ausente do cânon) é CROMO (`t()`).
   const bookNameOf = useMemo(() => {
-    const map = new Map(books.map((b) => [b.number, b.nameEn]));
-    return (n: number) => map.get(n) ?? `Book ${n}`;
-  }, [books]);
+    const map = new Map(books.map((b) => [b.number, locale === 'en' ? b.nameEn : b.namePt]));
+    return (n: number) => map.get(n) ?? t('read.bookFallback', { number: n });
+  }, [books, locale, t]);
 
   // Busca com DEBOUNCE: dispara só quando o termo fica estável por DEBOUNCE_MS.
   // `seq` evita corridas (descarta respostas de buscas obsoletas).
@@ -127,12 +134,13 @@ function SearchContent() {
         style={styles.input}
         value={query}
         onChangeText={setQuery}
-        placeholder="Buscar na Bíblia (ex.: God, amor, light)"
+        placeholder={t('search.inputPlaceholder')}
         placeholderTextColor={colors.muted}
         autoCapitalize="none"
         autoCorrect={false}
         returnKeyType="search"
         testID="search-input"
+        accessibilityLabel={t('a11y.searchTextInput')}
       />
 
       {error ? (
@@ -145,11 +153,12 @@ function SearchContent() {
         </View>
       ) : term.length === 0 ? (
         <View style={styles.centered}>
-          <Text style={styles.hint}>Digite um termo para buscar no texto bíblico.</Text>
+          <Text style={styles.hint}>{t('search.hintEmpty')}</Text>
         </View>
       ) : results.length === 0 ? (
         <View style={styles.centered}>
-          <Text style={styles.hint}>Nenhum resultado para “{term}”.</Text>
+          {/* `{term}` é o TERMO do usuário (dado dele), só interpolado no cromo — não traduzido. */}
+          <Text style={styles.hint}>{t('search.noResults', { term })}</Text>
         </View>
       ) : (
         <FlatList
