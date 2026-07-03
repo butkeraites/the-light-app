@@ -1,30 +1,32 @@
 {
   "metric": "web-bundle-baseline",
   "task": "F5.3",
-  "description": "Orçamento (budget) repetível do bundle web do The Light App: bytes crus + gzip(-9) por asset-chave, JS \"eager\" do 1º paint, e total do dist/. Métrica de recorde para as tarefas de performance web seguintes (F5.6/F5.9/F5.19). Regenerar com scripts/measure-web-bundle.sh. Offline: todos os assets são locais (sem rede).",
+  "description": "Orçamento (budget) do bundle web do The Light App. HONESTO sobre determinismo: os assets content-addressed (wasm da fronteira, DBs, engines wa-sqlite, sample) são BYTE-ESTÁVEIS e gravados EXATOS; o entry-JS \"eager\" NÃO é byte-determinístico (Metro renumera os módulos em ordem de grafo não-determinística — flutter ~122 B raw / ~1,7 KB gzip entre runs) e é gravado como moduleCount EXATO + bytes/gzip NOMINAL ± TOLERÂNCIA, re-verificados a cada run. Assim este JSON é reprodutível (idêntico byte-a-byte a cada `scripts/measure-web-bundle.sh`) sem inchar o bundle enviado. Métrica de recorde para F5.6/F5.9/F5.19. Offline: assets locais (sem rede).",
   "generatedBy": "scripts/measure-web-bundle.sh",
   "distDir": "app/dist",
-  "fileCount": 32,
-  "entryJsBytes": 1435971,
+  "determinism": {
+    "stableAssets": "byte-exact (content-addressed)",
+    "entryJs": "NÃO byte-determinístico (Metro module-id em ordem de grafo async) — moduleCount exato + bytes/gzip nominal±tolerância, re-verificados"
+  },
   "frontierWasmBytes": 4244884,
   "readingDbBytes": 14409728,
   "waSqliteFts5Bytes": 666267,
   "waSqliteNpmBytes": 558343,
   "sampleDbBytes": 131072,
-  "totalBytes": 21603577,
-  "assets": {
-    "entryJs": {
-      "bytes": 1435971,
-      "gzipBytes": 370192,
-      "fileCount": 1,
-      "files": [
-        {
-          "path": "app/dist/_expo/static/js/web/entry-73dfaa2731c416bdb353fa9a06a889d3.js",
-          "bytes": 1435971,
-          "gzipBytes": 370192
-        }
-      ]
+  "entryJs": {
+    "note": "Entry-JS \"eager\" carregado no 1º paint. moduleCount (nº de `__d(`) é EXATO e independe da ordem — a grandeza de budget do JS (code-split futuro a reduz de forma medível). eagerBytes/eagerGzipBytes são NOMINAL ± TOLERÂNCIA (Metro não é byte-determinístico); o script mede o valor vivo e falha se sair da faixa.",
+    "glob": "_expo/static/js/web/entry-*.js",
+    "moduleCount": 854,
+    "eagerBytes": {
+      "nominal": 1435910,
+      "tolerance": 1024
     },
+    "eagerGzipBytes": {
+      "nominal": 371023,
+      "tolerance": 2048
+    }
+  },
+  "assets": {
     "frontierWasm": {
       "path": "app/dist/assets/web/generated/wasm-bindgen/index_bg.f03f474511f486de4c36302cb415008a.wasm",
       "bytes": 4244884,
@@ -52,8 +54,9 @@
     }
   },
   "totals": {
-    "bytes": 21603577,
-    "gzipBytes": 7366532,
-    "fileCount": 32
+    "stableAssetsBytes": 20010294,
+    "stableAssetsGzipBytes": 6941334,
+    "nominalTotalBytes": 21446204,
+    "nominalTotalGzipBytes": 7312357
   }
 }
