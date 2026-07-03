@@ -29,6 +29,7 @@ import {
   Platform,
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from 'react-native';
@@ -37,6 +38,12 @@ import { WasmGate } from '../../components/WasmGate';
 import { ensureUserDataDir } from '../../lib/userdata';
 import { useI18n, type TranslateFn } from '../../lib/i18n';
 import { useTheme, type ThemeColors } from '../../lib/theme';
+import {
+  disableReminder,
+  enableReminder,
+  getReminder,
+  type ReminderPref,
+} from '../../lib/planReminders';
 import {
   clearReadingPlan,
   listReadingPlans,
@@ -48,6 +55,10 @@ import {
   type ReadingPlanProgress,
   type ReadingPlanSummary,
 } from '../../web/reading';
+
+// Horários-preset do lembrete diário (24h, calendário LOCAL do device). Sem date-picker
+// nativo (evita dep nova); o usuário escolhe entre presets — 100% offline/opt-in.
+const REMINDER_TIME_PRESETS = ['06:00', '07:00', '08:00', '12:00', '18:00', '21:00'] as const;
 
 /**
  * Data de HOJE em ISO `YYYY-MM-DD` no fuso LOCAL. Os planos são locais/offline; usamos
@@ -180,13 +191,16 @@ function PlansContent() {
     [dataDir, busy, progress],
   );
 
-  // Encerra/troca o plano (remove o progresso ativo) → volta à lista.
+  // Encerra/troca o plano (remove o progresso ativo) → volta à lista. Cancela também o
+  // lembrete LOCAL do plano (F5.13): sem plano ativo, não faz sentido notificar. Tolerante
+  // (offline-first: falha ao cancelar não impede encerrar o plano).
   const clearPlan = useCallback(async () => {
     if (!dataDir || busy) {
       return;
     }
     setBusy(true);
     try {
+      await disableReminder().catch(() => undefined);
       await clearReadingPlan(dataDir);
       setProgress(null);
       setError(null);
@@ -418,6 +432,8 @@ function ActivePlanView(props: {
         }}
       />
 
+      <ReminderControls planName={planName} styles={styles} colors={colors} t={t} />
+
       <View style={styles.actions}>
         {!allDone ? (
           <Pressable
@@ -446,6 +462,169 @@ function ActivePlanView(props: {
           <Text style={styles.secondaryButtonText}>{t('plans.change')}</Text>
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+// ── Lembrete LOCAL diário do plano (F5.13) ───────────────────────────────────
+// Toggle OPT-IN (OFF por padrão) + escolha de horário. Liga = pede permissão LOCAL (SÓ
+// aqui, nunca no boot) e agenda UMA notificação diária via `expo-notifications` (nativo);
+// desliga = cancela. A pref (on/off + horário) persiste no KV OFFLINE da F5.2 (app-side,
+// separado do progresso do core). Corpo da notificação = cromo i18n + NOME do plano do
+// core (anti-alucinação). ESTRITAMENTE LOCAL: sem servidor/conta/push token. No web este
+// componente nem renderiza (a tela de planos degrada — F5.10 — antes de chegar aqui).
+function ReminderControls(props: {
+  planName: string;
+  styles: Styles;
+  colors: ThemeColors;
+  t: TranslateFn;
+}) {
+  const { planName, styles, colors, t } = props;
+  // `undefined` = carregando · `null` = sem lembrete · valor = lembrete salvo.
+  const [reminder, setReminder] = useState<ReminderPref | null | undefined>(undefined);
+  const [time, setTime] = useState<string>(REMINDER_TIME_PRESETS[2]); // default 08:00
+  const [busy, setBusy] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
+
+  // Boot: lê a pref de lembrete persistida (offline). Falha → trata como sem lembrete.
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const saved = await getReminder();
+        if (!alive) {
+          return;
+        }
+        setReminder(saved);
+        if (saved) {
+          setTime(saved.time);
+        }
+      } catch {
+        if (alive) {
+          setReminder(null);
+        }
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const enabled = reminder?.enabled === true;
+
+  // Agenda (ou reagenda) o lembrete no horário dado. Título/corpo já traduzidos + NOME do
+  // plano VERBATIM do core (nunca texto bíblico). Permissão pedida DENTRO de enableReminder.
+  const schedule = useCallback(
+    async (nextTime: string) => {
+      setBusy(true);
+      setPermissionDenied(false);
+      try {
+        const res = await enableReminder({
+          time: nextTime,
+          title: t('plans.reminderTitle'),
+          body: t('plans.reminderBody', { plan: planName }),
+          channelName: t('plans.reminderChannel'),
+        });
+        if (res.status === 'scheduled') {
+          setReminder(res.pref);
+        } else if (res.status === 'permission-denied') {
+          setPermissionDenied(true);
+          setReminder(null);
+        }
+      } catch {
+        /* offline-first: falha de agendamento não quebra a tela */
+      } finally {
+        setBusy(false);
+      }
+    },
+    [planName, t],
+  );
+
+  const onToggle = useCallback(
+    async (value: boolean) => {
+      if (busy) {
+        return;
+      }
+      if (value) {
+        await schedule(time);
+        return;
+      }
+      setBusy(true);
+      try {
+        await disableReminder();
+        setReminder(null);
+        setPermissionDenied(false);
+      } catch {
+        /* tolerante (offline-first) */
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, schedule, time],
+  );
+
+  const onPickTime = useCallback(
+    async (nextTime: string) => {
+      setTime(nextTime);
+      if (enabled) {
+        await schedule(nextTime); // reagenda no novo horário
+      }
+    },
+    [enabled, schedule],
+  );
+
+  // Ainda carregando a pref → não pisca controles (offline-first: sem flicker).
+  if (reminder === undefined) {
+    return null;
+  }
+
+  return (
+    <View style={styles.reminderSection}>
+      <View style={styles.reminderHeaderRow}>
+        <Text style={styles.reminderTitle}>{t('plans.reminderSection')}</Text>
+        <Switch
+          value={enabled}
+          onValueChange={onToggle}
+          disabled={busy}
+          accessibilityRole="switch"
+          accessibilityLabel={t('a11y.reminderToggle')}
+          trackColor={{ true: colors.accent, false: colors.divider }}
+          testID="reminder-toggle"
+        />
+      </View>
+      {enabled ? (
+        <View style={styles.reminderTimesRow}>
+          <Text style={styles.reminderTimeLabel}>{t('plans.reminderTimeLabel')}</Text>
+          {REMINDER_TIME_PRESETS.map((preset) => {
+            const active = preset === time;
+            return (
+              <Pressable
+                key={preset}
+                onPress={() => onPickTime(preset)}
+                disabled={busy}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={t('a11y.reminderTime', { time: preset })}
+                testID={`reminder-time-${preset}`}
+                style={[
+                  styles.reminderChip,
+                  active && styles.reminderChipActive,
+                  busy && styles.buttonDisabled,
+                ]}
+              >
+                <Text style={[styles.reminderChipText, active && styles.reminderChipTextActive]}>
+                  {preset}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+      {permissionDenied ? (
+        <Text style={styles.reminderHint} accessibilityRole="text">
+          {t('plans.reminderPermissionHint')}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -522,6 +701,43 @@ function makeStyles(colors: ThemeColors) {
       backgroundColor: colors.accent,
     },
     doneBadgeText: { fontSize: 11, fontWeight: '700', color: colors.chipActiveText },
+    // Lembrete diário (F5.13).
+    reminderSection: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 4,
+      gap: 10,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.divider,
+    },
+    reminderHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    reminderTitle: { fontSize: 16, fontWeight: '600', color: colors.text },
+    reminderTimesRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      gap: 8,
+    },
+    reminderTimeLabel: { fontSize: 13, color: colors.muted, marginRight: 4 },
+    reminderChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    reminderChipActive: {
+      backgroundColor: colors.chipActiveBg,
+      borderColor: colors.chipActiveBg,
+    },
+    reminderChipText: { fontSize: 14, color: colors.text },
+    reminderChipTextActive: { color: colors.chipActiveText, fontWeight: '600' },
+    reminderHint: { fontSize: 13, color: colors.muted },
     // Botões.
     actions: {
       paddingHorizontal: 16,

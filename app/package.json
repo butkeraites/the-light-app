@@ -24,7 +24,8 @@
     "test:web:research": "node web/__tests__/research.web.test.mjs",
     "test:web:research-tavily": "node web/__tests__/research-tavily.web.test.mjs",
     "test:web:compare": "node web/__tests__/compare.web.test.mjs",
-    "test:web:firstpaint": "node web/__tests__/firstpaint.web.test.mjs"
+    "test:web:firstpaint": "node web/__tests__/firstpaint.web.test.mjs",
+    "test:web:reminders": "node web/__tests__/planReminders.web.test.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~56.0.15",
@@ -34,6 +35,7 @@
     "expo-constants": "~56.0.18",
     "expo-file-system": "~56.0.8",
     "expo-linking": "~56.0.14",
+    "expo-notifications": "~56.0.19",
     "expo-router": "~56.2.11",
     "expo-secure-store": "~56.0.4",
     "expo-status-bar": "~56.0.4",

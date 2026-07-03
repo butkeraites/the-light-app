@@ -85,10 +85,21 @@ export type MessageKey =
   | 'plans.completedAll'
   | 'plans.empty'
   | 'plans.webUnavailable'
+  // CROMO do LEMBRETE LOCAL do plano (F5.13). `plans.reminderTitle`/`plans.reminderBody` são o
+  // TÍTULO/CORPO da notificação LOCAL (opt-in, offline); `{plan}` é o NOME do plano VERBATIM do
+  // core (nunca via t() — anti-alucinação). `plans.reminderChannel` = nome do canal Android.
+  | 'plans.reminderSection'
+  | 'plans.reminderTitle'
+  | 'plans.reminderBody'
+  | 'plans.reminderChannel'
+  | 'plans.reminderTimeLabel'
+  | 'plans.reminderPermissionHint'
   | 'a11y.startPlan'
   | 'a11y.openDay'
   | 'a11y.markDone'
   | 'a11y.changePlan'
+  | 'a11y.reminderToggle'
+  | 'a11y.reminderTime'
   // CROMO das telas de leitura (read/*). `read.bookFallback` é só o rótulo de um
   // livro AUSENTE no store (edge-case) — os NOMES reais de livro vêm do store/core
   // (namePt/nameEn), NUNCA de `t()` (anti-alucinação).
@@ -243,6 +254,13 @@ const pt: Record<MessageKey, string> = {
   'plans.completedAll': 'Plano concluído!',
   'plans.empty': 'Nenhum plano disponível.',
   'plans.webUnavailable': 'Os planos de leitura estão disponíveis no app nativo (paridade web = F5.10).',
+  'plans.reminderSection': 'Lembrete diário',
+  'plans.reminderTitle': 'Hora da leitura',
+  'plans.reminderBody': 'Continue seu plano: {plan}',
+  'plans.reminderChannel': 'Lembretes de leitura',
+  'plans.reminderTimeLabel': 'Horário',
+  'plans.reminderPermissionHint':
+    'Permita notificações no aparelho para receber o lembrete diário (o lembrete é local, sem conta nem internet).',
   'read.parallel': 'Lado a lado',
   'read.bookFallback': 'Livro {number}',
   'read.emptyChapters': 'Nenhum capítulo disponível nesta versão do banco de leitura.',
@@ -262,6 +280,8 @@ const pt: Record<MessageKey, string> = {
   'a11y.openDay': 'Abrir a leitura do dia {day}: {label}',
   'a11y.markDone': 'Marcar o dia de hoje como lido',
   'a11y.changePlan': 'Trocar ou encerrar o plano ativo',
+  'a11y.reminderToggle': 'Ativar lembrete diário do plano',
+  'a11y.reminderTime': 'Escolher o horário {time} do lembrete',
   'language.switchToOther': 'Mudar para Inglês',
   'theme.switchToLight': 'Mudar para tema claro',
   'theme.switchToDark': 'Mudar para tema escuro',
@@ -388,6 +408,13 @@ const en: Record<MessageKey, string> = {
   'plans.completedAll': 'Plan completed!',
   'plans.empty': 'No plans available.',
   'plans.webUnavailable': 'Reading plans are available in the native app (web parity = F5.10).',
+  'plans.reminderSection': 'Daily reminder',
+  'plans.reminderTitle': 'Time to read',
+  'plans.reminderBody': 'Continue your plan: {plan}',
+  'plans.reminderChannel': 'Reading reminders',
+  'plans.reminderTimeLabel': 'Time',
+  'plans.reminderPermissionHint':
+    'Allow notifications on your device to receive the daily reminder (the reminder is local, no account or internet).',
   'read.parallel': 'Side by side',
   'read.bookFallback': 'Book {number}',
   'read.emptyChapters': 'No chapters available in this version of the reading database.',
@@ -407,6 +434,8 @@ const en: Record<MessageKey, string> = {
   'a11y.openDay': 'Open the reading for day {day}: {label}',
   'a11y.markDone': "Mark today's day as read",
   'a11y.changePlan': 'Change or end the active plan',
+  'a11y.reminderToggle': "Enable the plan's daily reminder",
+  'a11y.reminderTime': 'Choose the reminder time {time}',
   'language.switchToOther': 'Switch to Portuguese',
   'theme.switchToLight': 'Switch to light theme',
   'theme.switchToDark': 'Switch to dark theme',
