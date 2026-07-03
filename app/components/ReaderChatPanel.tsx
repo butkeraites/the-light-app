@@ -132,11 +132,17 @@ export function ReaderChatPanel({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} testID="chat-panel-backdrop" />
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        testID="chat-panel-backdrop"
+        accessibilityRole="button"
+        accessibilityLabel={t('ai.close')}
+      />
       <View style={styles.sheet}>
         <View style={styles.header}>
           <Text style={styles.title}>{t('chat.title', { source: sourceLabel })}</Text>
-          <Pressable onPress={onClose} testID="chat-panel-close" accessibilityRole="button">
+          <Pressable onPress={onClose} testID="chat-panel-close" accessibilityRole="button" hitSlop={12}>
             <Text style={styles.close}>{t('ai.close')}</Text>
           </Pressable>
         </View>

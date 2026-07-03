@@ -241,11 +241,17 @@ export function ReaderStudyPanel({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} testID="study-panel-backdrop" />
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        testID="study-panel-backdrop"
+        accessibilityRole="button"
+        accessibilityLabel={t('ai.close')}
+      />
       <View style={styles.sheet}>
         <View style={styles.header}>
           <Text style={styles.title}>{t('study.title', { source: sourceLabel })}</Text>
-          <Pressable onPress={onClose} testID="study-panel-close" accessibilityRole="button">
+          <Pressable onPress={onClose} testID="study-panel-close" accessibilityRole="button" hitSlop={12}>
             <Text style={styles.close}>{t('ai.close')}</Text>
           </Pressable>
         </View>
@@ -262,6 +268,7 @@ export function ReaderStudyPanel({
                   style={[styles.chip, active ? styles.chipActive : null]}
                   onPress={() => setMode(o.value)}
                   disabled={busy}
+                  hitSlop={{ top: 8, bottom: 8 }}
                   testID={`study-mode-${o.key}`}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
@@ -285,6 +292,7 @@ export function ReaderStudyPanel({
                   style={[styles.chip, active ? styles.chipActive : null]}
                   onPress={() => setLens(o.value)}
                   disabled={busy}
+                  hitSlop={{ top: 8, bottom: 8 }}
                   testID={`study-lens-${o.key}`}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
@@ -308,6 +316,7 @@ export function ReaderStudyPanel({
                   style={[styles.chip, active ? styles.chipActive : null]}
                   onPress={() => setDepth(o.value)}
                   disabled={busy}
+                  hitSlop={{ top: 8, bottom: 8 }}
                   testID={`study-depth-${o.key}`}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
@@ -342,6 +351,7 @@ export function ReaderStudyPanel({
                   style={[styles.chip, active ? styles.chipActive : null]}
                   onPress={() => setWebBackend(o.value)}
                   disabled={busy}
+                  hitSlop={{ top: 8, bottom: 8 }}
                   testID={`study-web-research-${o.key}`}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}

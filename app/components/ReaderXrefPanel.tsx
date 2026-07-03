@@ -86,11 +86,17 @@ export function ReaderXrefPanel({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} testID="xref-backdrop" />
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        testID="xref-backdrop"
+        accessibilityRole="button"
+        accessibilityLabel={t('common.close')}
+      />
       <View style={styles.sheet}>
         <View style={styles.header}>
           <Text style={styles.title}>{t('xref.title', { source: sourceLabel })}</Text>
-          <Pressable onPress={onClose} testID="xref-close" accessibilityRole="button">
+          <Pressable onPress={onClose} testID="xref-close" accessibilityRole="button" hitSlop={12}>
             <Text style={styles.close}>{t('common.close')}</Text>
           </Pressable>
         </View>
@@ -143,6 +149,8 @@ export function ReaderXrefPanel({
             }}
             testID="xref-attribution"
             accessibilityRole="link"
+            accessibilityLabel={XREF_ATTRIBUTION}
+            hitSlop={12}
           >
             <Text style={styles.attribution}>{XREF_ATTRIBUTION}</Text>
           </Pressable>

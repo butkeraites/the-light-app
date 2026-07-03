@@ -602,6 +602,7 @@ function ReminderControls(props: {
                 key={preset}
                 onPress={() => onPickTime(preset)}
                 disabled={busy}
+                hitSlop={{ top: 8, bottom: 8 }}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={t('a11y.reminderTime', { time: preset })}

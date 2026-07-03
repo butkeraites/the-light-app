@@ -211,11 +211,17 @@ export function ReaderVersePanel({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} testID="verse-panel-backdrop" />
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        testID="verse-panel-backdrop"
+        accessibilityRole="button"
+        accessibilityLabel={t('common.close')}
+      />
       <View style={styles.sheet}>
         <View style={styles.header}>
           <Text style={styles.title}>{sourceLabel}</Text>
-          <Pressable onPress={onClose} testID="verse-panel-close" accessibilityRole="button">
+          <Pressable onPress={onClose} testID="verse-panel-close" accessibilityRole="button" hitSlop={12}>
             <Text style={styles.close}>{t('common.close')}</Text>
           </Pressable>
         </View>
@@ -275,6 +281,7 @@ export function ReaderVersePanel({
                   onPress={() => onSetHighlight(c.name)}
                   disabled={busy}
                   testID={`highlight-${c.name}`}
+                  hitSlop={{ top: 8, bottom: 8, left: 5, right: 5 }}
                   accessibilityRole="button"
                   accessibilityLabel={t('versePanel.highlightWith', { color: c.label })}
                   accessibilityState={{ selected: active }}

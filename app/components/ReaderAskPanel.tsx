@@ -189,11 +189,17 @@ export function ReaderAskPanel({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} testID="ask-panel-backdrop" />
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        testID="ask-panel-backdrop"
+        accessibilityRole="button"
+        accessibilityLabel={t('ai.close')}
+      />
       <View style={styles.sheet}>
         <View style={styles.header}>
           <Text style={styles.title}>{t('ask.title', { source: sourceLabel })}</Text>
-          <Pressable onPress={onClose} testID="ask-panel-close" accessibilityRole="button">
+          <Pressable onPress={onClose} testID="ask-panel-close" accessibilityRole="button" hitSlop={12}>
             <Text style={styles.close}>{t('ai.close')}</Text>
           </Pressable>
         </View>
@@ -213,6 +219,7 @@ export function ReaderAskPanel({
                   onPress={() => setProvider(p)}
                   disabled={busy}
                   testID={`ask-provider-${p}`}
+                  hitSlop={{ top: 8, bottom: 8 }}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
                   accessibilityLabel={

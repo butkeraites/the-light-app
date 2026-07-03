@@ -360,6 +360,7 @@ function ChapterContent() {
             style={[styles.toggle, parallel ? styles.toggleActive : null]}
             onPress={() => setParallel((v) => !v)}
             testID="parallel-toggle"
+            hitSlop={{ top: 8, bottom: 8 }}
             accessibilityRole="switch"
             accessibilityState={{ checked: parallel }}
             accessibilityLabel={t('read.parallel')}

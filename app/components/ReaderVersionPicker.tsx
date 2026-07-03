@@ -34,6 +34,10 @@ export function ReaderVersionPicker({
             style={[styles.chip, active ? styles.chipActive : null]}
             onPress={() => onChange(t.id)}
             testID={`${testIDPrefix}-${t.id}`}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={`${t.abbrev} ${t.language}`}
+            hitSlop={{ top: 8, bottom: 8 }}
           >
             <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>
               {t.abbrev}

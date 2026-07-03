@@ -178,11 +178,17 @@ export function ReaderComparePanel({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} testID="compare-panel-backdrop" />
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        testID="compare-panel-backdrop"
+        accessibilityRole="button"
+        accessibilityLabel={t('ai.close')}
+      />
       <View style={styles.sheet}>
         <View style={styles.header}>
           <Text style={styles.title}>{t('compare.title', { source: sourceLabel })}</Text>
-          <Pressable onPress={onClose} testID="compare-panel-close" accessibilityRole="button">
+          <Pressable onPress={onClose} testID="compare-panel-close" accessibilityRole="button" hitSlop={12}>
             <Text style={styles.close}>{t('ai.close')}</Text>
           </Pressable>
         </View>
@@ -201,6 +207,7 @@ export function ReaderComparePanel({
                   onPress={() => toggleProvider(p)}
                   disabled={busy}
                   testID={`compare-provider-${p}`}
+                  hitSlop={{ top: 8, bottom: 8 }}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
                   accessibilityLabel={

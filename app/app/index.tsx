@@ -233,6 +233,8 @@ function makeStyles(colors: ThemeColors) {
     },
     readLink: {
       marginTop: 8,
+      // F5.20: alvo de toque ≥44 (padding vertical) p/ o link de navegação (nativo).
+      paddingVertical: 10,
       fontSize: 16,
       fontWeight: '600',
       color: colors.accent,

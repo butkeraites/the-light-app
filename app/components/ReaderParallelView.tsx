@@ -134,7 +134,10 @@ function makeStyles(colors: ThemeColors) {
       fontVariant: ['tabular-nums'],
     },
     col: { flex: 1, fontSize: 15, lineHeight: 22, color: colors.verseText },
-    missing: { color: colors.faint, fontStyle: 'italic' },
+    // F5.20 (ADR-0048): o "—" de versículo AUSENTE CONVEY informação (a passagem não
+    // existe nesta tradução) → NÃO é decorativo → promovido de `faint` (1.61:1 ✗) para
+    // `muted` (AA ≥4.5:1 em claro/escuro). `faint` fica só no chevron redundante (decorativo).
+    missing: { color: colors.muted, fontStyle: 'italic' },
     empty: { fontSize: 14, color: colors.muted },
   });
 }
