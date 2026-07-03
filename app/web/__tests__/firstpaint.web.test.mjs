@@ -37,7 +37,7 @@ const STUB_MAP = [
   [/(^|\/)web\/wasm$/, join(STUBS, 'wasm.js')],
   [/(^|\/)lib\/i18n$/, join(STUBS, 'providers.js')],
   [/(^|\/)lib\/theme$/, join(STUBS, 'providers.js')],
-  [/(^|\/)components\/(LanguageToggleButton|ThemeToggleButton)$/, join(STUBS, 'providers.js')],
+  [/(^|\/)components\/(LanguageToggleButton|ThemeModeSelector)$/, join(STUBS, 'providers.js')],
 ];
 
 const stubPlugin = {

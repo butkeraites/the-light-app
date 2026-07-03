@@ -36,10 +36,10 @@ export function useTheme() {
   return { colors, isDark: false, setOverride() {} };
 }
 
-// ../components/LanguageToggleButton, ../components/ThemeToggleButton
+// ../components/LanguageToggleButton, ../components/ThemeModeSelector
 export function LanguageToggleButton() {
   return React.createElement('LanguageToggleButton', null);
 }
-export function ThemeToggleButton() {
-  return React.createElement('ThemeToggleButton', null);
+export function ThemeModeSelector() {
+  return React.createElement('ThemeModeSelector', null);
 }

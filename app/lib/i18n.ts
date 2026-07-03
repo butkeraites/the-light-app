@@ -126,9 +126,10 @@ export type MessageKey =
   | 'a11y.openChapter'
   | 'a11y.verseOptions'
   | 'language.switchToOther'
-  // Rótulos de acessibilidade do toggle de TEMA (mostra o modo-ALVO).
-  | 'theme.switchToLight'
-  | 'theme.switchToDark'
+  // Rótulos de acessibilidade do SELETOR TRI-ESTADO de tema (F5.33): claro / escuro / seguir o sistema.
+  | 'theme.light'
+  | 'theme.dark'
+  | 'theme.system'
   // ─── CROMO dos PAINÉIS DE IA (F5.11) ─────────────────────────────────────────────────
   // ANTI-ALUCINAÇÃO (LEI, crítico p/ IA): estas chaves traduzem SÓ o CROMO (rótulos, botões,
   // estados, dicas, a11y). O `citedText`/versículo citado vem VERBATIM do store (nunca via
@@ -371,8 +372,9 @@ const pt: Record<MessageKey, string> = {
   'a11y.reminderToggle': 'Ativar lembrete diário do plano',
   'a11y.reminderTime': 'Escolher o horário {time} do lembrete',
   'language.switchToOther': 'Mudar para Inglês',
-  'theme.switchToLight': 'Mudar para tema claro',
-  'theme.switchToDark': 'Mudar para tema escuro',
+  'theme.light': 'Tema claro',
+  'theme.dark': 'Tema escuro',
+  'theme.system': 'Seguir o sistema',
   // ─── Painéis de IA (F5.11) — só CROMO (ver nota na união de chaves) ───────────────────
   'ai.close': 'Fechar',
   'ai.citedTitle': 'Passagem (texto bíblico)',
@@ -598,8 +600,9 @@ const en: Record<MessageKey, string> = {
   'a11y.reminderToggle': "Enable the plan's daily reminder",
   'a11y.reminderTime': 'Choose the reminder time {time}',
   'language.switchToOther': 'Switch to Portuguese',
-  'theme.switchToLight': 'Switch to light theme',
-  'theme.switchToDark': 'Switch to dark theme',
+  'theme.light': 'Light theme',
+  'theme.dark': 'Dark theme',
+  'theme.system': 'Follow system',
   // ─── AI panels (F5.11) — CHROME only (see note on the key union) ──────────────────────
   'ai.close': 'Close',
   'ai.citedTitle': 'Passage (biblical text)',

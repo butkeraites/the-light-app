@@ -1,10 +1,9 @@
 // app/components/LanguageToggleButton.tsx — F5.2 (ADR-0038)
 //
 // Apresentacional: botão de alternância de IDIOMA da UI (PT⇄EN) p/ o header, ao lado
-// do `ThemeToggleButton`. Lê/escreve o idioma via `useI18n()` (a escolha PERSISTE
+// do `ThemeModeSelector`. Lê/escreve o idioma via `useI18n()` (a escolha PERSISTE
 // offline via prefs) e usa os TOKENS de tema (`useTheme`) para a cor — zero hex.
-// Mostra o CÓDIGO do idioma-ALVO (para onde vai ao tocar), espelhando o padrão do
-// toggle de tema (que mostra o modo-alvo). Acessível: `accessibilityRole='switch'`,
+// Mostra o CÓDIGO do idioma-ALVO (para onde vai ao tocar). Acessível: `accessibilityRole='switch'`,
 // `accessibilityState.checked` = idioma inglês ativo, `accessibilityLabel` via `t()`.
 // Não faz I/O de domínio nem toca texto bíblico.
 import { Pressable, StyleSheet, Text } from 'react-native';

@@ -18,7 +18,7 @@ import { Stack } from 'expo-router';
 import { View } from 'react-native';
 
 import { LanguageToggleButton } from '../components/LanguageToggleButton';
-import { ThemeToggleButton } from '../components/ThemeToggleButton';
+import { ThemeModeSelector } from '../components/ThemeModeSelector';
 import { I18nProvider, useI18n } from '../lib/i18n';
 import { ThemeProvider, useTheme } from '../lib/theme';
 import { ensureWasmReady } from '../web/wasm';
@@ -41,7 +41,7 @@ function HeaderControls() {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
       <LanguageToggleButton />
-      <ThemeToggleButton />
+      <ThemeModeSelector />
     </View>
   );
 }
