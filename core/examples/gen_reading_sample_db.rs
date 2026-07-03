@@ -1,20 +1,21 @@
-//! Gera de forma **reprodutível** o `assets/data/reading-sample.sqlite`: um
-//! **subset de leitura** (KJV + Almeida 1911, domínio público) extraído do
-//! `bible.sqlite` (corpus completo, gerado-ignorado, ADR-0013), contendo alguns
-//! livros inteiros para a UI de leitura nativa da F1.3 (ADR-0014).
+//! Gera de forma **reprodutível** o `assets/data/reading-sample.sqlite`: a
+//! **Bíblia de LEITURA completa** (KJV + Almeida 1911, domínio público) extraída do
+//! `bible.sqlite` (corpus completo, gerado-ignorado, ADR-0013), com TODOS os
+//! **66 livros × 2 traduções** para a UI de leitura/busca/xref (F1.3, ADR-0014).
 //!
-//! Por que um subset (ADR-0014): o `bible.sqlite` completo tem ~47 MB. Empacotá-lo
-//! como asset no app nativo inflaria o bundle. Para **provar a leitura real no
-//! device** (e habilitar a navegação livro→capítulo→texto + seletor de versão)
-//! basta um subset com **João KJV completo (21 capítulos)** — exigido pelas
-//! asserções do self-test (`chapter_count(kjv,43)==21`, `get_chapter(kjv,43,3)`
-//! v16 verbatim) — mais Gênesis e Salmos (AT) para uma navegação plausível em
-//! ambas as traduções. O banco completo fica para uma otimização posterior.
+//! LEITURA = Bíblia COMPLETA (ADR-0056, F5.36): abrir Mateus 1 (ou qualquer livro fora
+//! de Gênesis/Salmos/João) e a busca/xref cobrir a Bíblia inteira são parte do produto
+//! — não um extra de dev. Por isso as tabelas de LEITURA (`books`, `verses`,
+//! `cross_references`, `verses_fts`) copiam **todos os 66 livros** do `src`
+//! (`bible.sqlite`). É DADO local, offline-first (download único cacheado em OPFS no web,
+//! asset bundled no nativo) — nenhuma dependência de rede em runtime para ler.
 //!
-//! Além do texto, o subset propaga o **léxico STEP** (ADR-0027): `scholarly_sources`
-//! (atribuição CC-BY), `original_tokens` (línguas originais dos livros do subset) e as
-//! `lexicon` referenciadas — assim `lexical_entries`/`deep_study` (F3.2/F3.3) e a UI de
-//! estudo (F3.5) têm léxico + atribuição STEP visível no device (senão viriam vazios).
+//! LÉXICO = ainda AMOSTRADO ({Gn,Sl,Jo}, ver `LEXICON_BOOKS`; ADR-0056): o léxico STEP
+//! completo é ~90 MB e o estudo profundo é on-demand + AI-gated + secundário. Copiamos
+//! `scholarly_sources` inteiro (poucas linhas: atribuição/FK) e `original_tokens`/
+//! `lexicon` SÓ dos livros de `LEXICON_BOOKS` — assim `lexical_entries`/`deep_study`
+//! (F3.2/F3.3) e a UI de estudo (F3.5) seguem com léxico + atribuição STEP no device para
+//! esse subset. Léxico completo = follow-up F5.38 (opcional/nativo, on-demand).
 //!
 //! Regra "uma fonte da verdade" + anti-alucinação: o **schema** vem das
 //! **migrações do `the-light-core`** (`Store::open` cria/migra), nunca de SQL de
@@ -38,10 +39,13 @@ fn main() {
     // do `bible.sqlite`, não desta constante (anti-alucinação).
     const JOHN_3_16_KJV: &str = "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.";
 
-    // Livros incluídos no subset (números canônicos): Gênesis (1), Salmos (19),
-    // João (43). João é **obrigatório** (asserções do self-test). Gênesis/Salmos
-    // dão navegação plausível em AT + NT, nas duas traduções.
-    const BOOKS: &[u8] = &[1, 19, 43];
+    // Léxico AINDA amostrado (ADR-0056, F5.36): Gênesis (1), Salmos (19), João (43).
+    // A LEITURA (books/verses/cross_references/verses_fts) é a Bíblia COMPLETA — SEM
+    // filtro de livro. `LEXICON_BOOKS` limita SÓ `original_tokens`/`lexicon` (o léxico
+    // completo é ~90 MB, on-demand + AI-gated; completo = follow-up F5.38). João é
+    // **obrigatório** aqui (asserções do self-test de estudo). Gênesis/Salmos dão
+    // léxico em AT + NT nas duas traduções.
+    const LEXICON_BOOKS: &[u8] = &[1, 19, 43];
 
     let mut args = std::env::args().skip(1);
     let out = args.next().unwrap_or_else(|| {
@@ -88,59 +92,54 @@ fn main() {
     )
     .expect("copiar traduções");
 
-    let in_list = BOOKS
+    // Lista de livros do LÉXICO (só p/ `original_tokens`/`lexicon` abaixo; a LEITURA
+    // é completa e não usa filtro de livro — ADR-0056).
+    let lex_in_list = LEXICON_BOOKS
         .iter()
         .map(|n| n.to_string())
         .collect::<Vec<_>>()
         .join(",");
 
-    // Livros (metadado por tradução): mantém o subset fiel ao schema.
+    // Livros (metadado por tradução): Bíblia COMPLETA — TODOS os 66 livros × 2
+    // traduções, SEM filtro (ADR-0056/F5.36). É o que a UI de leitura lista.
     conn.execute(
-        &format!(
-            "INSERT INTO books(translation_id,number,name,abbrev,testament) \
-             SELECT translation_id,number,name,abbrev,testament FROM src.books \
-             WHERE number IN ({in_list})"
-        ),
+        "INSERT INTO books(translation_id,number,name,abbrev,testament) \
+         SELECT translation_id,number,name,abbrev,testament FROM src.books",
         [],
     )
-    .expect("copiar livros");
+    .expect("copiar livros (Bíblia completa: 66 × 2)");
 
-    // Versículos: o texto **verbatim do store** (domínio público).
+    // Versículos: o texto **verbatim do store** (domínio público), Bíblia COMPLETA —
+    // SEM filtro de livro (ADR-0056/F5.36). Nada reimplementado/inventado.
     let inserted = conn
         .execute(
-            &format!(
-                "INSERT INTO verses(translation_id,book_number,chapter,verse,text) \
-                 SELECT translation_id,book_number,chapter,verse,text FROM src.verses \
-                 WHERE book_number IN ({in_list})"
-            ),
+            "INSERT INTO verses(translation_id,book_number,chapter,verse,text) \
+             SELECT translation_id,book_number,chapter,verse,text FROM src.verses",
             [],
         )
-        .expect("copiar versículos");
+        .expect("copiar versículos (verbatim do store, Bíblia completa)");
 
     // ── Referências cruzadas (xref) — pipeline de DADOS (ADR-0016, CC-BY) ─────
     // O schema do core cria `cross_references` (via `Store::open`) mas **não** tem
     // trigger que a popule a partir do corpus (mesmo princípio do `verses_fts`):
     // sem isto, `cross_refs(...)` no device (F1.8/F1.9) retornaria **vazio**.
-    // Copiamos do corpus completo (`src`) APENAS as xrefs cujos **DOIS lados**
-    // (origem e destino) caiam no subset {1,19,43} — assim, ao tocar uma xref na
-    // UI (F1.9), o capítulo de destino **existe** no `reading-sample.sqlite`
-    // (senão `get_chapter` cairia em "Capítulo não encontrado"). É DADO/fixture (o
-    // texto vem verbatim do store, ADR-0016/CC-BY): a query/ordenação por votos/
-    // filtro de xref continuam no core (`xref::for_verse`), chamados pela fronteira
-    // `cross_refs` (F1.8) — nada de xref é reimplementado aqui.
+    // Copiamos do corpus completo (`src`) TODAS as xrefs — SEM o filtro "ambos os
+    // lados no subset" (ADR-0056/F5.36): agora que a leitura tem os 66 livros, o
+    // capítulo de DESTINO de qualquer xref existe em `reading-sample.sqlite` (ao
+    // tocar uma xref na UI, F1.9, `get_chapter` resolve). É DADO/fixture (verbatim
+    // do store, ADR-0016/CC-BY): a query/ordenação por votos/filtro de xref
+    // continuam no core (`xref::for_verse`), chamados pela fronteira `cross_refs`
+    // (F1.8) — nada de xref é reimplementado aqui.
     let xrefs = conn
         .execute(
-            &format!(
-                "INSERT INTO cross_references(from_book,from_chapter,from_verse,\
-                 to_book,to_chapter,to_verse_start,to_verse_end,votes) \
-                 SELECT from_book,from_chapter,from_verse,\
-                 to_book,to_chapter,to_verse_start,to_verse_end,votes \
-                 FROM src.cross_references \
-                 WHERE from_book IN ({in_list}) AND to_book IN ({in_list})"
-            ),
+            "INSERT INTO cross_references(from_book,from_chapter,from_verse,\
+             to_book,to_chapter,to_verse_start,to_verse_end,votes) \
+             SELECT from_book,from_chapter,from_verse,\
+             to_book,to_chapter,to_verse_start,to_verse_end,votes \
+             FROM src.cross_references",
             [],
         )
-        .expect("copiar referências cruzadas (ambos os lados no subset)");
+        .expect("copiar referências cruzadas (Bíblia completa)");
 
     // ── Léxico / línguas originais (pipeline de DADOS, ADR-0027; STEP Bible CC-BY) ──
     // O schema v2 do core cria `scholarly_sources`/`original_tokens`/`lexicon` (via
@@ -166,9 +165,10 @@ fn main() {
         )
         .expect("copiar scholarly_sources (atribuição STEP CC-BY)");
 
-    // (b) `original_tokens` dos versículos dos livros do subset {Gn,Sl,Jo}. Chaveados por
-    //     (book_number,chapter,verse) — casam com `verses`; é o que o `verified_lexicon`
-    //     do core lê para agregar por Strong base.
+    // (b) `original_tokens` dos versículos dos livros de `LEXICON_BOOKS` {Gn,Sl,Jo} —
+    //     léxico AINDA amostrado (ADR-0056; completo = ~90 MB, F5.38). Chaveados por
+    //     (book_number,chapter,verse) — casam com `verses` (que agora tem a Bíblia
+    //     inteira); é o que o `verified_lexicon` do core lê para agregar por Strong base.
     let tokens = conn
         .execute(
             &format!(
@@ -176,15 +176,16 @@ fn main() {
                  word_index,surface,translit,lemma,strongs,strongs_raw,morph_code,gloss,source_id) \
                  SELECT id,testament,book_number,chapter,verse,\
                  word_index,surface,translit,lemma,strongs,strongs_raw,morph_code,gloss,source_id \
-                 FROM src.original_tokens WHERE book_number IN ({in_list})"
+                 FROM src.original_tokens WHERE book_number IN ({lex_in_list})"
             ),
             [],
         )
-        .expect("copiar original_tokens dos livros do subset");
+        .expect("copiar original_tokens dos livros de LEXICON_BOOKS");
 
     // (c) `lexicon`: SOMENTE as linhas referenciadas pelos Strong dos tokens copiados
-    //     (poucos milhares vs. o léxico inteiro ~22,7k) — mantém o subset enxuto. O JOIN
-    //     `l.strongs = t.strongs` do core casa por Strong; copiamos o léxico dessas chaves.
+    //     (poucos milhares vs. o léxico inteiro ~22,7k) — mantém o léxico amostrado
+    //     enxuto (ADR-0056). O JOIN `l.strongs = t.strongs` do core casa por Strong;
+    //     copiamos o léxico dessas chaves.
     let lexicon = conn
         .execute(
             &format!(
@@ -192,12 +193,12 @@ fn main() {
                  SELECT strongs,lemma,translit,pron,gloss,gloss_pt,definition,derivation,source_id \
                  FROM src.lexicon WHERE strongs IN (\
                    SELECT DISTINCT strongs FROM src.original_tokens \
-                   WHERE book_number IN ({in_list}) AND strongs IS NOT NULL AND strongs <> ''\
+                   WHERE book_number IN ({lex_in_list}) AND strongs IS NOT NULL AND strongs <> ''\
                  )"
             ),
             [],
         )
-        .expect("copiar lexicon referenciado pelos tokens do subset");
+        .expect("copiar lexicon referenciado pelos tokens de LEXICON_BOOKS");
 
     conn.execute("DETACH DATABASE src", [])
         .expect("desanexar src");
@@ -247,6 +248,34 @@ fn main() {
         .query_row("SELECT count(*) FROM translations", [], |r| r.get(0))
         .expect("contar traduções");
 
+    // Sanidade Bíblia COMPLETA (ADR-0056/F5.36): 66 livros DISTINTOS por tradução e
+    // Mateus (livro 40) presente com ≥1 capítulo em KJV e Almeida — o bug que esta
+    // tarefa corrige ("Mateus 1 indisponível") não pode voltar sem falhar aqui.
+    for tid in ["kjv", "alm1911"] {
+        let n_books: i64 = conn
+            .query_row(
+                "SELECT count(DISTINCT number) FROM books WHERE translation_id=?1",
+                [tid],
+                |r| r.get(0),
+            )
+            .unwrap_or_else(|e| panic!("contar livros de {tid}: {e}"));
+        assert_eq!(
+            n_books, 66,
+            "leitura deve ter 66 livros em {tid} (Bíblia completa), veio {n_books}"
+        );
+        let matthew_chapters: u16 = conn
+            .query_row(
+                "SELECT COALESCE(max(chapter),0) FROM verses WHERE translation_id=?1 AND book_number=40",
+                [tid],
+                |r| r.get(0),
+            )
+            .unwrap_or_else(|e| panic!("max(chapter) de Mateus em {tid}: {e}"));
+        assert!(
+            matthew_chapters >= 1,
+            "Mateus (livro 40) deve ter ≥1 capítulo em {tid} (bug F5.36), veio {matthew_chapters}"
+        );
+    }
+
     // Sanidade do índice FTS5: 1 linha por versículo (a busca depende disto).
     // A prova de que a BUSCA retorna hits vive no device (self-test TLA_SEARCH,
     // que chama a fronteira `search` → core); aqui só garantimos que o índice
@@ -266,7 +295,7 @@ fn main() {
         .expect("contar cross_references do subset");
     assert!(
         xref_total > 0,
-        "cross_references deve ser populada no subset (ambos os lados em {BOOKS:?})"
+        "cross_references deve ser populada (Bíblia completa, ADR-0056)"
     );
     let john_3_16_xrefs: i64 = conn
         .query_row(
@@ -275,10 +304,10 @@ fn main() {
             [],
             |r| r.get(0),
         )
-        .expect("contar xrefs de João 3:16 no subset");
+        .expect("contar xrefs de João 3:16");
     assert!(
         john_3_16_xrefs >= 1,
-        "João 3:16 deve ter ≥1 xref no subset (alvo dentro de {BOOKS:?})"
+        "João 3:16 deve ter ≥1 xref (Bíblia completa)"
     );
 
     // Sanidade léxico (ADR-0027; dado LIDO do banco): João 3:16 tem ≥1 token com Strong
@@ -294,10 +323,10 @@ fn main() {
             [],
             |r| r.get(0),
         )
-        .expect("contar tokens Strong de João 3:16 no subset");
+        .expect("contar tokens Strong de João 3:16 no léxico amostrado");
     assert!(
         john_3_16_tokens >= 1,
-        "João 3:16 deve ter ≥1 token com Strong no subset (léxico propagado, ADR-0027)"
+        "João 3:16 deve ter ≥1 token com Strong (léxico amostrado LEXICON_BOOKS, ADR-0027/0056)"
     );
     let step_sources: i64 = conn
         .query_row(
@@ -313,12 +342,11 @@ fn main() {
 
     println!(
         "reading-sample.sqlite gerado: {out}\n  \
-         traduções={translations} livros={:?} versículos={inserted} verses_fts={indexed} \
-         cross_references={xrefs} joão_3_16_xrefs={john_3_16_xrefs} \
-         scholarly_sources={sources} original_tokens={tokens} lexicon={lexicon} \
-         joão_3_16_tokens_strong={john_3_16_tokens} step_sources={step_sources} \
-         joão_capítulos_kjv={john_chapters}",
-        BOOKS
+         [LEITURA=Bíblia completa 66×2] traduções={translations} versículos={inserted} \
+         verses_fts={indexed} cross_references={xrefs} joão_3_16_xrefs={john_3_16_xrefs} \
+         joão_capítulos_kjv={john_chapters}\n  \
+         [LÉXICO=amostrado {LEXICON_BOOKS:?}] scholarly_sources={sources} original_tokens={tokens} \
+         lexicon={lexicon} joão_3_16_tokens_strong={john_3_16_tokens} step_sources={step_sources}"
     );
 }
 

@@ -19,9 +19,11 @@
 // nunca no código de produto. As referências/votos provados vêm do `wa-sqlite`/
 // subset. A xref é só REFERÊNCIA de destino + votos (NENHUM texto bíblico).
 //
-// PARIDADE com o nativo: o 1º por votos de João 3:16 é João 3:15 (439 votos), o
-// MESMO que o nativo prova em `TLA_XREF first_ref="John 3:15" first_votes=439`
-// (F1.9, xref-selftest.ts) — mesmo SQL, mesmo dado.
+// PARIDADE com o nativo: o 1º por votos de João 3:16 é Romanos 5:8 (871 votos), o
+// MESMO que o nativo prova em `TLA_XREF` (F1.9, xref-selftest.ts, que compõe o marcador
+// do retorno REAL) — mesmo SQL, mesmo dado. Na Bíblia COMPLETA (F5.36/ADR-0056) TODAS as
+// xrefs são copiadas; antes (sample de 3 livros) Romanos ficava fora e o topo era João
+// 3:15/439.
 //
 // Sai 0 se tudo bater; ≠0 caso contrário.
 import { build } from 'esbuild';
@@ -97,19 +99,22 @@ async function main() {
   const xref = (book, chapter, verse, minVotes, limit) =>
     crossRefsOnHandle(handle, book, chapter, verse, minVotes, limit);
 
-  // (2a) João 3:16 (43/3/16) com defaults → 9 xrefs (do store; NÃO hardcoded no produto).
+  // (2a) João 3:16 (43/3/16) com defaults → 20 xrefs (DEFAULT_LIMIT=20; João 3:16 tem 23
+  //      no total após a Bíblia COMPLETA, F5.36/ADR-0056: agora TODAS as xrefs são
+  //      copiadas, não só as com destino em {Gn,Sl,Jo}). Do store; NÃO hardcoded no produto.
   const john316 = await xref(43, 3, 16);
   assert.ok(Array.isArray(john316), 'crossRefs deve retornar um array');
-  assert.equal(john316.length, 9, `João 3:16 deve ter 9 xrefs, veio ${john316.length}`);
+  assert.equal(john316.length, 20, `João 3:16 deve ter 20 xrefs (DEFAULT_LIMIT), veio ${john316.length}`);
 
-  // (2b) 1º por votos DESC = João 3:15 (Single, 439 votos) — PARIDADE com o TLA_XREF
-  //      nativo (F1.9): first_ref="John 3:15" first_votes=439.
+  // (2b) 1º por votos DESC = Romanos 5:8 (Single, 871 votos) — PARIDADE com o TLA_XREF
+  //      nativo (F1.9), que agora também vê a Bíblia completa. Antes (sample de 3 livros)
+  //      o topo era João 3:15/439 porque Romanos ficava fora do subset e era filtrado.
   const first = john316[0];
-  assert.equal(first.reference.book, 43, '1º xref: livro 43 (João)');
-  assert.equal(first.reference.chapter, 3, '1º xref: capítulo 3');
-  assert.equal(first.reference.verses.tag, 'Single', '1º xref: João 3:15 é Single');
-  assert.equal(first.reference.verses.inner.verse, 15, '1º xref: versículo 15');
-  assert.equal(first.votes, 439n, '1º xref: 439 votos (bigint), igual ao TLA_XREF nativo');
+  assert.equal(first.reference.book, 45, '1º xref: livro 45 (Romanos)');
+  assert.equal(first.reference.chapter, 5, '1º xref: capítulo 5');
+  assert.equal(first.reference.verses.tag, 'Single', '1º xref: Romanos 5:8 é Single');
+  assert.equal(first.reference.verses.inner.verse, 8, '1º xref: versículo 8');
+  assert.equal(first.votes, 871n, '1º xref: 871 votos (bigint), igual ao TLA_XREF nativo');
   assert.equal(typeof first.votes, 'bigint', 'votes deve ser bigint (i64)');
 
   // (2c) Existe ≥1 Range no conjunto — João 11:25-26 (400 votos) prova Single vs Range.
@@ -140,18 +145,20 @@ async function main() {
   const tooHigh = await xref(43, 3, 16, 100000n);
   assert.deepEqual(tooHigh, [], 'minVotes acima do máximo deve retornar [] (sem throw)');
 
-  // (2g) `minVotes` respeitado: 400 → exatamente 2 (votos 439 e 400; o 3º, 344, é cortado).
+  // (2g) `minVotes` respeitado: 400 → exatamente 5 (871, 618, 439, 434, 400; o 6º, 344,
+  //      é cortado). Na Bíblia completa (F5.36) João 3:16 tem 5 xrefs com >= 400 votos.
   const minVotes400 = await xref(43, 3, 16, 400n);
-  assert.equal(minVotes400.length, 2, `minVotes=400 deve dar 2 xrefs, veio ${minVotes400.length}`);
+  assert.equal(minVotes400.length, 5, `minVotes=400 deve dar 5 xrefs, veio ${minVotes400.length}`);
   assert.ok(
     minVotes400.every((cr) => cr.votes >= 400n),
     'todos os xrefs de minVotes=400 devem ter votes >= 400',
   );
 
-  // (2h) `limit` respeitado: limit=1 → exatamente 1 (João 3:15); limit=3 → 3.
+  // (2h) `limit` respeitado: limit=1 → exatamente 1 (Romanos 5:8, top por votos); limit=3 → 3.
   const limit1 = await xref(43, 3, 16, undefined, 1);
   assert.equal(limit1.length, 1, `limit=1 deve dar 1 xref, veio ${limit1.length}`);
-  assert.equal(limit1[0].reference.verses.inner.verse, 15, 'limit=1: o 1º é João 3:15');
+  assert.equal(limit1[0].reference.book, 45, 'limit=1: o 1º é Romanos (livro 45)');
+  assert.equal(limit1[0].reference.verses.inner.verse, 8, 'limit=1: o 1º é Romanos 5:8');
   const limit3 = await xref(43, 3, 16, undefined, 3);
   assert.equal(limit3.length, 3, `limit=3 deve dar 3 xrefs, veio ${limit3.length}`);
 
@@ -168,11 +175,11 @@ async function main() {
   console.log(`  Range no conjunto           -> ${fmt(range)}  [Range]`);
   console.log(`  versículo sem xref (3:999)  -> [] (sem throw)`);
   console.log(`  minVotes=100000             -> [] (sem throw)`);
-  console.log(`  minVotes=400                -> ${minVotes400.length} xrefs (439, 400; 344 cortado)`);
+  console.log(`  minVotes=400                -> ${minVotes400.length} xrefs (871,618,439,434,400; 344 cortado)`);
   console.log(`  limit=1 / limit=3           -> ${limit1.length} / ${limit3.length}`);
   console.log(
-    '  PARIDADE: João 3:15 é o 1º por votos (439) — IGUAL ao TLA_XREF nativo ' +
-      '(F1.9: first_ref="John 3:15" first_votes=439).',
+    '  PARIDADE: Romanos 5:8 é o 1º por votos (871) — IGUAL ao TLA_XREF nativo ' +
+      '(F1.9, Bíblia completa F5.36).',
   );
   // `listBooks` usado só para confirmar o cânon (Rust) disponível na composição.
   void listBooks;

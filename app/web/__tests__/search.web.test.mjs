@@ -19,9 +19,10 @@
 // Os marcadores de destaque (U+0002/U+0003) só aparecem em `highlighted`, NUNCA em
 // `text` (que é limpo) — a UI os converte em estilo via `app/lib/highlight.ts`.
 //
-// PARIDADE: o João 3:16 LOCALIZADO no conjunto de `search("God","kjv",…,1000)` é o
+// PARIDADE: o João 3:16 LOCALIZADO no conjunto de `search("God","kjv",43,1000)` é o
 // MESMO que o nativo prova em `TLA_SEARCH` (F1.6, search-selftest.ts) — mesmo SQL,
-// mesmo dado. (O 1º hit por BM25 NÃO é João 3:16; por isso LOCALIZAMOS com `.find`.)
+// mesmo dado. Na Bíblia COMPLETA (F5.36) João 3:16 fica ~1980º por BM25 para "God"/kjv,
+// então LOCALIZAMOS filtrando por livro=43 (determinístico) em vez de num top-N.
 //
 // Sai 0 se tudo bater; ≠0 caso contrário.
 import { build } from 'esbuild';
@@ -54,8 +55,9 @@ const JOHN_3_16_KJV =
   'For God so loved the world, that he gave his only begotten Son, ' +
   'that whosoever believeth in him should not perish, but have everlasting life.';
 
-// Contagem real de hits de "God"/"deus" na KJV/Almeida do subset (do core/planner).
-const GOD_HITS = 646;
+// "God" na KJV — Bíblia COMPLETA (F5.36/ADR-0056): 3892 versículos (era 646 no
+// sample de 3 livros). A contagem vem SEMPRE do índice FTS do store, verbatim.
+const GOD_HITS_KJV_FULL = 3892;
 
 async function loadBundle() {
   const outfile = join(tmpdir(), `search-headless-${randomBytes(6).toString('hex')}.mjs`);
@@ -110,14 +112,23 @@ async function main() {
   // (2) Store local (wa-sqlite COM FTS5 + VFS de memória sobre os bytes do subset).
   const handle = await openReadingDbInMemory();
 
-  // (2a) PROBE FTS5 ativo: o SELECT real do core (MATCH) roda sem "no such module".
-  //      Se o FTS5 estivesse ausente, `searchOnHandle` lançaria aqui.
-  const godHits = await searchOnHandle(handle, 'God', 'kjv', undefined, 1000);
+  // (2a) PROBE FTS5 ativo + COBERTURA da Bíblia COMPLETA (F5.36/ADR-0056): o SELECT
+  //      real do core (MATCH) roda sem "no such module" E a busca cobre os 66 livros —
+  //      "God"/kjv agora tem 3892 hits (era 646 no sample de 3 livros). Se o FTS5
+  //      estivesse ausente, `searchOnHandle` lançaria aqui.
+  const godHits = await searchOnHandle(handle, 'God', 'kjv', undefined, 5000);
   assert.ok(Array.isArray(godHits) && godHits.length > 0, 'search("God","kjv") deve retornar hits (FTS5 ativo)');
-  assert.equal(godHits.length, GOD_HITS, `"God"/kjv deve ter ${GOD_HITS} hits, veio ${godHits.length}`);
+  assert.equal(
+    godHits.length,
+    GOD_HITS_KJV_FULL,
+    `"God"/kjv deve ter ${GOD_HITS_KJV_FULL} hits na Bíblia completa, veio ${godHits.length}`,
+  );
 
-  // (2b) João 3:16 LOCALIZADO no conjunto (NÃO como 1º — mirror do TLA_SEARCH nativo).
-  const john = godHits.find((h) => {
+  // (2b) João 3:16 LOCALIZADO (filtrado por livro=43): na Bíblia completa João 3:16
+  //      fica em ~1980º por BM25 para "God"/kjv — FORA de um top-N pequeno. O filtro de
+  //      livro é determinístico e prova o MESMO texto verbatim que o TLA_SEARCH nativo.
+  const johnGodHits = await searchOnHandle(handle, 'God', 'kjv', 43, 1000);
+  const john = johnGodHits.find((h) => {
     const v = h.reference.verses;
     return h.reference.book === 43 && h.reference.chapter === 3 && v.tag === 'Single' && v.inner.verse === 16;
   });
@@ -172,8 +183,8 @@ async function main() {
 
   console.log('PASS — busca web (wa-sqlite[FTS5] + VFS de memória sobre reading-sample.sqlite):');
   console.log(`  FTS5 ATIVO no wa-sqlite (MATCH/bm25/highlight rodaram) — vendored ADR-0020`);
-  console.log(`  search("God","kjv",-,1000)  -> ${godHits.length} hits`);
-  console.log(`  João 3:16 LOCALIZADO        -> ref=João ${john.reference.chapter}:16 score=${john.score.toFixed(3)}`);
+  console.log(`  search("God","kjv",-,5000)  -> ${godHits.length} hits (Bíblia completa; era 646 no sample)`);
+  console.log(`  João 3:16 LOCALIZADO (livro=43) -> ref=João ${john.reference.chapter}:16 score=${john.score.toFixed(3)}`);
   console.log(`  john.text (verbatim, limpo) -> "${john.text}"`);
   console.log(`  john.highlighted (markers)  -> ...${JSON.stringify(john.highlighted.slice(0, 24))}...`);
   console.log(`  acento-insensível "ceus"    -> ${accHits.length} hits; contém "céus": ${accHits.some((h) => h.text.includes('céus'))}`);
@@ -182,8 +193,8 @@ async function main() {
   console.log(`  filtro livro=43 (João)      -> ${johnOnly.length} hits, todos no livro 43`);
   console.log(`  tradução "nope"             -> lançou "versão desconhecida: nope"`);
   console.log(
-    '  PARIDADE: João 3:16-no-conjunto é o MESMO que o nativo prova em TLA_SEARCH ' +
-      '(F1.6, search(...,"kjv",undefined,1000) + .find()).',
+    '  PARIDADE: João 3:16 (filtrado por livro=43) é o MESMO texto que o nativo prova ' +
+      'em TLA_SEARCH (F1.6, search(...,"kjv",43,1000) + .find()).',
   );
   // `listBooks` usado só para confirmar o cânon (Rust) disponível na composição.
   void listBooks;

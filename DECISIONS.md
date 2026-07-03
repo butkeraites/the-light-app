@@ -3494,3 +3494,29 @@ Com `web.output: static` e sem `asyncRoutes`, TODA rota do expo-router é eager 
 `npx tsc --noEmit` (0) · `test:about-attr` (atribuições byte-a-byte) · `test:i18n` + `test:i18n-coverage` (paridade pt/en 225 chaves, todas em namespace de CROMO, sem hardcoded PT/hex) · `test:a11y-scan` (73 interativos com role/label/alvo ≥44) · `test:web:contrast` (WCAG AA, tokens de tema) · `npx expo export --platform web` (sucesso) · `test:web:perf-budget` (LOCKED OK pós re-baseline). Offline: nenhuma rede, nenhum segredo; texto/atribuições são CROMO/dado exibido, não saída de modelo.
 
 Próximo ADR livre = **ADR-0056** (0036–0055 usados; 0037 foi o PR de planos).
+
+---
+
+## ADR-0056 — F5.36: Bíblia de LEITURA **completa** (66 livros × KJV+Almeida) em NATIVO e WEB — corrige o bug "Mateus 1 indisponível"; léxico segue **amostrado** on-demand
+
+- **Data:** 2026-07-03 · **Status:** aceito · **Tarefa:** F5.36 (`gate: false`; correção de bug reportado pelo humano) · **Depende:** **F1.3/ADR-0014** (gerador do subset de leitura), **F1.14/ADR-0020** (busca FTS5 web), **F1.15/ADR-0021** (xref web), **F5.15/ADR-0044** (split reading-lite/lexicon-sample), **F5.3** (fetch→OPFS on-demand), **F5.19/ADR-0047** (lock do orçamento perf). **NÃO** toca o `the-light` (@ `225b8c9`): o gerador é app-side (`core/examples/`), não o core externo.
+
+### Problema (bug reportado)
+Abrir **Mateus 1** (ou qualquer livro fora de Gênesis/Salmos/João) mostrava "Nenhum capítulo disponível nesta versão do banco de leitura", e a busca só achava hits nesses 3 livros. **Causa raiz:** o app embarcava um SAMPLE de dev de **3 livros** — o gerador `core/examples/gen_reading_sample_db.rs` fixava `BOOKS = [1, 19, 43]` (Gênesis/Salmos/João) e copiava só esses do `bible.sqlite` (que tem TODOS os 66 livros, KJV + Almeida 1911). Leitura/busca/xref são 100% offline — era DADO faltando, **não** gating de IA.
+
+### Decisão
+As tabelas de **LEITURA** (`books`, `verses`, `cross_references`, `verses_fts`) passam a copiar a **Bíblia COMPLETA** — 66 livros × 2 traduções — do `bible.sqlite` (SEM filtro de livro; xref sem o filtro "ambos os lados no subset"). O **léxico** (`original_tokens`/`lexicon`) segue **AMOSTRADO** em `LEXICON_BOOKS = [1,19,43]` (o léxico STEP completo é ~90 MB e o estudo profundo é on-demand + AI-gated + secundário — completo = follow-up **F5.38**). `scholarly_sources` segue copiado inteiro (poucas linhas: FK + atribuição STEP). Regenerado via `./scripts/gen-reading-sample-db.sh` → `reading-sample.sqlite` (asset NATIVO) + split F5.15 → `reading-lite.sqlite` (web, leitura/busca/xref, agora completo) + `lexicon-sample.sqlite` (léxico on-demand, **inalterado**).
+
+### Anti-alucinação (preservado)
+O texto dos versículos e o léxico são copiados **verbatim do `bible.sqlite`** via `INSERT ... SELECT FROM src` — nada fabricado/hardcodado. O schema continua vindo das migrações do `the-light-core` (`Store::open`). As asserções de sanidade do gerador foram mantidas (João 21 cap., João 3:16 KJV verbatim, FTS 1:1, xref/léxico de João 3:16) e AMPLIADAS: `count(DISTINCT number)==66` por tradução e Mateus (livro 40) com ≥1 capítulo em KJV e Almeida — o bug não pode voltar sem falhar a geração.
+
+### Tamanho / Perf (re-baseline DELIBERADO do asset ON-DEMAND; nota sobre `loop/perf`)
+`reading-lite.sqlite` cresce **4.530.176 → 40.308.736 B** (+35,78 MB; ~14,7 MB gzip / ~10,4 MB brotli over-the-wire). **NÃO é regressão de 1º paint:** este DB é carregado **ON-DEMAND** (fetch→OPFS, F5.3), NUNCA no entry EAGER — `moduleCount` fica **840 EXATO** (verificado no export) e `eagerBytes/gzip/brotli` do entry NÃO mudam (`transferHeadline` inalterado). Re-baseline SÓ do `readingLiteDbBytes` em `scripts/measure-web-bundle.sh` **e** `loop/perf/web-bundle-budget.json` (nota `noteF536`), seguindo a `reBaselinePolicy` e o precedente F5.15/F5.17 — é o ÚNICO toque em `loop/`, nenhum arquivo de ESTADO do loop foi tocado. Após o re-baseline, `test:web:perf-budget` volta a **LOCKED OK**.
+
+### Offline-first (preservado)
+A Bíblia de leitura é asset LOCAL: bundled no NATIVO (asset expo) e baixado **uma vez** (fetch→cache em OPFS) no WEB — nenhuma dependência de rede/conta em runtime para ler/buscar/navegar xref. O crescimento é custo de **transferência única cacheada**, não de cada boot. Se o download completo no web incomodar depois, "download opcional" é decisão humana futura (por ora, completo em todos os alvos — pedido explícito: "faz parte da Bíblia").
+
+### Prova
+Regeneração OK (versículos=62203, verses_fts=62203, cross_references=344799, léxico amostrado 56268 tokens). `sqlite3 reading-lite.sqlite "SELECT COUNT(*) FROM books"` = 132 (66×2); Matthew/Mateus presentes. Novo guard `test:web:coverage` (66 livros × 2 traduções, Mateus/Marcos/Lucas/Romanos presentes, ≥1 hit de busca em Romanos — FALHA se o banco regredir a um sample). `npx tsc --noEmit` (0) · `test:web:reading`/`search`/`xref`/`notes`/`plans` (verdes; search e xref tiveram seus valores DERIVADOS-DO-DADO atualizados p/ a Bíblia completa — "God"/kjv 646→3892; 1º xref de João 3:16 João 3:15/439 → Romanos 5:8/871; texto verbatim de João 3:16 preservado) · `npx expo export --platform web` (0) · `compress-web-assets.sh` (zero-drift OK) · `test:web:perf-budget` (LOCKED OK; moduleCount 840 inalterado). Offline: nenhuma rede/segredo.
+
+Próximo ADR livre = **ADR-0057** (0036–0056 usados; 0037 foi o PR de planos). Follow-up: **F5.38** (léxico completo on-demand, opcional/nativo).

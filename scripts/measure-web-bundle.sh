@@ -99,12 +99,22 @@ const BUDGET = {
     // PROGRESSO segue app-side (OPFS, chunk async `plans-fs`), fora do 1º paint.
     frontierWasm: { bytes: 1223324, re: /^assets\/web\/generated\/wasm-bindgen\/index_bg\..*\.wasm$/ },
     // F5.15 (ADR-0044): o `reading-sample.sqlite` COMBINADO (14.409.728 B) SAIU do dist
-    // web. A LEITURA agora usa `reading-lite.sqlite` (SEM léxico, 4.530.176 B) e o DADO do
-    // léxico virou `lexicon-sample.sqlite` (9.502.720 B), carregado ON-DEMAND (chunk async
-    // `sqlite-lexicon-opfs`, só ao abrir estudo/léxico) — FORA do caminho de leitura. Um
-    // leitor puro baixa 4.530.176 B (não 14.409.728) — −9,88 MB no 1º open de leitura.
+    // web. A LEITURA agora usa `reading-lite.sqlite` (SEM léxico) e o DADO do léxico virou
+    // `lexicon-sample.sqlite` (9.502.720 B), carregado ON-DEMAND (chunk async
+    // `sqlite-lexicon-opfs`, só ao abrir estudo/léxico) — FORA do caminho de leitura.
     // Ambos byte-estáveis (derivados de forma determinística por gen-reading-sample-db.sh).
-    readingLiteDb: { bytes: 4530176, re: /^assets\/_assets\/data\/reading-lite\..*\.sqlite$/ },
+    //
+    // F5.36 (ADR-0056) — re-baseline DELIBERADO/justificado 4.530.176 → 40.308.736 B
+    // (+35,78 MB): o `reading-lite.sqlite` passou de um SAMPLE de dev de 3 livros
+    // (Gênesis/Salmos/João) para a Bíblia COMPLETA — 66 livros × 2 traduções (KJV +
+    // Almeida 1911) — corrigindo o bug "Mateus 1 indisponível" e cobrindo busca/xref na
+    // Bíblia inteira. NÃO é regressão de 1º paint: este asset é carregado ON-DEMAND
+    // (fetch → OPFS, F5.3), NUNCA no entry EAGER — o `moduleCount` fica 840 EXATO
+    // (verificado) e os bytes/gzip/brotli do entry NÃO mudam. O léxico segue AMOSTRADO
+    // ({Gn,Sl,Jo}, `lexicon-sample.sqlite` inalterado; completo = follow-up F5.38). É DADO
+    // local (byte-estável, determinístico por gen-reading-sample-db.sh) — offline-first
+    // preservado (download único cacheado em OPFS, sem rede em runtime para ler).
+    readingLiteDb: { bytes: 40308736, re: /^assets\/_assets\/data\/reading-lite\..*\.sqlite$/ },
     lexiconDb: { bytes: 9502720, re: /^assets\/_assets\/data\/lexicon-sample\..*\.sqlite$/ },
     waSqliteFts5: { bytes: 666267, re: /^assets\/web\/vendor\/wa-sqlite-fts5\/wa-sqlite\..*\.wasm$/ },
   },

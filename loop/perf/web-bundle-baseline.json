@@ -18,7 +18,7 @@
   "frontierWasmBytes": 1223324,
   "frontierWasmBytesGzip": 440559,
   "frontierWasmBytesBrotli": 319679,
-  "readingLiteDbBytes": 4530176,
+  "readingLiteDbBytes": 40308736,
   "lexiconDbBytes": 9502720,
   "waSqliteFts5Bytes": 666267,
   "firstPaintTransferBytes": 338708,
@@ -53,10 +53,10 @@
       "brotliBytes": 319679
     },
     "readingLiteDb": {
-      "path": "app/dist/assets/_assets/data/reading-lite.bfab1458b5b33506ad64ff77f7395e41.sqlite",
-      "bytes": 4530176,
-      "gzipBytes": 1728435,
-      "brotliBytes": 1089464
+      "path": "app/dist/assets/_assets/data/reading-lite.018861400e589de05e124aac51d58131.sqlite",
+      "bytes": 40308736,
+      "gzipBytes": 14691553,
+      "brotliBytes": 10443437
     },
     "lexiconDb": {
       "path": "app/dist/assets/_assets/data/lexicon-sample.ed80b4fb0da94cda4584ab16604f138e.sqlite",
@@ -72,11 +72,11 @@
     }
   },
   "totals": {
-    "stableAssetsBytes": 15922487,
-    "stableAssetsGzipBytes": 5454046,
-    "stableAssetsBrotliBytes": 3532775,
-    "nominalTotalBytes": 17263290,
-    "nominalTotalGzipBytes": 5792754,
-    "nominalTotalBrotliBytes": 3800620
+    "stableAssetsBytes": 51701047,
+    "stableAssetsGzipBytes": 18417164,
+    "stableAssetsBrotliBytes": 12886748,
+    "nominalTotalBytes": 53041850,
+    "nominalTotalGzipBytes": 18755872,
+    "nominalTotalBrotliBytes": 13154593
   }
 }
