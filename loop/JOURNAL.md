@@ -211,3 +211,26 @@
   F5.26 (UI opt-in + wiring nativo) → F5.27 (⛔ validação real, humano).
 - **Próximo:** seedar e executar **F5.25** (push/pull do snapshot na pasta app-data do Drive + merge no pull, reusando F5.23;
   MOCK; convergência entre 2 devices + idempotência). Loop **LIVE** — sem HALT.
+
+## Ciclo — 2026-07-03T16:40Z — F5.25 ACEITA (push/pull do snapshot no Drive + merge)
+
+- **Heartbeat:** 2026-07-03T16:40:00Z.
+- **Tarefa:** F5.25 (push/pull do snapshot na pasta app-data do Drive + merge no pull, reusa F5.23; MOCK). Não-gate. Etapa 3 da trilha de sync (ADR-0036).
+- **Executor:** `7f4fac2` — motor puro/injetável `app/lib/driveSync.ts`: `pushSnapshot` (upload/replace de 1 arquivo canônico em
+  `appDataFolder`), `pullSnapshot` (list→download→valida refs via core ANTES de escrever→`mergeSnapshots`→aplica só o diff),
+  `syncNow` (pull-merge-push). Reusa integralmente F5.23 (`exportSnapshot`/`importSnapshotIntoStore`/`mergeSnapshots`) e o token
+  da F5.24 (`getToken()` injetado, `Authorization: Bearer`, nunca logado). Prova `driveSync.web.test.mjs` (mock fetch + nuvem dict):
+  `DRIVE_SYNC push=ok pull=ok converge=ok idempotent=ok notoken=ok`. ADR-0053.
+- **Reviewer (independente, subagente):** **PASSED**. Re-rodou os gates: tsc 0; `test:web:drivesync` com o marcador exato; perf-budget
+  LOCKED `moduleCount 839 (EXATO, inalterado)`; expo web 0; snapshot/driveauth sem regressão. 8 checagens adversariais: (1) reuso genuíno
+  (única import = `./userdataSnapshot`; token só via `getToken`); (2) pull valida antes de escrever (100% via `importSnapshotIntoStore`,
+  `assertValidReference` via core); (3) merge não apaga local (pull de remoto menor preserva nota só-local); (4) convergência 2 devices
+  (A↔B→união, progresso `max`); (5) idempotência (2ª syncNow=0/0/false); (6) push só snapshot (chaves permitidas; sem texto bíblico/sessão/
+  chave); (7) token não vaza (0 `console.*`/`client_secret`, `notoken` real); (8) mock/pureza (fetch injetado, fora do entry) + the-light
+  `225b8c9`, `.claude/settings.json` não commitado, commit toca só 5 arquivos de produto/teste/package.json/DECISIONS.md.
+- **Resultado:** aceito e arquivado (`loop/archive/F5.25.*`). STATUS/PROGRESS/JOURNAL atualizados.
+- **Trilha de sync:** F5.22+F5.23+F5.24+F5.25 ok → falta **F5.26 (UI opt-in + wiring do SnapshotStore ao store real — ÚLTIMA construível)**
+  → F5.27 (⛔ validação real, humano).
+- **Próximo:** seedar e executar **F5.26** (tela de sync opt-in OFF-por-padrão + aviso de privacidade + export/import manual em todos os
+  alvos + link/unlink + "Sincronizar agora" no web + "funciona offline sem isto"; adaptador `SnapshotStore`→store real, nativo garantido).
+  **Nota:** se o wiring web de notas/marcações exigir tocar o `the-light`, o executor deve **HALT** (não improvisar). Loop **LIVE**.
