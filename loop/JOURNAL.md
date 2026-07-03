@@ -275,3 +275,10 @@
   (offline, sem the-light, sem segredo) e propõe tarefas concretas F5.28+. Resultado alimenta a próxima rodada.
 - **Próximo:** revisar a síntese, seedar as tarefas de refinamento priorizadas na queue e retomar executor→reviewer.
   Loop **LIVE** — sem HALT. the-light `225b8c9`. Próximo ADR livre = **ADR-0055**.
+
+## Ciclo — 2026-07-03T18:05Z — F5.28 ACEITA (i18n cores de destaque) → seedar F5.29
+
+- **Heartbeat:** 2026-07-03T18:05:00Z. **Tarefa:** F5.28 (localizar nomes das cores de destaque via `t()`). Não-gate. Refinamento (varredura).
+- **Executor:** `32d06f2` — removido `label` PT de `highlightColors.ts`; +4 chaves `highlight.{yellow,green,blue,pink}` (pt/en); `ReaderVersePanel` usa `t(\`highlight.${c.name}\`)`; `name`→união literal; `highlight` no CHROME_NAMESPACES dos 2 guardas. EN "Highlight with Yellow", PT "Marcar com Amarelo".
+- **Reviewer (independente):** **PASSED**. tsc 0; `test:i18n`(203, paridade)/`test:i18n-coverage`/`test:a11y-scan`(71)/`test:web:notes` verdes. Bug corrigido nos 2 locais (asserts não-vazios); paridade real; `label` sem consumidores (remoção segura); the-light `225b8c9`; `.claude/settings.json` não commitado; commit só 5 arquivos de app. Fecha a última lacuna i18n.
+- **Resultado:** aceito/arquivado (`loop/archive/F5.28.*`). **Próximo:** F5.29 (corrigir o `accessibilityLabel` da Home que sobrescreve o `resultText` → leitor de tela anuncia o conteúdo real). Loop LIVE. Próximo ADR livre = ADR-0055.
