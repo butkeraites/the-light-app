@@ -3520,3 +3520,25 @@ A Bíblia de leitura é asset LOCAL: bundled no NATIVO (asset expo) e baixado **
 Regeneração OK (versículos=62203, verses_fts=62203, cross_references=344799, léxico amostrado 56268 tokens). `sqlite3 reading-lite.sqlite "SELECT COUNT(*) FROM books"` = 132 (66×2); Matthew/Mateus presentes. Novo guard `test:web:coverage` (66 livros × 2 traduções, Mateus/Marcos/Lucas/Romanos presentes, ≥1 hit de busca em Romanos — FALHA se o banco regredir a um sample). `npx tsc --noEmit` (0) · `test:web:reading`/`search`/`xref`/`notes`/`plans` (verdes; search e xref tiveram seus valores DERIVADOS-DO-DADO atualizados p/ a Bíblia completa — "God"/kjv 646→3892; 1º xref de João 3:16 João 3:15/439 → Romanos 5:8/871; texto verbatim de João 3:16 preservado) · `npx expo export --platform web` (0) · `compress-web-assets.sh` (zero-drift OK) · `test:web:perf-budget` (LOCKED OK; moduleCount 840 inalterado). Offline: nenhuma rede/segredo.
 
 Próximo ADR livre = **ADR-0057** (0036–0056 usados; 0037 foi o PR de planos). Follow-up: **F5.38** (léxico completo on-demand, opcional/nativo).
+
+
+## ADR-0057 — Leitura web: fetch-direto do asset local para MemoryVFS (sem round-trip OPFS)
+
+**Contexto.** Após a F5.36 (Bíblia completa, `reading-lite.sqlite` 4,3→38,4MB), Mateus 1 não abria
+no WEB. Repro em Node isolou: o DB + `MemoryVFS` + wa-sqlite-fts5 funcionam (abre 38MB, lê Mateus
+verbatim, 66 livros). A falha era o passo EXCLUSIVO do browser em `sqlite-reading-opfs.web.ts`:
+`fetch(asset 38MB) → grava em OPFS (createWritable().write) → lê de volta → MemoryVFS`. A gravação
+monolítica de 38MB em OPFS é frágil e falha sob a quota RESTRITA do modo anônimo.
+
+**Decisão.** O store web de LEITURA passa a carregar os bytes **direto do asset empacotado para o
+`MemoryVFS`** (`fetch(readingDbUri).arrayBuffer()`), SEM o round-trip de escrita/leitura em OPFS.
+Justificativa: `reading-lite.sqlite` é asset LOCAL da mesma origem (offline-first já garantido pelo
+próprio asset, read-only) — o OPFS não adicionava offline à leitura, era só um cache que quebra em
+DB grande e em anônimo. O léxico (`sqlite-lexicon-opfs.web.ts`) e o userdata (notas — precisam de
+persistência real) seguem em OPFS, INALTERADOS.
+
+**Consequências.** (+) Leitura funciona em janela normal e anônima, para qualquer tamanho de DB;
+some o problema de invalidação de cache/auto-reseed (sempre lê o asset atual). (−) Re-lê o asset
+local (38MB) a cada sessão para a memória — aceitável (leitura local, sem rede; `MemoryVFS` provado
+com 38MB). Teste: `reading.web.test.mjs` passa a asserir Mateus 1 (KJV) verbatim além de João.
+Relacionado: ADR-0044 (split léxico), ADR-0056 (Bíblia completa). Ver F5.38.

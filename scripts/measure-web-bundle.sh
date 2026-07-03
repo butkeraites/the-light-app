@@ -221,12 +221,21 @@ const BUDGET = {
   //       verbatim) somam ~10,4 KB raw / ~1,7 KB brotli ao entry. Nominais re-centrados nos valores
   //       medidos em 3 exports DETERMINISTICOS (raw 1.340.803; gzip 338.708; brotli 267.845);
   //       tolerancias INALTERADAS. Espelhado em `loop/perf/web-bundle-budget.json` (nota `noteF535`).
+  // NOTA F5.37 (ADR-0057) — re-baseline DELIBERADO: ESTRUTURAL moduleCount 840 -> 841 (+1 modulo
+  //   eager EXATO). A F5.37 (clareza de UX do gating de IA) adicionou `app/components/AiProviderNotice.tsx`
+  //   (aviso 'recurso usa IA — configure provedor' nos 4 paineis de IA + reassurance offline),
+  //   importado pelas rotas de leitura (eager no web output:static). NAO e regressao: e a feature.
+  //   BYTES do entry DENTRO da tolerancia antiga (componente + ~8 chaves i18n na banda ±; nominais
+  //   re-centrados). A revisao da F5.37 nao rodou perf-budget -> drift (moduleCount E bytes);
+  //   corrigida aqui c/ a F5.38. BYTES: +~4,8 KB raw / ~1,0 KB brotli (componente + ~8 chaves i18n);
+  //   eagerBytes 1.340.803 -> 1.345.650; gzip 338.708 -> 339.903; brotli 267.845 -> 268.816
+  //   (export deterministico; tolerancias INALTERADAS). Follow-up: AiProviderNotice lazy p/ sair do eager.
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 840,
-    eagerBytes: { nominal: 1340803, tolerance: 1024 },
-    eagerGzipBytes: { nominal: 338708, tolerance: 2048 },
-    eagerBrotliBytes: { nominal: 267845, tolerance: 1024 },
+    moduleCount: 841,
+    eagerBytes: { nominal: 1345650, tolerance: 1024 },
+    eagerGzipBytes: { nominal: 339903, tolerance: 2048 },
+    eagerBrotliBytes: { nominal: 268816, tolerance: 1024 },
   },
 };
 

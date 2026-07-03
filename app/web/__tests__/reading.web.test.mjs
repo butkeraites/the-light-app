@@ -54,6 +54,11 @@ const JOHN_3_16_ALM =
   'para que todo aquelle que n\'elle crê não pereça, mas tenha a vida eterna.';
 // Substring distintivo (sem o apóstrofo) p/ a checagem da Almeida.
 const JOHN_3_16_ALM_DISTINCTIVE = 'Porque Deus amou o mundo de tal maneira';
+// Mateus 1:1 (KJV) — texto VERBATIM do store (domínio público). SÓ no teste (asserção).
+// F5.38: exercita um livro do NT ALÉM de João (Mateus/40) ponta a ponta — a F5.36
+// tornou o subset a Bíblia COMPLETA; esta asserção pega regressão de cobertura de livros.
+const MATTHEW_1_1_KJV =
+  'The book of the generation of Jesus Christ, the son of David, the son of Abraham.';
 
 async function loadBundle() {
   const outfile = join(tmpdir(), `reading-headless-${randomBytes(6).toString('hex')}.mjs`);
@@ -167,7 +172,26 @@ async function main() {
   assert.ok(ids.includes('alm1911'), 'listTranslations deve incluir alm1911');
   assert.equal(ids[0], 'kjv', 'ordem do SQLite (language, id): kjv (en) antes de alm1911 (pt)');
 
-  // (2f) F5.15 (ADR-0044): o subset de LEITURA (`reading-lite.sqlite`) NÃO tem as tabelas
+  // (2f) F5.38: Mateus (livro 40, cap 1, KJV) via as funções de PRODUÇÃO — exercita um
+  // livro do NT ALÉM de João. A F5.36 tornou o subset a Bíblia COMPLETA; se um livro além
+  // de João sumir (regressão de cobertura), esta asserção pega. Texto VERBATIM do store.
+  const mtRows = await queryChapter(handle, 'kjv', 40, 1);
+  const mtPassage = composeChapterPassage(40, 1, mtRows, 'kjv');
+  assert.equal(
+    mtPassage.verses.length,
+    25,
+    `Mateus 1 (KJV) deve ter 25 versículos, veio ${mtPassage.verses.length}`,
+  );
+  const mtV1 = mtPassage.verses.find((v) => v.reference.verses.inner.verse === 1);
+  assert.ok(mtV1, 'Mateus 1 (KJV) deve conter o versículo 1');
+  assert.equal(
+    mtV1.text,
+    MATTHEW_1_1_KJV,
+    'TEXTO do store deve ser o KJV verbatim de Mateus 1:1',
+  );
+  assert.equal(mtV1.translation, 'kjv', `translation deve ser "kjv", veio ${mtV1.translation}`);
+
+  // (2g) F5.15 (ADR-0044): o subset de LEITURA (`reading-lite.sqlite`) NÃO tem as tabelas
   // de LÉXICO — o DADO do léxico (~9 MB) saiu do caminho de leitura (vai on-demand em
   // `lexicon-sample.sqlite`). Prova por SCHEMA: nenhuma tabela de léxico presente; as de
   // leitura/busca (verses/verses_fts) continuam. Uma consulta de léxico aqui FALHARIA.
@@ -195,6 +219,7 @@ async function main() {
   console.log(`  listBooks() (Rust/wasm)     -> ${books.length} livros (inclui João/43)`);
   console.log(`  getChapter("kjv",43,3) v16  -> "${kjvV16.text}"`);
   console.log(`  getChapter("alm1911",43,3) v16 -> "${almV16.text}"`);
+  console.log(`  getChapter("kjv",40,1) v1   -> "${mtV1.text}" (Mateus/NT além de João)`);
   console.log(`  chapterCount("kjv",43)      -> ${johnChapters}`);
   console.log(`  João 3 (KJV)                -> ${kjvPassage.verses.length} versículos`);
   console.log(`  listTranslations            -> [${ids.join(', ')}]`);

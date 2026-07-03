@@ -1,5 +1,6 @@
 // app/web/sqlite-reading-opfs.web.ts — F1.13 (ADR-0018/ADR-0019; molde F0.10 ADR-0011/0012)
 // · F5.15 (ADR-0044: léxico fora do caminho de leitura)
+// · F5.38 (ADR-0057: leitura web = fetch-direto do asset p/ MemoryVFS; OPFS só p/ userdata)
 //
 // Backend de RUNTIME do store web de LEITURA (BROWSER). Par exato de
 // `sqlite-opfs.web.ts`, porém sobre o SUBSET WEB de LEITURA `reading-lite.sqlite`
@@ -12,15 +13,29 @@
 // ADR-0014; o split é WEB-scoped). O `reading-lite.sqlite` NÃO tem as tabelas de léxico:
 // uma consulta de léxico neste handle FALHA por design (não retorna vazio silencioso).
 // Responsabilidades:
-//   - PERSISTÊNCIA OFFLINE-FIRST em OPFS: na 1ª vez carrega os bytes do asset
-//     EMPACOTADO `reading-lite.sqlite` em OPFS; nas próximas lê do OPFS.
+//   - CARGA OFFLINE-FIRST: a cada sessão faz `fetch` do asset LOCAL EMPACOTADO
+//     `reading-lite.sqlite` (mesma origem, zero rede externa) DIRETO para um VFS de
+//     MEMÓRIA — sem round-trip OPFS (F5.38/ADR-0057; ver justificativa abaixo).
 //   - LEITURA via `wa-sqlite`: instancia o SQLite-wasm (build SYNC, sem
-//     SharedArrayBuffer/COOP-COEP) sobre um VFS de MEMÓRIA hidratado com os bytes
-//     persistidos, e roda as MESMAS `queryChapter`/`queryChapterCount`/
-//     `queryTranslations` de `sqlite-reading.web.ts` (espelho dos SELECTs do core).
+//     SharedArrayBuffer/COOP-COEP) sobre esse VFS de MEMÓRIA, e roda as MESMAS
+//     `queryChapter`/`queryChapterCount`/`queryTranslations` de
+//     `sqlite-reading.web.ts` (espelho dos SELECTs do core).
+//
+// F5.38 (ADR-0057): a LEITURA parou de usar OPFS. Antes (F1.13) `openReadingDbWeb`
+// fazia `fetch(asset) → grava em OPFS → lê de volta → MemoryVFS`. O `reading-lite.sqlite`
+// é asset LOCAL empacotado (mesma origem, já offline-first pelo próprio asset) e é
+// READ-ONLY — o OPFS NÃO adicionava capacidade offline, era só um cache que passou a
+// quebrar quando o subset virou a Bíblia completa (F5.36: 4,3 → 38,4 MB): a gravação de
+// 38 MB em OPFS é frágil e, em janela anônima/incognito (quota de storage restrita),
+// falha — Mateus não abria. Um repro Node provou que 38 MB via `MemoryVFS` + o MESMO
+// wasm abre e consulta OK (Mateus 1 verbatim, 66 livros). Buscar o asset local a cada
+// sessão para o MemoryVFS é robusto (qualquer tamanho, janela normal E anônima), casa
+// com o caminho de prova Node (`readFile → MemoryVFS`) e ELIMINA o problema de
+// invalidação de cache/auto-reseed. OPFS segue APENAS para userdata (notas, que exigem
+// persistência real) e para o léxico (`sqlite-lexicon-opfs.web.ts`, separado) — intactos.
 //
 // Subdecisão (ADR-0012, herdada da F0.10): usa um VFS de memória HIDRATADO a
-// partir dos bytes do OPFS — não o VFS OPFS "ao vivo" — porque o
+// partir dos bytes do asset — não o VFS OPFS "ao vivo" — porque o
 // `FileSystemSyncAccessHandle` (exigido pelo VFS OPFS) só existe em Web Worker.
 // Assim roda na main thread sem Worker e SEM SharedArrayBuffer. A prova node usa o
 // MESMO VFS de memória + as MESMAS queries.
@@ -50,11 +65,6 @@ import readingDbUri from '../assets/data/reading-lite.sqlite';
 
 import type { ReadingDb } from './sqlite-reading.web';
 
-/** Diretório/arquivo do subset dentro do OPFS (separado do `sample.sqlite` da F0.10). */
-const OPFS_DIR = 'the-light';
-// F5.15 (ADR-0044): nome novo — a leitura passou a usar o subset SEM léxico. Um OPFS
-// antigo com `reading-sample.sqlite` (combinado, ~14,4 MB) fica órfão/inofensivo.
-const OPFS_FILE = 'reading-lite.sqlite';
 /** Nome lógico do banco no VFS de memória do `wa-sqlite`. */
 const MEM_DB_NAME = 'reading-lite.sqlite';
 
@@ -72,43 +82,19 @@ async function fetchBytes(uri: string): Promise<ArrayBuffer> {
 }
 
 /**
- * Carrega o `reading-lite.sqlite` (subset de leitura SEM léxico, F5.15/ADR-0044) em
- * OPFS na 1ª vez (a partir do asset empacotado) e devolve os bytes persistidos. OPFS é
- * o backend de persistência local (offline-first; zero rede em runtime — só fetch da
- * própria origem).
- */
-async function readSubsetBytesFromOpfs(): Promise<ArrayBuffer> {
-  const root = await navigator.storage.getDirectory();
-  const dir = await root.getDirectoryHandle(OPFS_DIR, { create: true });
-
-  let fileHandle: FileSystemFileHandle;
-  try {
-    // Já persistido em execução anterior?
-    fileHandle = await dir.getFileHandle(OPFS_FILE);
-  } catch {
-    // 1ª vez: persiste os bytes do asset empacotado em OPFS (offline-first).
-    fileHandle = await dir.getFileHandle(OPFS_FILE, { create: true });
-    const seed = await fetchBytes(readingDbUri);
-    const writable = await fileHandle.createWritable();
-    await writable.write(seed);
-    await writable.close();
-  }
-
-  const file = await fileHandle.getFile();
-  return file.arrayBuffer();
-}
-
-/**
- * Abre o store web de LEITURA no BROWSER: persiste/lê o `reading-lite.sqlite` (subset
- * SEM léxico, F5.15/ADR-0044) do OPFS e abre um `wa-sqlite` (VFS de memória hidratado
- * com esses bytes) pronto para `queryChapter`/`queryChapterCount`/`queryTranslations`.
- * NÃO carrega o léxico (~9 MB) — esse é on-demand via `openLexiconDbWeb`. Lança se OPFS
- * não estiver disponível.
+ * Abre o store web de LEITURA no BROWSER: faz `fetch` do asset LOCAL empacotado
+ * `reading-lite.sqlite` (subset SEM léxico, F5.15/ADR-0044) DIRETO para um `wa-sqlite`
+ * (VFS de memória hidratado com esses bytes) pronto para
+ * `queryChapter`/`queryChapterCount`/`queryTranslations`. NÃO usa OPFS (F5.38/ADR-0057:
+ * dado read-only de asset local — OPFS só quebrava em 38 MB / janela anônima). NÃO
+ * carrega o léxico (~9 MB) — esse é on-demand via `openLexiconDbWeb`. Lança fora de um
+ * browser (node/SSR) para não quebrar de forma obscura.
  */
 export async function openReadingDbWeb(): Promise<OpenReadingDb> {
-  if (typeof navigator === 'undefined' || !navigator.storage?.getDirectory) {
+  if (typeof navigator === 'undefined' || typeof fetch === 'undefined') {
     throw new Error(
-      'Store web de leitura indisponível: requer um browser com OPFS (navigator.storage.getDirectory).',
+      'Store web de leitura indisponível: requer um browser (navigator/fetch). ' +
+        'Em node/SSR use o caminho de prova (readFile → MemoryVFS).',
     );
   }
 
@@ -118,9 +104,12 @@ export async function openReadingDbWeb(): Promise<OpenReadingDb> {
   const module = await SQLiteESMFactory({ wasmBinary });
   const sqlite3 = SQLite.Factory(module);
 
-  // VFS de memória hidratado com os bytes persistidos no OPFS.
+  // VFS de memória hidratado com os bytes do asset LOCAL (fetch da própria origem —
+  // offline-first, sem round-trip OPFS; F5.38/ADR-0057). Robusto p/ qualquer tamanho
+  // (38 MB da Bíblia completa) e p/ janela anônima; espelha o caminho de prova Node
+  // (readFile → MemoryVFS).
   const vfs = new MemoryVFS();
-  const dbBytes = await readSubsetBytesFromOpfs();
+  const dbBytes = await fetchBytes(readingDbUri);
   vfs.mapNameToFile.set(MEM_DB_NAME, {
     name: MEM_DB_NAME,
     flags: SQLite.SQLITE_OPEN_READONLY,
