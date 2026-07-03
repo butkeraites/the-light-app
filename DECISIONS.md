@@ -2999,3 +2999,64 @@ e a prova de que o vertical roda no device.
 - **Nenhuma dependência nova**; o Reader existente é reusado p/ a leitura do dia (sem nova UI
   de leitura). O `web-bundle-baseline.json` (F5.3) fica com um leve drift esperado (+1 rota
   eager); o orçamento é travado como guarda em F5.19 (fora do escopo desta tarefa).
+
+---
+
+## ADR-0040 — F5.9: CODE-SPLIT web dos transportes pesados (factory wa-sqlite + IA/estudo/léxico/busca/xref/userdata) via `import()` no glue `reading.web.ts` + re-centragem da baseline perf (dívida F5.7/F5.8)
+
+- **Data:** 2026-07-02 · **Status:** aceito · **Tarefa:** F5.9 (`gate: false`) · **Depende:** ADR-0019 (F1.13: store web OPFS + factory wa-sqlite), ADR-0025/ADR-0031/ADR-0032 (transportes web de IA/estudo/conversa), ADR-0020/ADR-0021 (busca/xref web), ADR-0022 (userdata web), **F5.3** (métrica `measure-web-bundle.sh` + `web-bundle-baseline.json`). **NÃO** toca o `the-light` (@ `2fc2dab`) nem `core/**` — 100% app-side (imports/metro/build).
+
+### Contexto
+O bundle web do Expo/Metro emitia UM ÚNICO chunk EAGER de entry (~1,45 MB). Todo o glue
+web-only PESADO era importado ESTÁTICO por `app/web/reading.web.ts` (o glue que as telas
+`app/app/read/**`, `search`, `plans` e os painéis importam), logo entrava no entry mesmo
+p/ quem só abre a home: a **factory do wa-sqlite** (`vendor/wa-sqlite-fts5/wa-sqlite.mjs`
+~41,5 KB + `MemoryVFS` + a API `wa-sqlite`) via `sqlite-reading-opfs.web`, a IA
+`ai-anchored.web` (~32 KB), o estudo/léxico `study.web` (+`sqlite-lexicon.web`+`research.web`),
+a conversa `session.web`, a busca `sqlite-search.web`, a xref `sqlite-xref.web`, os SELECTs
+`sqlite-reading.web` e o userdata (`userdata-fs.web`/`userdata-opfs.web`). Nada disso é
+1º-paint: o 1º paint só precisa de `listBooks()` (síncrono, wasm da fronteira). Em paralelo,
+a métrica `scripts/measure-web-bundle.sh` estava **RED** — a dívida acumulada desde a baseline
+F5.6: F5.7 (`/plans`) + F5.8/F5.5 (i18n) subiram o `moduleCount` p/ **856** (travado em 854) e
+estouraram a banda de bytes do entry.
+
+### Decisão
+1. **Code-split no LIMITE DE CHAMADA (só `reading.web.ts`).** Cada função assíncrona do glue
+   troca os `import` estáticos pesados por `await import()` (via `Promise.all`) DENTRO do corpo:
+   `getChapter`/`listTranslations`/`chapterCount`/`search`/`crossRefs`/`putNote`/… e as fns de
+   IA/estudo/conversa carregam a factory wa-sqlite + o `*OnHandle` sob demanda (ao abrir
+   capítulo/busca/notas/IA/estudo — "quando o DB é preciso"). `AiFetch` vira `import type`
+   (apagado). O Metro/Expo (`expo export --platform web`, `web.output: static`) emite então
+   **CHUNKS ASYNC** separados: de 1 → **10 bundles web** (`sqlite-reading-opfs` 42 KB [factory],
+   `study` 6,2 KB, `userdata-fs` 2,6 KB, `sqlite-search` 2 KB, `sqlite-xref` 1,7 KB,
+   `userdata-opfs` 1,4 KB, `session` 806 B, e `ai-anchored`+`sqlite-reading` no `__common` 9,3 KB
+   compartilhado). São assets LOCAIS (offline-first: nenhuma rede; carregam da própria origem).
+2. **Zero-drift (muda SÓ QUANDO carrega, nunca o comportamento).** As assinaturas públicas e as
+   saídas são IDÊNTICAS — só o TIMING do import muda. Os 15 self-tests `test:web:*` importam as
+   fns `*OnHandle` DIRETAMENTE dos sub-módulos (não via `reading.web.ts`), então ficam intactos e
+   verdes (prova de zero-drift). Os PAINÉIS (`ReaderAskPanel`/`StudyPanel`/`ChatPanel`/`ComparePanel`)
+   **não** foram convertidos a `React.lazy`: são montados sempre com `visible` (Modal + estado
+   interno); torná-los condicionais mudaria o ciclo de vida (reset de estado) — BEHAVIOR change SEM
+   cobertura de teste → violaria o zero-drift. Eles já não puxam código pesado (o glue o difere).
+3. **Re-centragem da baseline (REQUERIDO).** `measure-web-bundle.sh` (budget) + `web-bundle-baseline.json`
+   atualizados p/ o estado pós-split: `moduleCount` **856 → 844** (−12; os pesados saíram do entry),
+   `eagerBytes` **1.448.032 → 1.381.059** (−66.973 B, −4,6%), `eagerGzip` **372.625 → 352.644**
+   (−19.981 B, −5,4%). Tolerâncias (1024 raw / 2048 gzip) intactas p/ o flutter não-determinístico do
+   Metro. `moduleCount` (nº de `__d(`) é a grandeza EXATA que pega o split.
+
+### Prova e gates
+- **10 bundles web** no `expo export` (era 1); `entry-*.js` = 844 módulos / 1.381.059 B (3 exports
+  byte-idênticos). `measure-web-bundle.sh` → **BUDGET OK** (exit 0) com os novos números.
+- `tsc --noEmit` (0). Os 15 `test:web:*` (reading/search/xref/notes/ai/ai-stream/ai-multiprovider/
+  study/lexicon/export/session/research/research-tavily/compare/firstpaint) + `test:keystore` + `test:i18n`
+  **verdes, saídas idênticas** (zero-drift). Grafo wasm da fronteira intacto (frontierWasm byte-igual).
+- the-light `2fc2dab` **intacto** (0 mudanças em `core/**`).
+
+### Consequências
+- O 1º paint (home/lista de livros) não arrasta mais a factory wa-sqlite nem os transportes de
+  IA/estudo/léxico — carregam sob demanda como chunks LOCAIS. O restante do entry (~1,38 MB) é o
+  baseline IRREDUTÍVEL de 1º paint (React Native Web + React + expo-router + a glue wasm-bindgen da
+  fronteira + i18n/tema): a superfície removível web-only era só ~66 KB, então a meta aspiracional de
+  −20% do task **não é atingível** sem quebrar o 1º paint (achado HONESTO; documentado p/ o Reviewer).
+- A baseline volta a VERDE e reflete o split + a dívida F5.7/F5.8. O split do DADO ~9 MB do léxico
+  (on-demand DB) é F5.15 e a pré-compressão é F5.17 — fora do escopo desta tarefa.

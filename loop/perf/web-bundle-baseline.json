@@ -16,13 +16,13 @@
   "entryJs": {
     "note": "Entry-JS \"eager\" carregado no 1º paint. moduleCount (nº de `__d(`) é EXATO e independe da ordem — a grandeza de budget do JS (code-split futuro a reduz de forma medível). eagerBytes/eagerGzipBytes são NOMINAL ± TOLERÂNCIA (Metro não é byte-determinístico); o script mede o valor vivo e falha se sair da faixa.",
     "glob": "_expo/static/js/web/entry-*.js",
-    "moduleCount": 854,
+    "moduleCount": 844,
     "eagerBytes": {
-      "nominal": 1441546,
+      "nominal": 1381059,
       "tolerance": 1024
     },
     "eagerGzipBytes": {
-      "nominal": 371839,
+      "nominal": 352644,
       "tolerance": 2048
     }
   },
@@ -56,7 +56,7 @@
   "totals": {
     "stableAssetsBytes": 16964298,
     "stableAssetsGzipBytes": 6235734,
-    "nominalTotalBytes": 18405844,
-    "nominalTotalGzipBytes": 6607573
+    "nominalTotalBytes": 18345357,
+    "nominalTotalGzipBytes": 6588378
   }
 }

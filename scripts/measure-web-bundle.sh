@@ -76,22 +76,28 @@ const BUDGET = {
     sampleDb: { bytes: 131072, re: /^assets\/_assets\/data\/sample\..*\.sqlite$/ },
   },
   // Entry-JS "eager" (NÃO byte-determinístico). moduleCount é EXATO; bytes/gzip crus
-  // são nominal ± tolerância. Faixa observada (re-centrada — ver NOTA F5.6): raw
-  // 1.441.485–1.441.607 (spread 122); gzip 371.011–372.667 (spread 1.656). Tolerâncias
-  // folgadas o suficiente p/ o flutter upstream, apertadas o suficiente p/ pegar
-  // regressão real (moduleCount pega mudanças estruturais como code-split de forma EXATA).
+  // são nominal ± tolerância. Tolerâncias folgadas o suficiente p/ o flutter upstream
+  // do Metro, apertadas o suficiente p/ pegar regressão real (moduleCount pega mudanças
+  // estruturais como code-split de forma EXATA).
   //
-  // NOTA F5.6: o nominal do entry-JS subiu ~5,7 KB vs. a baseline F5.3 (1.435.910). Isso
-  // NÃO vem da F5.6 (que só troca o build do wasm: gen-bindings-web.sh + wasm-crate.patch.toml
-  // + o binário wasm — a glue wasm-bindgen index.js é BYTE-IDÊNTICA, 53.500 B, 75 exports),
-  // e sim de código de app entrado APÓS a F5.3 (F4.4/F4.5/F4.6: streaming SSE nativo, Tavily).
-  // moduleCount segue 854 (mesma estrutura). Re-centramos o nominal p/ refletir o main atual;
-  // a lógica de tolerância (só p/ o entry-JS volátil, não p/ o wasm) fica intacta.
+  // NOTA F5.9 (re-centragem pós-CODE-SPLIT + dívida F5.7/F5.8): a F5.9 moveu os
+  // transportes PESADOS (a factory do wa-sqlite + store OPFS de leitura, a IA
+  // `ai-anchored`, o estudo/léxico `study`, a conversa `session`, a busca/xref e o
+  // userdata) do chunk EAGER de `entry` para CHUNKS ASYNC sob demanda (via `import()`
+  // no glue `app/web/reading.web.ts`). Efeito medido (3 exports byte-idênticos):
+  //   • moduleCount  856 (dívida F5.7 `/plans` + F5.8/F5.5 i18n sobre os 854 da F5.6) → 844
+  //     (12 módulos saíram do entry; os pesados agora vivem em chunks async LOCAIS);
+  //   • eagerBytes   1.448.032 → 1.381.059 (−66.973 B, −4,6%);
+  //   • eagerGzip      372.625 →   352.644 (−19.981 B, −5,4%).
+  // O restante do entry é o baseline IRREDUTÍVEL de 1º paint (React Native Web + React +
+  // expo-router + a glue wasm-bindgen da fronteira + i18n/tema) — não code-splittável sem
+  // quebrar o 1º paint. Re-centramos moduleCount + nominais p/ o estado pós-split; a
+  // lógica de tolerância (só p/ o entry-JS volátil, não p/ o wasm) fica intacta.
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 854,
-    eagerBytes: { nominal: 1441546, tolerance: 1024 },
-    eagerGzipBytes: { nominal: 371839, tolerance: 2048 },
+    moduleCount: 844,
+    eagerBytes: { nominal: 1381059, tolerance: 1024 },
+    eagerGzipBytes: { nominal: 352644, tolerance: 2048 },
   },
 };
 

@@ -64,29 +64,17 @@ import type {
   ReadingPlanProgress,
 } from './generated/the_light_app_core';
 import { StudyMode, StudyLens, StudyDepth, ChatRole } from './generated/the_light_app_core';
-import {
-  composeChapterPassage,
-  hasTranslation,
-  queryChapter,
-  queryChapterCount,
-  queryTranslations,
-} from './sqlite-reading.web';
-import { searchOnHandle } from './sqlite-search.web';
-import { crossRefsOnHandle } from './sqlite-xref.web';
-import { openReadingDbWeb } from './sqlite-reading-opfs.web';
-import { askAnchoredOnHandle, type AiFetch } from './ai-anchored.web';
-import { deepStudyOnHandle, lexicalEntriesOnHandle } from './study.web';
-import { askSessionAnchoredOnHandle } from './session.web';
-import {
-  addHighlightFs,
-  deleteNoteFs,
-  getNoteFs,
-  listHighlightsFs,
-  listNotesFs,
-  putNoteFs,
-  removeHighlightFs,
-} from './userdata-fs.web';
-import { openUserDataWeb } from './userdata-opfs.web';
+// F5.9 (ADR-0040): CODE-SPLIT. Os transportes PESADOS (a factory do wa-sqlite +
+// store OPFS de leitura, a IA `ai-anchored`, o estudo/léxico `study`, a conversa
+// `session`, a busca/xref e o userdata) NÃO são mais importados ESTÁTICOS aqui —
+// eram arrastados p/ o chunk EAGER de entry mesmo p/ quem só abre a home. Agora
+// carregam SOB DEMANDA via `import()` no LIMITE DE CHAMADA (ao abrir capítulo/busca/
+// IA/estudo/notas, ou quando o DB é preciso), como chunks async LOCAIS do Metro
+// (offline-first: nada de rede — assets da própria origem). Isto muda SÓ QUANDO o
+// código carrega, NUNCA o comportamento: assinaturas públicas e saídas IDÊNTICAS
+// (zero drift; os self-tests exercitam as funções `*OnHandle` diretamente, intactas).
+// `AiFetch` é só TIPO (apagado na compilação) → não puxa `ai-anchored` p/ o entry.
+import type { AiFetch } from './ai-anchored.web';
 
 export type {
   Book,
@@ -125,6 +113,10 @@ export function listBooks(): Book[] {
  * por paridade de assinatura com o nativo; o store web abre o subset internamente.
  */
 export async function listTranslations(_dbPath: string): Promise<Translation[]> {
+  const [{ openReadingDbWeb }, { queryTranslations }] = await Promise.all([
+    import('./sqlite-reading-opfs.web'),
+    import('./sqlite-reading.web'),
+  ]);
   const handle = await openReadingDbWeb();
   try {
     return await queryTranslations(handle);
@@ -147,6 +139,8 @@ export async function getChapter(
   book: number,
   chapter: number,
 ): Promise<Passage> {
+  const [{ openReadingDbWeb }, { hasTranslation, queryChapter, composeChapterPassage }] =
+    await Promise.all([import('./sqlite-reading-opfs.web'), import('./sqlite-reading.web')]);
   const handle = await openReadingDbWeb();
   try {
     if (!(await hasTranslation(handle, translation))) {
@@ -171,6 +165,10 @@ export async function chapterCount(
   translation: string,
   book: number,
 ): Promise<number> {
+  const [{ openReadingDbWeb }, { queryChapterCount }] = await Promise.all([
+    import('./sqlite-reading-opfs.web'),
+    import('./sqlite-reading.web'),
+  ]);
   const handle = await openReadingDbWeb();
   try {
     return await queryChapterCount(handle, translation, book);
@@ -197,6 +195,10 @@ export async function search(
   book?: number,
   limit?: number,
 ): Promise<SearchHit[]> {
+  const [{ openReadingDbWeb }, { searchOnHandle }] = await Promise.all([
+    import('./sqlite-reading-opfs.web'),
+    import('./sqlite-search.web'),
+  ]);
   const handle = await openReadingDbWeb();
   try {
     return await searchOnHandle(handle, query, translation, book, limit);
@@ -227,6 +229,10 @@ export async function crossRefs(
   minVotes?: bigint,
   limit?: number,
 ): Promise<CrossRef[]> {
+  const [{ openReadingDbWeb }, { crossRefsOnHandle }] = await Promise.all([
+    import('./sqlite-reading-opfs.web'),
+    import('./sqlite-xref.web'),
+  ]);
   const handle = await openReadingDbWeb();
   try {
     return await crossRefsOnHandle(handle, book, chapter, verse, minVotes, limit);
@@ -246,23 +252,39 @@ export async function crossRefs(
 
 export async function putNote(_dataDir: string, reference: string, body: string): Promise<void> {
   const ref = parseReference(reference);
+  const [{ openUserDataWeb }, { putNoteFs }] = await Promise.all([
+    import('./userdata-opfs.web'),
+    import('./userdata-fs.web'),
+  ]);
   const dir = await openUserDataWeb();
   await putNoteFs(dir, ref, body);
 }
 
 export async function getNote(_dataDir: string, reference: string): Promise<Note | undefined> {
   const ref = parseReference(reference);
+  const [{ openUserDataWeb }, { getNoteFs }] = await Promise.all([
+    import('./userdata-opfs.web'),
+    import('./userdata-fs.web'),
+  ]);
   const dir = await openUserDataWeb();
   return getNoteFs(dir, ref);
 }
 
 export async function deleteNote(_dataDir: string, reference: string): Promise<boolean> {
   const ref = parseReference(reference);
+  const [{ openUserDataWeb }, { deleteNoteFs }] = await Promise.all([
+    import('./userdata-opfs.web'),
+    import('./userdata-fs.web'),
+  ]);
   const dir = await openUserDataWeb();
   return deleteNoteFs(dir, ref);
 }
 
 export async function listNotes(_dataDir: string): Promise<Note[]> {
+  const [{ openUserDataWeb }, { listNotesFs }] = await Promise.all([
+    import('./userdata-opfs.web'),
+    import('./userdata-fs.web'),
+  ]);
   const dir = await openUserDataWeb();
   return listNotesFs(dir);
 }
@@ -274,17 +296,29 @@ export async function addHighlight(
   tag?: string,
 ): Promise<void> {
   const ref = parseReference(reference);
+  const [{ openUserDataWeb }, { addHighlightFs }] = await Promise.all([
+    import('./userdata-opfs.web'),
+    import('./userdata-fs.web'),
+  ]);
   const dir = await openUserDataWeb();
   await addHighlightFs(dir, ref, color, tag);
 }
 
 export async function removeHighlight(_dataDir: string, reference: string): Promise<number> {
   const ref = parseReference(reference);
+  const [{ openUserDataWeb }, { removeHighlightFs }] = await Promise.all([
+    import('./userdata-opfs.web'),
+    import('./userdata-fs.web'),
+  ]);
   const dir = await openUserDataWeb();
   return removeHighlightFs(dir, ref);
 }
 
 export async function listHighlights(_dataDir: string): Promise<Highlight[]> {
+  const [{ openUserDataWeb }, { listHighlightsFs }] = await Promise.all([
+    import('./userdata-opfs.web'),
+    import('./userdata-fs.web'),
+  ]);
   const dir = await openUserDataWeb();
   return listHighlightsFs(dir);
 }
@@ -318,6 +352,10 @@ export async function askAnchored(
   model: string | undefined,
   lang: string,
 ): Promise<AiAnswer> {
+  const [{ openReadingDbWeb }, { askAnchoredOnHandle }] = await Promise.all([
+    import('./sqlite-reading-opfs.web'),
+    import('./ai-anchored.web'),
+  ]);
   const handle = await openReadingDbWeb();
   try {
     return await askAnchoredOnHandle(
@@ -358,6 +396,10 @@ export async function askAnchoredStream(
   lang: string,
   onToken: (token: string) => void,
 ): Promise<AiAnswer> {
+  const [{ openReadingDbWeb }, { askAnchoredOnHandle }] = await Promise.all([
+    import('./sqlite-reading-opfs.web'),
+    import('./ai-anchored.web'),
+  ]);
   const handle = await openReadingDbWeb();
   try {
     return await askAnchoredOnHandle(
@@ -412,6 +454,10 @@ export async function deepStudy(
   researchBackend?: string,
   researchKey?: string,
 ): Promise<StudyResultOut> {
+  const [{ openReadingDbWeb }, { deepStudyOnHandle }] = await Promise.all([
+    import('./sqlite-reading-opfs.web'),
+    import('./study.web'),
+  ]);
   const handle = await openReadingDbWeb();
   try {
     return await deepStudyOnHandle(
@@ -450,6 +496,10 @@ export async function lexicalEntries(
   _lang: string,
   limit: number | undefined,
 ): Promise<VerifiedLexiconOut> {
+  const [{ openReadingDbWeb }, { lexicalEntriesOnHandle }] = await Promise.all([
+    import('./sqlite-reading-opfs.web'),
+    import('./study.web'),
+  ]);
   const handle = await openReadingDbWeb();
   try {
     return await lexicalEntriesOnHandle(handle, book, chapter, verse, limit);
@@ -490,6 +540,10 @@ export async function askSessionAnchored(
   key: string | undefined,
   model: string | undefined,
 ): Promise<AiAnswer> {
+  const [{ openReadingDbWeb }, { askSessionAnchoredOnHandle }] = await Promise.all([
+    import('./sqlite-reading-opfs.web'),
+    import('./session.web'),
+  ]);
   const handle = await openReadingDbWeb();
   try {
     return await askSessionAnchoredOnHandle(
