@@ -341,3 +341,11 @@ Plano (Fases 0–5) construído + refinado. Trabalho AUTÔNOMO esgotado. O que r
 - **LICENSE do repo** — decisão humana (qual licença p/ o código próprio).
 - **Import por arquivo nativo / split reading-lite nativo** — exigem build nativo, não verificáveis pelos guardas headless web.
 Não fabricar busywork. **Próximo:** aguardar input humano (LICENSE · client-id GCP · ou abrir nova fase/escopo). Próximo ADR livre = **ADR-0056**.
+
+## Ciclo — 2026-07-03T20:40Z — BUG reportado (humano): leitura só de 3 livros → seedar F5.36/F5.37
+
+- **Bug (humano):** "Mateus 1 indisponível no database"; busca básica não funciona em livros fora de Gên/Sal/João.
+- **Diagnóstico (Driver):** o app embarca um SAMPLE de dev de **3 livros** (`reading-lite`/`reading-sample`: Gênesis/Salmos/João × KJV+Almeida, 9746 versículos), NÃO a Bíblia completa. O `bible.sqlite` (66 livros, 62203 versículos) existe mas nunca foi ligado como asset embarcado. Gerador `core/examples/gen_reading_sample_db.rs:44` fixa `BOOKS=[1,19,43]`. Leitura/busca/xref são OFFLINE — é dado faltando, NÃO gating de IA. Suíte headless 17/17 verde PORQUE testa o fixture sample (João 3:16) — não a cobertura.
+- **Decisão:** proceder com "Bíblia completa em todos os alvos" (opção A; humano ausente >60s no AskUserQuestion, mas pedido explícito "faz parte da Bíblia"). Léxico segue sample on-demand (90MB completo é secundário/AI-gated → follow-up F5.38).
+- **Seedadas:** **F5.36** (Bíblia completa no reading DB — remover filtro de livros no gerador, regenerar assets, guard de cobertura de 66 livros, re-baseline perf justificado, ADR-0056; anti-alucinação: texto verbatim do bible.sqlite) · **F5.37** (clareza de UX: recursos de IA sem chave mostram CTA "configure provedor em Ajustes"; offline nunca gated).
+- **Próximo:** executar F5.36 (pesado: cargo regen + split sqlite + export) → reviewer → depois F5.37. Loop LIVE. Próximo ADR livre = ADR-0056.
