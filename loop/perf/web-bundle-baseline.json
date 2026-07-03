@@ -21,8 +21,8 @@
   "readingLiteDbBytes": 4530176,
   "lexiconDbBytes": 9502720,
   "waSqliteFts5Bytes": 666267,
-  "firstPaintTransferBytes": 335273,
-  "firstPaintTransferBytesBrotli": 264632,
+  "firstPaintTransferBytes": 336848,
+  "firstPaintTransferBytesBrotli": 266106,
   "removedAssets": [
     "waSqliteNpm",
     "sampleDb",
@@ -33,15 +33,15 @@
     "glob": "_expo/static/js/web/entry-*.js",
     "moduleCount": 839,
     "eagerBytes": {
-      "nominal": 1324809,
+      "nominal": 1330402,
       "tolerance": 1024
     },
     "eagerGzipBytes": {
-      "nominal": 335273,
+      "nominal": 336848,
       "tolerance": 2048
     },
     "eagerBrotliBytes": {
-      "nominal": 264632,
+      "nominal": 266106,
       "tolerance": 1024
     }
   },
@@ -75,8 +75,8 @@
     "stableAssetsBytes": 15922487,
     "stableAssetsGzipBytes": 5454046,
     "stableAssetsBrotliBytes": 3532775,
-    "nominalTotalBytes": 17247296,
-    "nominalTotalGzipBytes": 5789319,
-    "nominalTotalBrotliBytes": 3797407
+    "nominalTotalBytes": 17252889,
+    "nominalTotalGzipBytes": 5790894,
+    "nominalTotalBrotliBytes": 3798881
   }
 }

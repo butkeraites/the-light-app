@@ -234,3 +234,28 @@
 - **Próximo:** seedar e executar **F5.26** (tela de sync opt-in OFF-por-padrão + aviso de privacidade + export/import manual em todos os
   alvos + link/unlink + "Sincronizar agora" no web + "funciona offline sem isto"; adaptador `SnapshotStore`→store real, nativo garantido).
   **Nota:** se o wiring web de notas/marcações exigir tocar o `the-light`, o executor deve **HALT** (não improvisar). Loop **LIVE**.
+
+## Ciclo — 2026-07-03T17:20Z — F5.26 ACEITA (UI opt-in + wiring) → HALT no GATE F5.27
+
+- **Heartbeat:** 2026-07-03T17:20:00Z.
+- **Tarefa:** F5.26 (UI opt-in de sync OFF-por-padrão + aviso de privacidade + export/import manual + link/unlink + "Sincronizar agora" + "funciona offline sem isto"; wiring do `SnapshotStore` ao store real). Não-gate. Etapa 4/ÚLTIMA construível da trilha de sync (ADR-0036).
+- **Executor:** `c2dc1f5` — tela de Sync como seção lazy na Home; toggle opt-in OFF por padrão (`syncPrefs` sobre KV F5.2);
+  aviso de privacidade honesto (sincroniza notas+marcações+progresso; NUNCA sessões de IA/banco/chaves/texto de versículo; sem telemetria) +
+  "funciona 100% offline sem isto"; export via Share + import por colar (universal) e por arquivo (web-only); Drive link/unlink + "Sincronizar
+  agora" GATED (sem `EXPO_PUBLIC_GOOGLE_DRIVE_CLIENT_ID` → Connect disabled → zero rede); adaptador `SnapshotStore`→store real (nativo
+  `snapshotStore.ts` + web `snapshotStore.web.ts` OPFS). Prova `syncui.web.test.mjs`: `SYNC_UI store=ok optin_default_off=ok optin_persist=ok`.
+  Perf moduleCount 839 inalterado (engines em chunks async; re-baseline bytes-only do contrato). ADR-0054.
+- **Reviewer (independente, subagente):** **PASSED**. Re-rodou os gates: tsc 0; `test:web:syncui` com o marcador exato; perf-budget LOCKED
+  `moduleCount 839 (INALTERADO)`; i18n-coverage(199)/contrast(18 AA)/expo web verdes; snapshot/driveauth/drivesync/i18n sem regressão. 8 checagens:
+  (1) opt-in OFF por padrão REAL (`getSyncOptIn()`=false em KV vazio, prova assere KV genuinamente vazio); (2) sem chamada real ao Google
+  (client-id do env ausente → Connect disabled; grep no repo por client_secret/GOCSPX-/AIza/ya29 = NENHUM; 0 `console.*`); (3) wiring ao store
+  real não-mock (mesmo `createSnapshotStore` de produção); (4) privacidade honesta + "offline" proeminente; (5) só-snapshot; (6) escopo;
+  (7) re-baseline bytes-only legítimo (único arquivo sob `loop/` = `web-bundle-budget.json`, contrato de perf, análogo F5.10/F5.19; nenhum
+  STATUS/JOURNAL/queue/HALT tocado); (8) the-light `225b8c9`, `.claude/settings.json` não commitado, ADR-0054 honesto.
+- **Resultado:** aceito e arquivado (`loop/archive/F5.26.*`). STATUS/PROGRESS/JOURNAL atualizados.
+- **GATE F5.27 → HALT.** A trilha de sync está CONSTRUÍDA e verificada offline/mockada (F5.22–F5.26). Falta só exercer o caminho REAL contra
+  o Google Drive de uma conta real — conta/consentimento OAuth/rede real que NUNCA transitam pelo loop (regra não-negociável). `loop/HALT`
+  escrito com o passo-a-passo (Google Cloud OAuth client-id → `.env` local não-commitado → link real → push/pull → convergência em 2º device →
+  unlink → offline-first). F5.27 seedada (gate:true) em `loop/queue/`.
+- **Retomar:** humano valida + registra sign-off + remove/edita `loop/HALT`. Se achar bug (shape Drive ≠ mock) → seedar correção antes de fechar
+  a Fase 5. Sem bug → F5.27 fecha a trilha de sync e a **Fase 5 (Refinamento e abertura)**. Próximo ADR livre = **ADR-0055**.
