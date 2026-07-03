@@ -2937,3 +2937,65 @@ de preferências OFFLINE reutilizável e (c) provar a fatia vertical fim-a-fim n
   (migração das demais telas, que ainda têm strings PT hardcoded — os títulos de navegação em
   `_layout.tsx` seguem PT nesta fatia, por design de tracer). `theme-persist` reusa `prefs`.
 - **Nenhuma dependência nova** foi adicionada (regra da task cumprida).
+
+## ADR-0039 — F5.7: UI NATIVA de planos de leitura (rota expo-router lista→iniciar→dia de hoje→marcar) orquestrando as fronteiras F5.1 (geração) + F5.4 (progresso); native-first + self-test on-device TLA_PLANS
+
+### Contexto
+F5.1 (geração: `list_reading_plans`/`reading_plan_day`/`reading_plan_day_index`) e F5.4
+(progresso: `reading_plan_progress`/`start_reading_plan`/`set_reading_plan_completed`/
+`clear_reading_plan`) já expuseram a superfície de planos pela fronteira NATIVA (glue em
+`app/web/reading.ts`), provadas por host tests Rust — mas SEM UI e sem prova on-device. O
+módulo `the_light_core::userdata::plans` é `#[cfg(feature="embedded")]` (**nativo-only**);
+no web os bindings são STUBS (lista vazia / lançam). Faltava a tela que orquestra essas fns
+e a prova de que o vertical roda no device.
+
+### Decisão
+1. **Rota NATIVA `app/app/plans/index.tsx`** (registrada em `_layout.tsx` como
+   `plans/index`, com o `screenChrome` temático; link `open-plans` na home, gateado p/
+   nativo como os de leitura/busca). Duas telas de estado: (a) SEM plano ativo → lista
+   `listReadingPlans()` (nome PT verbatim do CATALOG + nº de dias) com "Começar" →
+   `startReadingPlan(dir, id, hojeISO)`; (b) plano ATIVO → cabeçalho (nome + barra
+   `completed/len` + sequência), `FlatList` de dias com HOJE destacado (índice de
+   `readingPlanDayIndex(startDate, hojeISO, len)`), tocar um dia abre o Reader existente
+   em `/read/${ref.book}/${ref.chapter}` (1º capítulo inteiro do dia), "Marcar dia como
+   lido" → `setReadingPlanCompleted(dir, completed+1)`, "Trocar/encerrar" → `clearReadingPlan`.
+   A UI **só orquestra** as fns da fronteira — ZERO geração/progresso reimplementado em TS.
+2. **Anti-alucinação:** nomes de plano vêm do CATALOG (core), rótulos/refs de dia de
+   `reading_plan_day` (core), e o texto do versículo é lido pelo Reader (verbatim do store).
+   A UI NUNCA sintetiza texto/refs. As strings de CROMO (títulos/botões/contadores/estados)
+   são i18n (`plans.*`/`nav.plans`/`home.readingPlans`/`a11y.*`, PT+EN, paridade em
+   compile-time); o namespace `plans` entrou no guarda anti-alucinação do `i18n.test.mjs`.
+3. **Native-first / web:** a rota degrada no web com um aviso (`plans.webUnavailable`) SEM
+   tocar a fronteira (evita os stubs que lançam), mantendo o build web verde (`expo export`
+   inclui `/plans` como 8ª rota). Paridade web REAL (OPFS) = F5.10 (gate ADR-0037).
+4. **Sequência (streak):** definida de forma determinística como `completed` (dias
+   concluídos consecutivos a partir do dia 1 — o `completed` avança sequencialmente); sem
+   estado extra. `dataDir` resolvido por `ensureUserDataDir()` (mesmo root das notas/F1.11).
+5. **Self-test on-device (`app/web/plans-selftest.ts`, molde F1.11):** num dir ISOLADO,
+   roda lista→dia0→iniciar→índice de hoje→marcar→**releitura independente** e emite
+   `TLA_PLANS plan_id="gospels" days=30 today_index=<n> completed=<m> persisted=<bool>`
+   COMPOSTO do retorno real (sem hardcode). Par `.web.ts` = SKIP; registrado em
+   `selftest.ts`; `run-ios-selftest.sh` assere `plan_id="gospels"` + `days=30` + `persisted=true`.
+
+### Prova (on-device, iOS simulador) e gates
+- `run-ios-selftest.sh` verde no iPhone 17 (iOS 26): `TLA_PLANS plan_id="gospels" days=30
+  today_index=0 completed=1 persisted=true` (composto do retorno real), SEM regressão dos
+  demais marcadores (TLA_SELFTEST/READ/PARALLEL/SEARCH/XREF/NOTES/ASK/STUDY/CHAT/COMPARE/EXPORT).
+- **Regeneração do módulo nativo:** o `.a`/xcframework iOS estava DEFASADO (Jun 30, anterior a
+  F5.1/F5.4 → sem os checksums UniFFI das fns de plano; o app quebraria em `initialize()`).
+  `scripts/gen-bindings-ios.sh` regerou o módulo (build incremental do alvo `aarch64-apple-ios-sim`,
+  cache quente) → 7 símbolos de checksum de plano presentes; só então o self-test roda no device.
+- `tsc --noEmit` (0) com os bindings regenerados; `expo export --platform web` (exit 0, 8 rotas);
+  `test:i18n` (44 chaves, paridade PT↔EN, guarda anti-alucinação com `plans`) + `test:web:*`/
+  `test:keystore` sem regressão. `eslint` = N/A neste repo (sem config — ADR-0038).
+- the-light `2fc2dab` **intacto** (nenhuma mudança em `core/src/lib.rs`; a tarefa é 100%
+  app-side: UI + self-test + glue de i18n; os host tests de plano de F5.1/F5.4 só foram RODADOS,
+  não alterados).
+
+### Consequências
+- Reading-plans nativo agora tem o vertical completo (geração F5.1 + progresso F5.4 + UI F5.7).
+  Desbloqueia F5.10 (paridade web — exige a PR `ai-pure` de planos ao core, gate ADR-0037) e
+  F5.13 (lembretes locais do plano ativo, reusando o KV de prefs).
+- **Nenhuma dependência nova**; o Reader existente é reusado p/ a leitura do dia (sem nova UI
+  de leitura). O `web-bundle-baseline.json` (F5.3) fica com um leve drift esperado (+1 rota
+  eager); o orçamento é travado como guarda em F5.19 (fora do escopo desta tarefa).

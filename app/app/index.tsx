@@ -175,6 +175,21 @@ export default function HomeScreen() {
           {t('home.searchBible')}
         </Link>
       )}
+
+      {/* F5.7: entrada para os PLANOS de leitura nativos (lista → iniciar → dia de
+          hoje → marcar). Orquestra a geração (F5.1) + o progresso (F5.4) via a
+          fronteira nativa; native-first (paridade web = F5.10) → gateada p/ nativo. */}
+      {Platform.OS === 'web' ? null : (
+        <Link
+          href="/plans"
+          style={styles.readLink}
+          testID="open-plans"
+          accessibilityRole="link"
+          accessibilityLabel={t('home.readingPlans')}
+        >
+          {t('home.readingPlans')}
+        </Link>
+      )}
     </View>
   );
 }

@@ -90,6 +90,10 @@ function RootNavigator() {
       {/* F1.6: busca nativa (campo + resultados com referência clicável). Lê pela
           fronteira `search` (F1.5 → JSI → core); header temático + toggles. */}
       <Stack.Screen name="search/index" options={{ title: t('nav.search'), ...screenChrome }} />
+      {/* F5.7: PLANOS de leitura nativos (lista → iniciar → dia de hoje → marcar).
+          Orquestra a geração (F5.1) + o progresso (F5.4) via a fronteira nativa; no
+          web degrada com aviso (paridade = F5.10). Header temático + toggles. */}
+      <Stack.Screen name="plans/index" options={{ title: t('nav.plans'), ...screenChrome }} />
     </Stack>
   );
 }

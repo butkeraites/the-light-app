@@ -210,9 +210,20 @@ async function main() {
 
   // ══ (5) ANTI-ALUCINAÇÃO estrutural: TODA chave é CROMO de UI (nenhum "versículo") ══════
   // F5.5 estendeu o cromo ao fluxo de leitura: `nav.*` (títulos de header do expo-router),
-  // `read.*` (rótulos das telas read/*) e `theme.*` (a11y do toggle de tema). Nenhuma delas
-  // é texto bíblico/versão — os NOMES de livro vêm do store/core, nunca de `t()`.
-  const CHROME_NAMESPACES = new Set(['home', 'nav', 'read', 'ref', 'a11y', 'language', 'theme']);
+  // `read.*` (rótulos das telas read/*) e `theme.*` (a11y do toggle de tema). F5.7 acrescenta
+  // `plans.*` (cromo da tela de planos: títulos, botões, contadores, estados). Nenhuma delas
+  // é texto bíblico/versão — os NOMES de livro/plano e os rótulos de dia vêm do store/core,
+  // nunca de `t()`.
+  const CHROME_NAMESPACES = new Set([
+    'home',
+    'nav',
+    'read',
+    'plans',
+    'ref',
+    'a11y',
+    'language',
+    'theme',
+  ]);
   for (const key of MESSAGE_KEYS) {
     const ns = key.split('.')[0];
     assert.ok(
@@ -239,7 +250,7 @@ async function main() {
   console.log('  fluxo de leitura (F5.5): nav.read/read.parallel DIVERGEM PT≠EN; read.bookFallback interpola {number}');
   console.log('  persistência: setPref→getPref; SOBREVIVE a nova instância (reabrir); removePref volta ao default');
   console.log("  detecção offline: 'pt-BR'→pt, 'en-US'→en, desconhecido/''→pt; detectDeviceLocale() válido");
-  console.log(`  anti-alucinação: todas as ${MESSAGE_KEYS.length} chaves são CROMO (home/nav/read/ref/a11y/language/theme); nenhuma de versículo`);
+  console.log(`  anti-alucinação: todas as ${MESSAGE_KEYS.length} chaves são CROMO (home/nav/read/plans/ref/a11y/language/theme); nenhuma de versículo`);
   console.log('  higiene: i18n.ts / prefs.ts / prefs.web.ts sem console.* (prefs nunca loga)');
 }
 

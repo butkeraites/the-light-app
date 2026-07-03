@@ -46,6 +46,11 @@ import { runCompareSelfTest } from './compare-selftest';
 // chave/rede). Par nativo/web por extensão — no web, `export-selftest.web.ts` é um SKIP
 // (export web = F3.12), mantendo o bundle web sem a camada `ai`/store/o banco bundled.
 import { runExportSelfTest } from './export-selftest';
+// F5.7: prova de PLANOS DE LEITURA no device (marcador TLA_PLANS). Exercita a geração
+// (F5.1) + o progresso (F5.4) via a fronteira `userdata::plans` (JSI → core), num dir de
+// teste ISOLADO. Par nativo/web por extensão — no web, `plans-selftest.web.ts` é um SKIP
+// (planos web = F5.10), mantendo o bundle web sem `expo-file-system`/o módulo nativo-only.
+import { runPlansSelfTest } from './plans-selftest';
 
 // Marcador (prefixo grep-ável). console.error garante o nível alto no log
 // unificado; console.log o complementa. O script assere o texto exato.
@@ -121,5 +126,11 @@ export async function runReferenceSelfTest(): Promise<void> {
   // core; has_passage = o Markdown traz o texto do store verbatim; has_attribution = o
   // Markdown traz a atribuição STEP CC-BY das sources — anti-alucinação/licença).
   await runExportSelfTest();
+  // F5.7: prova de PLANOS DE LEITURA (lista → iniciar → dia de hoje → marcar → releitura
+  // independente) via as fronteiras `list_reading_plans`/`reading_plan_day`/
+  // `reading_plan_day_index`/`start_reading_plan`/`set_reading_plan_completed`/
+  // `reading_plan_progress` (offline, sem chave/rede). Emite TLA_PLANS composto do RETORNO
+  // real (plan_id/days do CATALOG, completed/persisted da persistência nativa).
+  await runPlansSelfTest();
   console.log(`${MARK} DONE`);
 }

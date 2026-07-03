@@ -141,6 +141,14 @@ MARK_COMPARE_CITED='cited_prefix="For God so loved'     # João 3:16 KJV verbati
 # traz a atribuição STEP CC-BY das `sources` do léxico — licença/ADR-0026). Aqui o script só
 # confere substrings/padrões.
 MARK_EXPORT='TLA_EXPORT ref="John 3:16" provider="mock"'  # export acadêmico de João 3:16, provedor mock
+# F5.7 (ADR-0039): PROVA DE PLANOS DE LEITURA no device. O app exercita a geração (F5.1) +
+# o progresso (F5.4) via a fronteira `userdata::plans` (the_light_core via JSI) num dir de
+# teste ISOLADO sob documentDirectory: list_reading_plans → reading_plan_day(0) →
+# start_reading_plan("gospels", hoje) → reading_plan_day_index → set_reading_plan_completed →
+# 2ª leitura INDEPENDENTE (persistência). O marcador é COMPOSTO do RETORNO real: plan_id/days
+# do CATALOG (gospels=30), today_index/completed dos retornos, persisted=true (releitura). Aqui
+# o script só confere padrões: plan_id="gospels", days=30, persisted=true.
+MARK_PLANS='TLA_PLANS plan_id="gospels"'  # planos de leitura via a fronteira userdata::plans
 
 export PATH="/opt/homebrew/bin:$PATH"  # cocoapods/node instalados via brew
 LOG_DIR="$(mktemp -d -t f07-ios-selftest)"
@@ -234,7 +242,7 @@ sleep 2
 xcrun simctl launch "$UDID" "$BUNDLE_ID" >/dev/null
 
 # ── [5/5] Asserção: parse (PT+EN) + leitura + paralela + busca + xref + notas + ask + estudo + conversa + comparação ──
-echo "==> [5/5] Aguardando marcadores PT+EN + leitura + paralela + busca + xref + notas + ask + estudo + conversa + comparação (até ${LAUNCH_WAIT}s)"
+echo "==> [5/5] Aguardando marcadores PT+EN + leitura + paralela + busca + xref + notas + ask + estudo + conversa + comparação + planos (até ${LAUNCH_WAIT}s)"
 found=0
 for _ in $(seq 1 "$LAUNCH_WAIT"); do
   if grep -qF "$MARK_PT" "$STREAM_LOG" \
@@ -274,7 +282,10 @@ for _ in $(seq 1 "$LAUNCH_WAIT"); do
     && grep -qF "$MARK_EXPORT" "$STREAM_LOG" \
     && grep -qE 'TLA_EXPORT .*md_len=[1-9][0-9]*' "$STREAM_LOG" \
     && grep -qE 'TLA_EXPORT .*has_passage=true' "$STREAM_LOG" \
-    && grep -qE 'TLA_EXPORT .*has_attribution=true' "$STREAM_LOG"; then
+    && grep -qE 'TLA_EXPORT .*has_attribution=true' "$STREAM_LOG" \
+    && grep -qF "$MARK_PLANS" "$STREAM_LOG" \
+    && grep -qE 'TLA_PLANS .*days=30' "$STREAM_LOG" \
+    && grep -qE 'TLA_PLANS .*persisted=true' "$STREAM_LOG"; then
     found=1
     break
   fi
@@ -286,7 +297,7 @@ grep -F "TLA_" "$STREAM_LOG" | sed 's/.*\(TLA_\)/\1/' | sort -u || true
 echo "---------------------------------------------"
 
 if [ "$found" != "1" ]; then
-  echo "ERRO: marcadores de parse (PT/EN), leitura (TLA_READ), leitura paralela (TLA_PARALLEL + Almeida), busca (TLA_SEARCH: query=\"God\", hits>=1, João 3:16, \"For God so loved\"), xref (TLA_XREF: verse=\"John 3:16\", count>=1, first_ref de um livro do subset Genesis/Psalm(s)/John), notas (TLA_NOTES: note_ref=\"John 3:16\", highlights>=1, persisted=true), estudo assistido (TLA_ASK: ref=\"John 3:16\", provider=\"mock\", streamed=true, cited_prefix=\"For God so loved\", interp_len>=1), estudo profundo (TLA_STUDY: ref=\"John 3:16\", provider=\"mock\", passage_prefix=\"For God so loved\", lexicon>=1, attribution_ok=true), conversa ancorada (TLA_CHAT: ref=\"John 3:16\", provider=\"mock\", turns>=1, cited_prefix=\"For God so loved\", interp_len>=1), comparação multi-IA (TLA_COMPARE: ref=\"John 3:16\", providers>=2, cited_match=true, first_provider=\"mock\", cited_prefix=\"For God so loved\") e/ou export acadêmico (TLA_EXPORT: ref=\"John 3:16\", provider=\"mock\", md_len>0, has_passage=true, has_attribution=true) não apareceram em ${LAUNCH_WAIT}s." >&2
+  echo "ERRO: marcadores de parse (PT/EN), leitura (TLA_READ), leitura paralela (TLA_PARALLEL + Almeida), busca (TLA_SEARCH: query=\"God\", hits>=1, João 3:16, \"For God so loved\"), xref (TLA_XREF: verse=\"John 3:16\", count>=1, first_ref de um livro do subset Genesis/Psalm(s)/John), notas (TLA_NOTES: note_ref=\"John 3:16\", highlights>=1, persisted=true), estudo assistido (TLA_ASK: ref=\"John 3:16\", provider=\"mock\", streamed=true, cited_prefix=\"For God so loved\", interp_len>=1), estudo profundo (TLA_STUDY: ref=\"John 3:16\", provider=\"mock\", passage_prefix=\"For God so loved\", lexicon>=1, attribution_ok=true), conversa ancorada (TLA_CHAT: ref=\"John 3:16\", provider=\"mock\", turns>=1, cited_prefix=\"For God so loved\", interp_len>=1), comparação multi-IA (TLA_COMPARE: ref=\"John 3:16\", providers>=2, cited_match=true, first_provider=\"mock\", cited_prefix=\"For God so loved\") e/ou export acadêmico (TLA_EXPORT: ref=\"John 3:16\", provider=\"mock\", md_len>0, has_passage=true, has_attribution=true) e/ou planos de leitura (TLA_PLANS: plan_id=\"gospels\", days=30, persisted=true) não apareceram em ${LAUNCH_WAIT}s." >&2
   exit 1
 fi
 
@@ -303,4 +314,5 @@ grep -F 'TLA_STUDY ref="John 3:16" provider="mock"' "$STREAM_LOG" | sed 's/.*\(T
 grep -F 'TLA_CHAT ref="John 3:16" provider="mock"' "$STREAM_LOG" | sed 's/.*\(TLA_CHAT\)/\1/' | head -1
 grep -F 'TLA_COMPARE ref="John 3:16"' "$STREAM_LOG" | sed 's/.*\(TLA_COMPARE\)/\1/' | head -1
 grep -F 'TLA_EXPORT ref="John 3:16" provider="mock"' "$STREAM_LOG" | sed 's/.*\(TLA_EXPORT\)/\1/' | head -1
-echo "==> OK — parse_reference (PT==EN), leitura (books=66, João 3:16 KJV verbatim, john_chapters=21), leitura PARALELA (João 3:16 KJV|Almeida 1911, ambos do store via get_chapter), busca (TLA_SEARCH: \"God\" via a fronteira search, João 3:16 + \"For God so loved\" verbatim do store, hits>=1), xref (TLA_XREF: João 3:16 via a fronteira cross_refs, count>=1, first_ref do subset + votos do retorno), notas/highlights (TLA_NOTES: João 3:16 via a fronteira userdata, highlights>=1, persisted=true — 2ª leitura independente do disco), estudo assistido (TLA_ASK: João 3:16 via a fronteira ask_anchored_stream, provider=\"mock\" sem chave/rede, streamed=true, cited_prefix \"For God so loved\" verbatim do store SEPARADO da interpretação do mock, interp_len>=1), estudo profundo (TLA_STUDY: João 3:16 via as fronteiras deep_study/lexical_entries, provider=\"mock\" sem chave/rede, passage_prefix \"For God so loved\" verbatim do store SEPARADO da interpretação do mock, lexicon>=1 do léxico STEP verificado, attribution_ok=true STEP CC-BY) conversa/follow-up ancorado (TLA_CHAT: João 3:16 via a fronteira ask_session_anchored, provider=\"mock\" sem chave/rede, conversa de 2 turnos, turns>=1 do histórico enviado, cited_prefix \"For God so loved\" verbatim do store — a âncora — SEPARADO da interpretação do mock, interp_len>=1) E comparação multi-IA ancorada (TLA_COMPARE: João 3:16 via a fronteira ask_anchored, 2 chamadas independentes com provider=\"mock\" sem chave/rede, providers>=2, cited_match=true — os cited_text das colunas IDÊNTICOS = mesma âncora do store, anti-alucinação —, first_provider=\"mock\", cited_prefix \"For God so loved\" verbatim do store SEPARADO da interpretação do mock; comparação de respostas reais = F3.10) E export acadêmico (TLA_EXPORT: João 3:16 via a fronteira deep_study, provider=\"mock\" sem chave/rede, md_len>0 do Markdown SBL produzido pelo core — StudyResult::to_academic_markdown, fonte única —, has_passage=true o Markdown traz o passage_text verbatim do store, has_attribution=true o Markdown traz a atribuição STEP CC-BY das sources; sidecar montado app-side por buildStudyExport, molde F1.11) provados pelo Rust nativo via Turbo Module."
+grep -F 'TLA_PLANS plan_id="gospels"' "$STREAM_LOG" | sed 's/.*\(TLA_PLANS\)/\1/' | head -1
+echo "==> OK — parse_reference (PT==EN), leitura (books=66, João 3:16 KJV verbatim, john_chapters=21), leitura PARALELA (João 3:16 KJV|Almeida 1911, ambos do store via get_chapter), busca (TLA_SEARCH: \"God\" via a fronteira search, João 3:16 + \"For God so loved\" verbatim do store, hits>=1), xref (TLA_XREF: João 3:16 via a fronteira cross_refs, count>=1, first_ref do subset + votos do retorno), notas/highlights (TLA_NOTES: João 3:16 via a fronteira userdata, highlights>=1, persisted=true — 2ª leitura independente do disco), estudo assistido (TLA_ASK: João 3:16 via a fronteira ask_anchored_stream, provider=\"mock\" sem chave/rede, streamed=true, cited_prefix \"For God so loved\" verbatim do store SEPARADO da interpretação do mock, interp_len>=1), estudo profundo (TLA_STUDY: João 3:16 via as fronteiras deep_study/lexical_entries, provider=\"mock\" sem chave/rede, passage_prefix \"For God so loved\" verbatim do store SEPARADO da interpretação do mock, lexicon>=1 do léxico STEP verificado, attribution_ok=true STEP CC-BY) conversa/follow-up ancorado (TLA_CHAT: João 3:16 via a fronteira ask_session_anchored, provider=\"mock\" sem chave/rede, conversa de 2 turnos, turns>=1 do histórico enviado, cited_prefix \"For God so loved\" verbatim do store — a âncora — SEPARADO da interpretação do mock, interp_len>=1) E comparação multi-IA ancorada (TLA_COMPARE: João 3:16 via a fronteira ask_anchored, 2 chamadas independentes com provider=\"mock\" sem chave/rede, providers>=2, cited_match=true — os cited_text das colunas IDÊNTICOS = mesma âncora do store, anti-alucinação —, first_provider=\"mock\", cited_prefix \"For God so loved\" verbatim do store SEPARADO da interpretação do mock; comparação de respostas reais = F3.10) E export acadêmico (TLA_EXPORT: João 3:16 via a fronteira deep_study, provider=\"mock\" sem chave/rede, md_len>0 do Markdown SBL produzido pelo core — StudyResult::to_academic_markdown, fonte única —, has_passage=true o Markdown traz o passage_text verbatim do store, has_attribution=true o Markdown traz a atribuição STEP CC-BY das sources; sidecar montado app-side por buildStudyExport, molde F1.11) E planos de leitura (TLA_PLANS: gospels via as fronteiras list_reading_plans/reading_plan_day/reading_plan_day_index/start_reading_plan/set_reading_plan_completed/reading_plan_progress, num dir ISOLADO sob documentDirectory; days=30 do CATALOG do core, today_index/completed dos retornos, persisted=true — 2ª leitura independente do disco, molde F1.11) provados pelo Rust nativo via Turbo Module."

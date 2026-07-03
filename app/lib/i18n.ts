@@ -52,15 +52,37 @@ export type MessageKey =
   | 'home.hint'
   | 'home.readBible'
   | 'home.searchBible'
+  | 'home.readingPlans'
   | 'home.resolveError'
   | 'home.verseNotFound'
-  // Títulos de header do expo-router (fluxo de leitura + busca). "The Light" é a
-  // MARCA — idêntica nos dois idiomas de propósito.
+  // Títulos de header do expo-router (fluxo de leitura + busca + planos). "The Light"
+  // é a MARCA — idêntica nos dois idiomas de propósito.
   | 'nav.home'
   | 'nav.read'
   | 'nav.chapters'
   | 'nav.reading'
   | 'nav.search'
+  | 'nav.plans'
+  // CROMO da tela de PLANOS de leitura (F5.7). Os NOMES dos planos e os RÓTULOS de dia
+  // vêm SEMPRE do core (CATALOG/`reading_plan_day`), NUNCA de `t()` (anti-alucinação);
+  // aqui só o cromo (títulos, botões, contadores, estados) é traduzível.
+  | 'plans.chooseTitle'
+  | 'plans.dayCount'
+  | 'plans.start'
+  | 'plans.progress'
+  | 'plans.streak'
+  | 'plans.today'
+  | 'plans.dayLabel'
+  | 'plans.markDone'
+  | 'plans.change'
+  | 'plans.doneBadge'
+  | 'plans.completedAll'
+  | 'plans.empty'
+  | 'plans.webUnavailable'
+  | 'a11y.startPlan'
+  | 'a11y.openDay'
+  | 'a11y.markDone'
+  | 'a11y.changePlan'
   // CROMO das telas de leitura (read/*). `read.bookFallback` é só o rótulo de um
   // livro AUSENTE no store (edge-case) — os NOMES reais de livro vêm do store/core
   // (namePt/nameEn), NUNCA de `t()` (anti-alucinação).
@@ -87,6 +109,7 @@ const pt: Record<MessageKey, string> = {
   'home.hint': 'Pressione Enter para interpretar (via Rust/wasm).',
   'home.readBible': 'Ler a Bíblia →',
   'home.searchBible': 'Buscar na Bíblia →',
+  'home.readingPlans': 'Planos de leitura →',
   'home.resolveError': 'Não foi possível resolver: {message}',
   'home.verseNotFound': 'Versículo não encontrado no store local.',
   'nav.home': 'The Light',
@@ -94,6 +117,20 @@ const pt: Record<MessageKey, string> = {
   'nav.chapters': 'Capítulos',
   'nav.reading': 'Leitura',
   'nav.search': 'Buscar',
+  'nav.plans': 'Planos de leitura',
+  'plans.chooseTitle': 'Escolha um plano de leitura',
+  'plans.dayCount': '{days} dias',
+  'plans.start': 'Começar',
+  'plans.progress': '{completed} de {total} dias',
+  'plans.streak': 'Sequência: {streak}',
+  'plans.today': 'Hoje',
+  'plans.dayLabel': 'Dia {day}',
+  'plans.markDone': 'Marcar dia como lido',
+  'plans.change': 'Trocar/encerrar plano',
+  'plans.doneBadge': 'Lido',
+  'plans.completedAll': 'Plano concluído!',
+  'plans.empty': 'Nenhum plano disponível.',
+  'plans.webUnavailable': 'Os planos de leitura estão disponíveis no app nativo (paridade web = F5.10).',
   'read.parallel': 'Lado a lado',
   'read.bookFallback': 'Livro {number}',
   'ref.book': 'livro',
@@ -103,6 +140,10 @@ const pt: Record<MessageKey, string> = {
   'ref.wholeChapter': 'capítulo inteiro',
   'a11y.searchInput': 'Campo de busca de passagem bíblica',
   'a11y.result': 'Resultado da interpretação',
+  'a11y.startPlan': 'Começar o plano {name}',
+  'a11y.openDay': 'Abrir a leitura do dia {day}: {label}',
+  'a11y.markDone': 'Marcar o dia de hoje como lido',
+  'a11y.changePlan': 'Trocar ou encerrar o plano ativo',
   'language.switchToOther': 'Mudar para Inglês',
   'theme.switchToLight': 'Mudar para tema claro',
   'theme.switchToDark': 'Mudar para tema escuro',
@@ -116,6 +157,7 @@ const en: Record<MessageKey, string> = {
   'home.hint': 'Press Enter to interpret (via Rust/wasm).',
   'home.readBible': 'Read the Bible →',
   'home.searchBible': 'Search the Bible →',
+  'home.readingPlans': 'Reading plans →',
   'home.resolveError': 'Could not resolve: {message}',
   'home.verseNotFound': 'Verse not found in the local store.',
   'nav.home': 'The Light',
@@ -123,6 +165,20 @@ const en: Record<MessageKey, string> = {
   'nav.chapters': 'Chapters',
   'nav.reading': 'Reading',
   'nav.search': 'Search',
+  'nav.plans': 'Reading plans',
+  'plans.chooseTitle': 'Choose a reading plan',
+  'plans.dayCount': '{days} days',
+  'plans.start': 'Start',
+  'plans.progress': '{completed} of {total} days',
+  'plans.streak': 'Streak: {streak}',
+  'plans.today': 'Today',
+  'plans.dayLabel': 'Day {day}',
+  'plans.markDone': 'Mark day as read',
+  'plans.change': 'Change/end plan',
+  'plans.doneBadge': 'Read',
+  'plans.completedAll': 'Plan completed!',
+  'plans.empty': 'No plans available.',
+  'plans.webUnavailable': 'Reading plans are available in the native app (web parity = F5.10).',
   'read.parallel': 'Side by side',
   'read.bookFallback': 'Book {number}',
   'ref.book': 'book',
@@ -132,6 +188,10 @@ const en: Record<MessageKey, string> = {
   'ref.wholeChapter': 'whole chapter',
   'a11y.searchInput': 'Bible passage search field',
   'a11y.result': 'Interpretation result',
+  'a11y.startPlan': 'Start the {name} plan',
+  'a11y.openDay': 'Open the reading for day {day}: {label}',
+  'a11y.markDone': "Mark today's day as read",
+  'a11y.changePlan': 'Change or end the active plan',
   'language.switchToOther': 'Switch to Portuguese',
   'theme.switchToLight': 'Switch to light theme',
   'theme.switchToDark': 'Switch to dark theme',
