@@ -29,6 +29,7 @@ import {
 
 import { useI18n } from '../lib/i18n';
 import { getKey, listProviders, setKey, SUPPORTED_PROVIDERS } from '../lib/keystore';
+import { useReaderModalA11y } from '../lib/useReaderModalA11y';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import { askAnchoredStream, type AiAnswer } from '../web/reading';
 
@@ -69,6 +70,8 @@ export function ReaderAskPanel({
   const { colors } = useTheme();
   const { t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // F5.21: ao abrir, foco do leitor de tela no título (ordem lógica + anúncio de abertura).
+  const titleRef = useReaderModalA11y(visible);
 
   const [provider, setProvider] = useState<string>(MOCK_PROVIDER);
   const [question, setQuestion] = useState('');
@@ -196,9 +199,11 @@ export function ReaderAskPanel({
         accessibilityRole="button"
         accessibilityLabel={t('ai.close')}
       />
-      <View style={styles.sheet}>
+      <View style={styles.sheet} accessibilityViewIsModal>
         <View style={styles.header}>
-          <Text style={styles.title}>{t('ask.title', { source: sourceLabel })}</Text>
+          <Text ref={titleRef} accessibilityRole="header" style={styles.title}>
+            {t('ask.title', { source: sourceLabel })}
+          </Text>
           <Pressable onPress={onClose} testID="ask-panel-close" accessibilityRole="button" hitSlop={12}>
             <Text style={styles.close}>{t('ai.close')}</Text>
           </Pressable>

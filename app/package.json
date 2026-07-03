@@ -18,6 +18,7 @@
     "test:web:theme": "node web/__tests__/theme.test.mjs",
     "test:web:contrast": "node web/__tests__/contrast.test.mjs",
     "test:a11y-scan": "node web/__tests__/a11y-scan.test.mjs",
+    "test:a11y-modals": "node web/__tests__/reader-modal-a11y.test.mjs",
     "test:web:ai": "node web/__tests__/askAnchored.web.test.mjs",
     "test:web:ai-stream": "node web/__tests__/askAnchoredStream.web.test.mjs",
     "test:web:ai-multiprovider": "node web/__tests__/multiProvider.web.test.mjs",

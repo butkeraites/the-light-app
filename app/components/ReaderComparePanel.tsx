@@ -42,6 +42,7 @@ import {
 
 import { useI18n } from '../lib/i18n';
 import { getKey, SUPPORTED_PROVIDERS } from '../lib/keystore';
+import { useReaderModalA11y } from '../lib/useReaderModalA11y';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import { askAnchored, type AiAnswer } from '../web/reading';
 
@@ -88,6 +89,8 @@ export function ReaderComparePanel({
   const { colors } = useTheme();
   const { t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // F5.21: ao abrir, foco do leitor de tela no título (ordem lógica + anúncio de abertura).
+  const titleRef = useReaderModalA11y(visible);
 
   const [question, setQuestion] = useState('');
   const [selectedProviders, setSelectedProviders] = useState<string[]>([...DEFAULT_PROVIDERS]);
@@ -185,9 +188,11 @@ export function ReaderComparePanel({
         accessibilityRole="button"
         accessibilityLabel={t('ai.close')}
       />
-      <View style={styles.sheet}>
+      <View style={styles.sheet} accessibilityViewIsModal>
         <View style={styles.header}>
-          <Text style={styles.title}>{t('compare.title', { source: sourceLabel })}</Text>
+          <Text ref={titleRef} accessibilityRole="header" style={styles.title}>
+            {t('compare.title', { source: sourceLabel })}
+          </Text>
           <Pressable onPress={onClose} testID="compare-panel-close" accessibilityRole="button" hitSlop={12}>
             <Text style={styles.close}>{t('ai.close')}</Text>
           </Pressable>

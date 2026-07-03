@@ -33,6 +33,7 @@ import {
 import { HIGHLIGHT_COLORS, resolveHighlightColor } from '../lib/highlightColors';
 import { useI18n } from '../lib/i18n';
 import { buildNotesExport } from '../lib/notesExport';
+import { useReaderModalA11y } from '../lib/useReaderModalA11y';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import {
   addHighlight,
@@ -117,6 +118,8 @@ export function ReaderVersePanel({
   // (anti-alucinação). `{color}` = rótulo da paleta de marcação (dado da app).
   const { t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // F5.21: ao abrir, foco do leitor de tela no título (ordem lógica + anúncio de abertura).
+  const titleRef = useReaderModalA11y(visible);
 
   const [body, setBody] = useState('');
   const [noteLoading, setNoteLoading] = useState(false);
@@ -218,9 +221,11 @@ export function ReaderVersePanel({
         accessibilityRole="button"
         accessibilityLabel={t('common.close')}
       />
-      <View style={styles.sheet}>
+      <View style={styles.sheet} accessibilityViewIsModal>
         <View style={styles.header}>
-          <Text style={styles.title}>{sourceLabel}</Text>
+          <Text ref={titleRef} accessibilityRole="header" style={styles.title}>
+            {sourceLabel}
+          </Text>
           <Pressable onPress={onClose} testID="verse-panel-close" accessibilityRole="button" hitSlop={12}>
             <Text style={styles.close}>{t('common.close')}</Text>
           </Pressable>

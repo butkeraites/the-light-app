@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 
 import { useI18n } from '../lib/i18n';
+import { useReaderModalA11y } from '../lib/useReaderModalA11y';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import type { CrossRef } from '../web/reading';
 
@@ -83,6 +84,8 @@ export function ReaderXrefPanel({
   // VERBATIM (constante `XREF_ATTRIBUTION`, requisito de licença — não traduzida).
   const { t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // F5.21: ao abrir, foco do leitor de tela no título (ordem lógica + anúncio de abertura).
+  const titleRef = useReaderModalA11y(visible);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -93,9 +96,11 @@ export function ReaderXrefPanel({
         accessibilityRole="button"
         accessibilityLabel={t('common.close')}
       />
-      <View style={styles.sheet}>
+      <View style={styles.sheet} accessibilityViewIsModal>
         <View style={styles.header}>
-          <Text style={styles.title}>{t('xref.title', { source: sourceLabel })}</Text>
+          <Text ref={titleRef} accessibilityRole="header" style={styles.title}>
+            {t('xref.title', { source: sourceLabel })}
+          </Text>
           <Pressable onPress={onClose} testID="xref-close" accessibilityRole="button" hitSlop={12}>
             <Text style={styles.close}>{t('common.close')}</Text>
           </Pressable>

@@ -184,6 +184,22 @@ if [ ! -f "$ROOT/assets/data/reading-sample.sqlite" ]; then
   "$ROOT/scripts/gen-reading-sample-db.sh"
 fi
 
+# ── [0/5] Prova de A11Y de MODAIS/DYNAMIC TYPE (F5.21/ADR-0049) — HEADLESS/ESTÁTICA ──
+# a11y de "dynamic type" (escala de fonte) e "semântica de modal" (accessibilityViewIsModal +
+# foco inicial + ordem de foco) são PROPRIEDADES ESTÁTICAS de React Native (props JSX), NÃO
+# uma chamada de fronteira/runtime do core. Portanto a prova HONESTA é uma GUARDA HEADLESS
+# determinística (node, sem device/rede) que varre os painéis de leitura e emite o marcador
+# TLA_A11Y — COMPLEMENTAR aos marcadores TLA_* de FRONTEIRA (core) provados no device abaixo.
+# Isto assevera TLA_A11Y SEM regressão dos demais TLA_ (que seguem rodando no simulador).
+echo "==> [0/5] a11y (F5.21): guarda headless de modais/dynamic-type — emite TLA_A11Y"
+A11Y_OUT="$(cd "$APP_DIR" && node web/__tests__/reader-modal-a11y.test.mjs 2>&1)" || {
+  echo "$A11Y_OUT" >&2
+  echo "ERRO: guarda a11y (reader-modal-a11y) falhou." >&2
+  exit 1
+}
+echo "$A11Y_OUT" | grep -E 'TLA_A11Y modal=true .*scale=ok .*focus=ok' \
+  || { echo "ERRO: marcador TLA_A11Y (modal=true scale=ok focus=ok) ausente." >&2; echo "$A11Y_OUT" >&2; exit 1; }
+
 # ── [1/5] Device ─────────────────────────────────────────────────────────────
 UDID="$(xcrun simctl list devices available | grep "$DEVICE_NAME (" | head -1 | grep -oE '[0-9A-Fa-f-]{36}' | head -1)"
 [ -n "$UDID" ] || { echo "ERRO: device '$DEVICE_NAME' não encontrado." >&2; exit 1; }

@@ -36,6 +36,7 @@ import {
 
 import { useI18n, type MessageKey } from '../lib/i18n';
 import { buildStudyExport } from '../lib/studyExport';
+import { useReaderModalA11y } from '../lib/useReaderModalA11y';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import {
   deepStudy,
@@ -140,6 +141,8 @@ export function ReaderStudyPanel({
   const { colors } = useTheme();
   const { t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // F5.21: ao abrir, foco do leitor de tela no título (ordem lógica + anúncio de abertura).
+  const titleRef = useReaderModalA11y(visible);
 
   const [mode, setMode] = useState<StudyMode>(StudyMode.Academic);
   const [lens, setLens] = useState<StudyLens>(StudyLens.Presbyterian);
@@ -248,9 +251,11 @@ export function ReaderStudyPanel({
         accessibilityRole="button"
         accessibilityLabel={t('ai.close')}
       />
-      <View style={styles.sheet}>
+      <View style={styles.sheet} accessibilityViewIsModal>
         <View style={styles.header}>
-          <Text style={styles.title}>{t('study.title', { source: sourceLabel })}</Text>
+          <Text ref={titleRef} accessibilityRole="header" style={styles.title}>
+            {t('study.title', { source: sourceLabel })}
+          </Text>
           <Pressable onPress={onClose} testID="study-panel-close" accessibilityRole="button" hitSlop={12}>
             <Text style={styles.close}>{t('ai.close')}</Text>
           </Pressable>
