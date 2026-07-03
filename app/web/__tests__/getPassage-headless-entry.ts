@@ -7,7 +7,8 @@
 //     parseReference resolve a referência PELO RUST (não em TS).
 //   - `queryPassage`/`readPassage`/`composePassage`: as MESMAS funções de PRODUÇÃO
 //     do glue do store (`../sqlite.web`) — a prova node as exercita sobre um VFS de
-//     memória, enquanto o browser usa OPFS (`../sqlite-opfs.web`).
+//     memória, enquanto o browser usa OPFS (F5.12/ADR-0041: `../sqlite-reading-opfs.web`,
+//     o mesmo store da leitura, sobre o subset `reading-sample.sqlite`).
 //
 // Nenhuma lógica nova aqui — apenas reexporta. Os imports `../generated/` são
 // GERADOS por scripts/gen-bindings-web.sh (ignorados pelo git); a prova exige que

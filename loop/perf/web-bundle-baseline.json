@@ -1,7 +1,7 @@
 {
   "metric": "web-bundle-baseline",
   "task": "F5.3",
-  "description": "Orçamento (budget) do bundle web do The Light App. HONESTO sobre determinismo: os assets content-addressed (wasm da fronteira, DBs, engines wa-sqlite, sample) são BYTE-ESTÁVEIS e gravados EXATOS; o entry-JS \"eager\" NÃO é byte-determinístico (Metro renumera os módulos em ordem de grafo não-determinística — flutter ~122 B raw / ~1,7 KB gzip entre runs) e é gravado como moduleCount EXATO + bytes/gzip NOMINAL ± TOLERÂNCIA, re-verificados a cada run. Assim este JSON é reprodutível (idêntico byte-a-byte a cada `scripts/measure-web-bundle.sh`) sem inchar o bundle enviado. Métrica de recorde para F5.6/F5.9/F5.19. Offline: assets locais (sem rede).",
+  "description": "Orçamento (budget) do bundle web do The Light App. HONESTO sobre determinismo: os assets content-addressed (wasm da fronteira, subset de leitura, engine wa-sqlite+FTS5) são BYTE-ESTÁVEIS e gravados EXATOS; o entry-JS \"eager\" NÃO é byte-determinístico (Metro renumera os módulos em ordem de grafo não-determinística — flutter ~122 B raw / ~1,7 KB gzip entre runs) e é gravado como moduleCount EXATO + bytes/gzip NOMINAL ± TOLERÂNCIA, re-verificados a cada run. Assim este JSON é reprodutível (idêntico byte-a-byte a cada `scripts/measure-web-bundle.sh`) sem inchar o bundle enviado. Métrica de recorde para F5.6/F5.9/F5.19. Offline: assets locais (sem rede).",
   "generatedBy": "scripts/measure-web-bundle.sh",
   "distDir": "app/dist",
   "determinism": {
@@ -11,18 +11,20 @@
   "frontierWasmBytes": 1198888,
   "readingDbBytes": 14409728,
   "waSqliteFts5Bytes": 666267,
-  "waSqliteNpmBytes": 558343,
-  "sampleDbBytes": 131072,
+  "removedAssets": [
+    "waSqliteNpm",
+    "sampleDb"
+  ],
   "entryJs": {
     "note": "Entry-JS \"eager\" carregado no 1º paint. moduleCount (nº de `__d(`) é EXATO e independe da ordem — a grandeza de budget do JS (code-split futuro a reduz de forma medível). eagerBytes/eagerGzipBytes são NOMINAL ± TOLERÂNCIA (Metro não é byte-determinístico); o script mede o valor vivo e falha se sair da faixa.",
     "glob": "_expo/static/js/web/entry-*.js",
-    "moduleCount": 844,
+    "moduleCount": 834,
     "eagerBytes": {
-      "nominal": 1381059,
+      "nominal": 1306320,
       "tolerance": 1024
     },
     "eagerGzipBytes": {
-      "nominal": 352644,
+      "nominal": 331038,
       "tolerance": 2048
     }
   },
@@ -41,22 +43,12 @@
       "path": "app/dist/assets/web/vendor/wa-sqlite-fts5/wa-sqlite.6a09cc3e685430e6e8cec82e0e4132fb.wasm",
       "bytes": 666267,
       "gzipBytes": 327579
-    },
-    "waSqliteNpm": {
-      "path": "app/dist/assets/node_modules/wa-sqlite/dist/wa-sqlite.929521d6e107108ed41c2a731fad8bab.wasm",
-      "bytes": 558343,
-      "gzipBytes": 272993
-    },
-    "sampleDb": {
-      "path": "app/dist/assets/_assets/data/sample.dd7cb891bf33389b6f8db677858f4b0a.sqlite",
-      "bytes": 131072,
-      "gzipBytes": 4226
     }
   },
   "totals": {
-    "stableAssetsBytes": 16964298,
-    "stableAssetsGzipBytes": 6235734,
-    "nominalTotalBytes": 18345357,
-    "nominalTotalGzipBytes": 6588378
+    "stableAssetsBytes": 16274883,
+    "stableAssetsGzipBytes": 5958515,
+    "nominalTotalBytes": 17581203,
+    "nominalTotalGzipBytes": 6289553
   }
 }

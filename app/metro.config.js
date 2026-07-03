@@ -17,12 +17,14 @@ const config = getDefaultConfig(__dirname);
 // Trata .wasm como asset (e não como módulo de código-fonte) — caminho web (F0.6b).
 config.resolver.assetExts.push('wasm');
 
-// F0.10 (ADR-0011/ADR-0012): trata .sqlite como asset binário. O store web
-// (`app/web/sqlite-opfs.web.ts`) importa `app/assets/data/sample.sqlite` (um
-// SYMLINK versionado para o `sample.sqlite` canônico em <repo>/assets/data — KJV
-// domínio público) e o carrega em OPFS. O symlink mantém o asset DENTRO do
-// projectRoot (Metro o empacota sem resolução cross-root) preservando a única
-// fonte da verdade. Offline-first: asset local, sem rede.
+// F0.10 (ADR-0011/ADR-0012) · F5.12 (ADR-0041): trata .sqlite como asset binário. O
+// store web de LEITURA (`app/web/sqlite-reading-opfs.web.ts`) importa
+// `app/assets/data/reading-sample.sqlite` (um SYMLINK versionado para o subset
+// canônico em <repo>/assets/data — KJV+Almeida domínio público) e o carrega em OPFS;
+// a home (`passage.web`) REUSA o MESMO store (F5.12). O symlink mantém o asset DENTRO
+// do projectRoot (Metro o empacota sem resolução cross-root) preservando a única
+// fonte da verdade. Offline-first: asset local, sem rede. (O `sample.sqlite` de 1
+// versículo da F0.10 era um DUPLICADO MORTO — removido do bundle na F5.12.)
 config.resolver.assetExts.push('sqlite');
 
 // F1.3 (ADR-0014): trata .db como asset binário também (paridade com .sqlite). O

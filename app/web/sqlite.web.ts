@@ -10,9 +10,10 @@
 // verbatim — nunca hardcoded no produto nem gerado por LLM.
 //
 // `queryPassage` é ISOLADA do VFS de propósito: o backend de runtime no browser é
-// OPFS (ver `sqlite-opfs.web.ts`), e a prova headless em node usa um VFS de
-// memória sobre os MESMOS bytes do `assets/data/sample.sqlite`. Ambos exercitam
-// EXATAMENTE esta função.
+// OPFS (F5.12/ADR-0041: a home REUSA o store de leitura `sqlite-reading-opfs.web`
+// sobre o subset `reading-sample.sqlite`, via o build vendorado wa-sqlite+FTS5), e a
+// prova headless em node usa um VFS de memória sobre os MESMOS bytes do subset.
+// Ambos exercitam EXATAMENTE esta função (o mesmo SELECT `Single`).
 import * as SQLite from 'wa-sqlite';
 
 import {

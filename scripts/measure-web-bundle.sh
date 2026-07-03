@@ -66,14 +66,26 @@ const OUT = process.env.OUT_FILE;
 //    Quando uma tarefa mudar o app de propósito, estas constantes são atualizadas. ──
 const BUDGET = {
   // Assets content-addressed (byte-estáveis) — bytes crus EXATOS esperados.
+  //
+  // NOTA F5.12 (ADR-0041): REMOVIDOS do budget o `waSqliteNpm` (build ASYNC do npm
+  // wa-sqlite, 558.343 B) e o `sampleDb` (`sample.sqlite` de 1 versículo da F0.10,
+  // 131.072 B) — eram um DUPLICADO MORTO só do caminho F0.10 (home → `passage.web`
+  // → `sqlite-opfs.web`). A home passou a REUSAR o store de leitura (build vendorado
+  // wa-sqlite+FTS5 `waSqliteFts5`, superset, + subset `readingDb`), então esses 2
+  // assets NÃO são mais emitidos no `dist` (−689.415 B). O script FALHA se
+  // reaparecerem (`sanity` abaixo).
   stable: {
     // F5.6: wasm agora é build RELEASE + wasm-opt -Oz (era DEBUG ~4,24 MB).
     // 4.244.884 -> 1.198.888 B (-71,8%). Byte-exato/determinístico (release+LTO+wasm-opt).
     frontierWasm: { bytes: 1198888, re: /^assets\/web\/generated\/wasm-bindgen\/index_bg\..*\.wasm$/ },
     readingDb: { bytes: 14409728, re: /^assets\/_assets\/data\/reading-sample\..*\.sqlite$/ },
     waSqliteFts5: { bytes: 666267, re: /^assets\/web\/vendor\/wa-sqlite-fts5\/wa-sqlite\..*\.wasm$/ },
-    waSqliteNpm: { bytes: 558343, re: /^assets\/node_modules\/wa-sqlite\/dist\/wa-sqlite\..*\.wasm$/ },
-    sampleDb: { bytes: 131072, re: /^assets\/_assets\/data\/sample\..*\.sqlite$/ },
+  },
+  // F5.12 (ADR-0041): assets que DEVEM ter saído do bundle (dead-weight removido). O
+  // budget FALHA se qualquer um reaparecer no `dist` (regressão do dead-asset removal).
+  removed: {
+    waSqliteNpm: /^assets\/node_modules\/wa-sqlite\/dist\/wa-sqlite\..*\.wasm$/,
+    sampleDb: /^assets\/_assets\/data\/sample\..*\.sqlite$/,
   },
   // Entry-JS "eager" (NÃO byte-determinístico). moduleCount é EXATO; bytes/gzip crus
   // são nominal ± tolerância. Tolerâncias folgadas o suficiente p/ o flutter upstream
@@ -84,20 +96,30 @@ const BUDGET = {
   // transportes PESADOS (a factory do wa-sqlite + store OPFS de leitura, a IA
   // `ai-anchored`, o estudo/léxico `study`, a conversa `session`, a busca/xref e o
   // userdata) do chunk EAGER de `entry` para CHUNKS ASYNC sob demanda (via `import()`
-  // no glue `app/web/reading.web.ts`). Efeito medido (3 exports byte-idênticos):
-  //   • moduleCount  856 (dívida F5.7 `/plans` + F5.8/F5.5 i18n sobre os 854 da F5.6) → 844
-  //     (12 módulos saíram do entry; os pesados agora vivem em chunks async LOCAIS);
-  //   • eagerBytes   1.448.032 → 1.381.059 (−66.973 B, −4,6%);
-  //   • eagerGzip      372.625 →   352.644 (−19.981 B, −5,4%).
-  // O restante do entry é o baseline IRREDUTÍVEL de 1º paint (React Native Web + React +
-  // expo-router + a glue wasm-bindgen da fronteira + i18n/tema) — não code-splittável sem
-  // quebrar o 1º paint. Re-centramos moduleCount + nominais p/ o estado pós-split; a
-  // lógica de tolerância (só p/ o entry-JS volátil, não p/ o wasm) fica intacta.
+  // no glue `app/web/reading.web.ts`). Efeito medido: moduleCount 856 → 844;
+  // eagerBytes 1.448.032 → 1.381.059; eagerGzip 372.625 → 352.644.
+  //
+  // NOTA F5.12 (ADR-0041) — re-centragem pós dead-asset removal + split de `passage.web`:
+  // a F5.12 (a) removeu o DUPLICADO MORTO do caminho F0.10 (npm `wa-sqlite.wasm` 558 KB +
+  // `sample.sqlite` 131 KB) apontando a home p/ o store de leitura (build vendorado FTS5
+  // + subset), e (b) moveu `passage.web` (glue do getPassage, só usado no submit) do chunk
+  // EAGER p/ um chunk ASYNC (`import()` em `app/app/index.tsx` + no próprio glue, molde
+  // F5.9). A 2ª factory wa-sqlite (npm) que seguia EAGER via `passage.web`→`sqlite-opfs.web`
+  // deixou o entry. Efeito medido (3 exports; moduleCount EXATO estável, bytes com flutter
+  // upstream ~122 B raw / ~1,7 KB gzip):
+  //   • moduleCount  844 → 834 (−10; `passage.web`+`sqlite.web`+glue saíram do entry);
+  //   • eagerBytes   1.381.059 → 1.306.320 (−74.739 B, −5,4%; nominal = centro do flutter);
+  //   • eagerGzip      352.644 →   331.038 (−21.606 B, −6,1%; nominal = centro do flutter);
+  //   • assets do bundle: −689.415 B (o npm wa-sqlite async + o sample.sqlite deixaram o dist).
+  // O restante do entry é o baseline de 1º paint (React Native Web + React + expo-router +
+  // a glue wasm-bindgen da fronteira + i18n/tema). A lógica de tolerância (só p/ o entry-JS
+  // volátil, não p/ o wasm) fica intacta. O split do DADO ~9 MB do léxico (F5.15) e a
+  // pré-compressão (F5.17) seguem fora do escopo.
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 844,
-    eagerBytes: { nominal: 1381059, tolerance: 1024 },
-    eagerGzipBytes: { nominal: 352644, tolerance: 2048 },
+    moduleCount: 834,
+    eagerBytes: { nominal: 1306320, tolerance: 1024 },
+    eagerGzipBytes: { nominal: 331038, tolerance: 2048 },
   },
 };
 
@@ -146,6 +168,14 @@ for (const [name, spec] of Object.entries(BUDGET.stable)) {
   }
 }
 
+// ── F5.12 (ADR-0041): assets MORTOS que devem ter saído do bundle. Se algum
+//    reaparecer no `dist`, o dead-asset removal regrediu → FALHA. ──
+for (const [name, re] of Object.entries(BUDGET.removed)) {
+  if (match(re).length > 0) {
+    failures.push(`${name}: asset REMOVIDO (F5.12) reapareceu no dist (${re}) — regressão do dead-asset removal`);
+  }
+}
+
 // ── Entry-JS "eager": moduleCount EXATO; raw/gzip verificados dentro da tolerância. ──
 const entryRe = new RegExp('^' + BUDGET.entry.glob.replace(/[.]/g, '\\.').replace(/\*/g, '.*') + '$');
 const entryAbs = one(entryRe);
@@ -178,8 +208,8 @@ const doc = {
   task: 'F5.3',
   description:
     'Orçamento (budget) do bundle web do The Light App. HONESTO sobre determinismo: os ' +
-    'assets content-addressed (wasm da fronteira, DBs, engines wa-sqlite, sample) são ' +
-    'BYTE-ESTÁVEIS e gravados EXATOS; o entry-JS "eager" NÃO é byte-determinístico ' +
+    'assets content-addressed (wasm da fronteira, subset de leitura, engine wa-sqlite+FTS5) ' +
+    'são BYTE-ESTÁVEIS e gravados EXATOS; o entry-JS "eager" NÃO é byte-determinístico ' +
     '(Metro renumera os módulos em ordem de grafo não-determinística — flutter ~122 B ' +
     'raw / ~1,7 KB gzip entre runs) e é gravado como moduleCount EXATO + bytes/gzip ' +
     'NOMINAL ± TOLERÂNCIA, re-verificados a cada run. Assim este JSON é reprodutível ' +
@@ -197,8 +227,9 @@ const doc = {
   frontierWasmBytes: stableAssets.frontierWasm.bytes,
   readingDbBytes: stableAssets.readingDb.bytes,
   waSqliteFts5Bytes: stableAssets.waSqliteFts5.bytes,
-  waSqliteNpmBytes: stableAssets.waSqliteNpm.bytes,
-  sampleDbBytes: stableAssets.sampleDb.bytes,
+  // F5.12 (ADR-0041): `waSqliteNpmBytes`/`sampleDbBytes` REMOVIDOS — o npm wa-sqlite
+  // async (558.343 B) e o `sample.sqlite` de 1 versículo (131.072 B) deixaram o dist.
+  removedAssets: Object.keys(BUDGET.removed),
   entryJs: {
     note:
       'Entry-JS "eager" carregado no 1º paint. moduleCount (nº de `__d(`) é EXATO e ' +

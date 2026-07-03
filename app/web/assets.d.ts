@@ -1,14 +1,13 @@
-// app/web/assets.d.ts — F0.10 (ADR-0011/ADR-0012)
+// app/web/assets.d.ts — F0.10 (ADR-0011/ADR-0012) · F5.12 (ADR-0041)
 //
 // Declarações de tipo para imports de ASSET tratados pelo Metro (servidos como
 // dado local pela própria origem do app). No web, o import resolve para uma URI
 // (string) que pode ser passada a `fetch`. Offline-first: são assets
 // empacotados, não rede externa.
-declare module 'wa-sqlite/dist/wa-sqlite.wasm' {
-  const uri: string;
-  export default uri;
-}
-
+//
+// F5.12 (ADR-0041): removida a declaração do npm `wa-sqlite/dist/wa-sqlite.wasm` —
+// o caminho F0.10 (`sqlite-opfs.web`, o único a importá-lo) foi retirado; a home
+// reusa o store de leitura (build vendorado wa-sqlite+FTS5, abaixo).
 declare module '*.sqlite' {
   const uri: string;
   export default uri;

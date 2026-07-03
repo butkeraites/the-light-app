@@ -3007,7 +3007,7 @@ e a prova de que o vertical roda no device.
 - **Data:** 2026-07-02 · **Status:** aceito · **Tarefa:** F5.9 (`gate: false`) · **Depende:** ADR-0019 (F1.13: store web OPFS + factory wa-sqlite), ADR-0025/ADR-0031/ADR-0032 (transportes web de IA/estudo/conversa), ADR-0020/ADR-0021 (busca/xref web), ADR-0022 (userdata web), **F5.3** (métrica `measure-web-bundle.sh` + `web-bundle-baseline.json`). **NÃO** toca o `the-light` (@ `2fc2dab`) nem `core/**` — 100% app-side (imports/metro/build).
 
 ### Contexto
-O bundle web do Expo/Metro emitia UM ÚNICO chunk EAGER de entry (~1,45 MB). Todo o glue
+O bundle web do Expo/Metro emitia UM ÚNICO chunk EAGER de entry (~1,45 MB). O glue
 web-only PESADO era importado ESTÁTICO por `app/web/reading.web.ts` (o glue que as telas
 `app/app/read/**`, `search`, `plans` e os painéis importam), logo entrava no entry mesmo
 p/ quem só abre a home: a **factory do wa-sqlite** (`vendor/wa-sqlite-fts5/wa-sqlite.mjs`
@@ -3053,10 +3053,41 @@ estouraram a banda de bytes do entry.
 - the-light `2fc2dab` **intacto** (0 mudanças em `core/**`).
 
 ### Consequências
-- O 1º paint (home/lista de livros) não arrasta mais a factory wa-sqlite nem os transportes de
-  IA/estudo/léxico — carregam sob demanda como chunks LOCAIS. O restante do entry (~1,38 MB) é o
-  baseline IRREDUTÍVEL de 1º paint (React Native Web + React + expo-router + a glue wasm-bindgen da
-  fronteira + i18n/tema): a superfície removível web-only era só ~66 KB, então a meta aspiracional de
-  −20% do task **não é atingível** sem quebrar o 1º paint (achado HONESTO; documentado p/ o Reviewer).
+- O 1º paint (home/lista de livros) não arrasta mais a factory wa-sqlite (via `reading.web.ts`) nem
+  os transportes de IA/estudo/léxico — carregam sob demanda como chunks LOCAIS.
 - A baseline volta a VERDE e reflete o split + a dívida F5.7/F5.8. O split do DADO ~9 MB do léxico
   (on-demand DB) é F5.15 e a pré-compressão é F5.17 — fora do escopo desta tarefa.
+
+> **Correção (F5.12 / ADR-0041, 2026-07-03).** A narrativa acima estava IMPRECISA em dois pontos e é
+> corrigida aqui: **(1)** `reading.web.ts` NÃO era a única porta ESTÁTICA para o subgrafo pesado — a
+> home (`app/app/index.tsx`) puxava, EAGER, uma **2ª factory wa-sqlite** (o build ASYNC do npm) pelo
+> caminho F0.10 `app/web/passage.web` → `app/web/sqlite-opfs.web` (`getPassage`, usado só no submit,
+> nunca no mount). **(2)** Logo, o "~66 KB / restante IRREDUTÍVEL" NÃO era irredutível: essa 2ª factory
+> (~40 KB de glue no entry) + seus assets (npm `wa-sqlite.wasm` 558 KB + `sample.sqlite` 131 KB) eram
+> DUPLICADO MORTO e também MOVÍVEL/REMOVÍVEL. A F5.12 (ADR-0041) apontou a home ao MESMO store de
+> leitura (build vendorado FTS5 + subset, já lazy) via `import()`, retirando `passage.web` do entry
+> (moduleCount 844 → 834; eagerBytes −74,7 KB) e removendo ~689 KB de assets do bundle. A meta de −20%
+> do entry segue não-atingível sem quebrar o 1º paint (o restante é RN Web + React + expo-router +
+> glue wasm-bindgen + i18n/tema), mas ela é MAIOR que os ~66 KB antes alegados.
+
+## ADR-0041 — F5.12: remover o DUPLICADO MORTO do caminho F0.10 (npm `wa-sqlite` async + `sample.sqlite`) do bundle web, re-apontando a home ao store de leitura + split de `passage.web` (follow-ups da F5.9) + re-centragem da baseline
+
+- **Data:** 2026-07-03 · **Status:** aceito · **Tarefa:** F5.12 (`gate: false`) · **Depende:** ADR-0011/ADR-0012 (F0.10: store web `getPassage`), ADR-0019/ADR-0020 (F1.13/F1.14: store de leitura web + build vendorado wa-sqlite COM FTS5), **ADR-0040** (F5.9: code-split web + baseline), **F5.3** (métrica `measure-web-bundle.sh`). Herda os 2 follow-ups da review da F5.9. **NÃO** toca o `the-light` (@ `2fc2dab`) nem `core/**` — 100% app-side.
+
+### Contexto
+O export web embarcava DOIS builds do wa-sqlite: o VENDORADO COM FTS5 (`vendor/wa-sqlite-fts5/wa-sqlite.wasm`, 666 KB — usado por leitura/busca desde a F1.14) E o build ASYNC do npm (`node_modules/wa-sqlite/dist/wa-sqlite.wasm`, 558.343 B), MAIS o `sample.sqlite` (131.072 B) da F0.10. Um grep provou que o npm async + o `sample.sqlite` só eram alcançáveis pelo caminho LEGADO F0.10 do `getPassage` da home (`app/app/index.tsx` → `app/web/passage.web` → `app/web/sqlite-opfs.web`), a ÚNICA porta de produção que os importava. O `sample.sqlite` é um TOY de 1 versículo (só `kjv`, livro 43, João 3:16); o subset de leitura `reading-sample.sqlite` (KJV+Almeida de Gn/Sl/Jo) contém João 3:16 KJV **BYTE-IDÊNTICO** e o build FTS5 é SUPERSET do npm (roda o mesmo `SELECT verse,text … WHERE … verse=?`). Logo os 2 assets eram DUPLICADO MORTO. Esse caminho também seguia EAGER (2ª factory wa-sqlite no chunk de entry) — o follow-up (A) da F5.9.
+
+### Decisão
+1. **Re-apontar a home ao MESMO store de leitura (F1.13).** `passage.web.ts` deixa de abrir o F0.10 (`sqlite-opfs.web` + npm factory + `sample.sqlite`) e passa a `await import('./sqlite-reading-opfs.web')` (`openReadingDbWeb`, build vendorado FTS5 + subset) + `await import('./sqlite.web')` (a MESMA `readPassage`). `ReadingDb = PassageDb`, então o handle é compatível — a query `Single` e a `Passage` de saída ficam IDÊNTICAS (João 3:16 KJV verbatim). **ZERO-DRIFT** no caso testado; a única mudança de comportamento é que agora referências de Gn/Sl/Jo (que o subset tem) resolvem em vez de "não encontrado" — melhoria, não regressão, e não coberta por nenhum self-test.
+2. **Split de `passage.web` (follow-up F5.9-A).** `app/app/index.tsx` passa a `import type` o `Passage` + `await import('../web/passage')` no submit handler (`getPassage` NUNCA roda no mount). `passage.web` sai do chunk EAGER p/ um chunk ASYNC (`passage-*.js`); a factory wa-sqlite carrega SOB DEMANDA, COMPARTILHANDO o chunk `sqlite-reading-opfs` da leitura (nenhuma 2ª factory no entry).
+3. **Remover o código/assets mortos.** `app/web/sqlite-opfs.web.ts` (único importador de produção do npm factory + `sample.sqlite`) DELETADO; a declaração de tipo do npm `wa-sqlite/dist/wa-sqlite.wasm` sai de `assets.d.ts`. O `sample.sqlite` (repo/symlink) e o pacote npm `wa-sqlite` PERMANECEM (o pacote fornece a API JS `wa-sqlite`/`MemoryVFS` a TODOS os stores + self-tests; o `sample.sqlite` é só do repo p/ histórico) — mas NENHUM dos dois é mais EMITIDO no `dist`. O self-test `getPassage.web.test.mjs` foi RE-TARGETADO ao build FTS5 + subset (espelha a produção; João 3:16 KJV idêntico).
+4. **Correção da ADR-0040 (follow-up F5.9-B)** + **re-centragem da baseline** (`measure-web-bundle.sh` + `web-bundle-baseline.json`): `waSqliteNpm`/`sampleDb` saem de `stable` p/ `removed` (o budget FALHA se reaparecerem); `moduleCount` 844 → 834; `eagerBytes` 1.381.059 → 1.306.320; `eagerGzip` 352.644 → 331.038 (nominais no centro do flutter; tolerâncias 1024/2048 intactas).
+
+### Prova e gates
+- `expo export --platform web` (0): `dist` NÃO contém mais `node_modules/wa-sqlite/dist/wa-sqlite.*.wasm` nem `_assets/data/sample.*.sqlite` (−689.415 B); os únicos `.wasm`/`.sqlite` restantes são `frontierWasm`, `readingDb`, `waSqliteFts5`. `passage-*.js` é um chunk ASYNC novo (glue off-eager); a factory FTS5 vive em `sqlite-reading-opfs-*.js` (compartilhado com a leitura).
+- `tsc --noEmit` (0). Os 15 `test:web:*` + `getPassage` + `test:keystore` + `test:i18n` **verdes, saídas idênticas** (zero-drift). `measure-web-bundle.sh` → **BUDGET OK** (exit 0) com os novos números; grafo wasm da fronteira intacto (frontierWasm byte-igual).
+- the-light `2fc2dab` **intacto** (0 mudanças em `core/**`).
+
+### Consequências
+- O bundle web perde ~689 KB (o 2º build wa-sqlite + o toy DB) e o entry perde `passage.web` (10 módulos); a home usa UM ÚNICO engine wa-sqlite (o FTS5 vendorado), servindo leitura, busca E a resolução de passagem da home. Offline-first preservado (assets locais; nada de rede). Anti-alucinação preservada (texto verbatim do store).
+- Nota de runtime: a 1ª resolução de passagem na home agora hidrata o subset de 14 MB em OPFS (antes, o toy de 131 KB) — mas é o MESMO subset que a leitura já usa (cacheado após o 1º uso), e é sobre BUNDLE, não runtime, que a tarefa mede. O split do DADO ~9 MB do léxico (F5.15) e a pré-compressão (F5.17) seguem fora do escopo.

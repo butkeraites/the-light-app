@@ -3,7 +3,11 @@ import { Link } from 'expo-router';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { parseReference, type Reference } from '../web/reference';
-import { getPassage, type Passage } from '../web/passage';
+// F5.12 (ADR-0041): `getPassage` (store web) só roda no submit (NUNCA no mount) —
+// importado SOB DEMANDA via `import()` p/ sair do chunk EAGER de 1º paint (molde
+// `reading.web.ts` / F5.9). O tipo `Passage` é `import type` (apagado na compilação
+// → não puxa o glue p/ o entry).
+import type { Passage } from '../web/passage';
 import { runReferenceSelfTest } from '../web/selftest';
 import { useI18n, type TranslateFn } from '../lib/i18n';
 import { useTheme, type ThemeColors } from '../lib/theme';
@@ -87,6 +91,8 @@ export default function HomeScreen() {
     try {
       if (Platform.OS === 'web') {
         // WEB: resolve (Rust/wasm) + lê o texto do store local (wa-sqlite/OPFS).
+        // O glue do store carrega SOB DEMANDA (F5.12) — chunk async, fora do 1º paint.
+        const { getPassage } = await import('../web/passage');
         const passage = await getPassage(input);
         setOutcome({ kind: 'passage', passage });
       } else {
