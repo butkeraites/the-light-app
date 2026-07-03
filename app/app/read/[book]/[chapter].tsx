@@ -71,9 +71,21 @@ function ChapterContent() {
   // É também o `lang` repassado aos painéis de IA (a resposta segue o idioma da UI).
   const { locale, t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { book, chapter } = useLocalSearchParams<{ book: string; chapter: string }>();
+  const { book, chapter, verse } = useLocalSearchParams<{
+    book: string;
+    chapter: string;
+    verse?: string;
+  }>();
   const bookNumber = Number(book);
   const chapterNumber = Number(chapter);
+  // F5.32: versículo-ÂNCORA opcional vindo de busca/xref (`?verse=N`). A tela lia só
+  // book/chapter e descartava `verse` — então o alvo aterrissava no TOPO. Agora é
+  // repassado ao `ReaderChapterView`, que rola até ele e o destaca. `expo-router` pode
+  // devolver string | string[]; normaliza-se ao 1º e valida-se finitude (fora disso → null,
+  // comportamento idêntico ao de hoje: sem âncora).
+  const verseParamRaw = Array.isArray(verse) ? verse[0] : verse;
+  const verseParam = verseParamRaw != null ? Number(verseParamRaw) : NaN;
+  const anchorVerse = Number.isFinite(verseParam) && verseParam > 0 ? verseParam : null;
 
   // F5.11: nome do livro NO IDIOMA da UI, para o `sourceLabel` (cabeçalho) dos painéis de IA.
   // Anti-alucinação: o nome vem SEMPRE do STORE (`namePt`/`nameEn`) — o `locale` só ESCOLHE o
@@ -404,6 +416,7 @@ function ChapterContent() {
           selectedVerse={selectedVerse}
           highlightedVerses={highlightedVerses}
           notedVerses={notedVerses}
+          anchorVerse={anchorVerse}
         />
       )}
 

@@ -4,8 +4,8 @@
 // TEXTO VERBATIM do store (anti-alucinação — o texto vem do `get_chapter` do
 // Rust, nunca gerado/hardcodado na UI). Cores via TOKENS de tema (`useTheme`),
 // não mais hex hardcoded. Não faz I/O nem lógica de domínio.
-import { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ScrollView, StyleSheet, Text, type LayoutChangeEvent } from 'react-native';
 
 import { useI18n } from '../lib/i18n';
 import { useTheme, type ThemeColors } from '../lib/theme';
@@ -16,12 +16,19 @@ function verseNumber(passageVerseRange: Passage['verses'][number]['reference']['
   return passageVerseRange.tag === 'Single' ? passageVerseRange.inner.verse : null;
 }
 
+// F5.32: duração (ms) do realce transitório aplicado ao versículo-âncora (busca/xref).
+// Determinístico e curto: some sozinho após a rolagem, sem exigir interação.
+const ANCHOR_FLASH_MS = 2500;
+// F5.32: folga (px) acima do versículo-âncora ao rolar — deixa o alvo respirando no topo.
+const ANCHOR_SCROLL_OFFSET = 12;
+
 export function ReaderChapterView({
   passage,
   onVersePress,
   selectedVerse,
   highlightedVerses,
   notedVerses,
+  anchorVerse,
 }: {
   passage: Passage;
   /**
@@ -43,6 +50,14 @@ export function ReaderChapterView({
    * `list_notes`). OPCIONAL (retrocompat); mostra um realce/marcador discreto.
    */
   notedVerses?: Set<number>;
+  /**
+   * F5.32: versículo-ÂNCORA vindo de busca/xref (`?verse=N`). Quando definido, a view
+   * ROLA até ele (medindo o offset no `onLayout`) e aplica um realce TRANSITÓRIO
+   * (reusa o visual `verseSelected`) que some sozinho — sem abrir o painel de seleção.
+   * OPCIONAL (retrocompat): sem o prop, a leitura fica no topo, como antes. Fora de
+   * faixa → no-op seguro (nenhuma linha casa o alvo; sem rolagem, sem crash).
+   */
+  anchorVerse?: number | null;
 }) {
   const { colors } = useTheme();
   // F5.8: só o CROMO (estado-vazio + hint do gesto no versículo) passa por `t()`. O TEXTO do
@@ -50,6 +65,50 @@ export function ReaderChapterView({
   // leitor de tela), nunca substituído por `t()`. O hint só descreve a AÇÃO (abrir opções).
   const { t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // F5.32: ancoragem no versículo-alvo (busca/xref). `scrollRef` p/ comandar a rolagem;
+  // `offsetsRef` acumula o Y de cada linha via `onLayout`; `pendingRef` guarda o alvo até
+  // sua linha ter layout (rolagem só quando o offset é conhecido). O realce transitório é
+  // ESTADO (`flashVerse`) p/ forçar re-render e limpar sozinho após `ANCHOR_FLASH_MS`.
+  const scrollRef = useRef<ScrollView>(null);
+  const offsetsRef = useRef<Map<number, number>>(new Map());
+  const pendingRef = useRef<number | null>(null);
+  const [flashVerse, setFlashVerse] = useState<number | null>(null);
+
+  const scrollToVerse = (n: number) => {
+    const y = offsetsRef.current.get(n);
+    if (y == null) {
+      // Linha ainda sem layout → adia; o `onLayout` correspondente completa a rolagem.
+      pendingRef.current = n;
+      return;
+    }
+    pendingRef.current = null;
+    scrollRef.current?.scrollTo({ y: Math.max(y - ANCHOR_SCROLL_OFFSET, 0), animated: true });
+  };
+
+  const onVerseLayout = (n: number, event: LayoutChangeEvent) => {
+    offsetsRef.current.set(n, event.nativeEvent.layout.y);
+    if (pendingRef.current === n) {
+      scrollToVerse(n);
+    }
+  };
+
+  // Ao mudar a âncora (nova navegação c/ `?verse=N`): rola até ela e a destaca por um
+  // instante. Fora de faixa → `scrollToVerse` só registra o pendente que nunca casa (no-op).
+  useEffect(() => {
+    if (anchorVerse == null) {
+      setFlashVerse(null);
+      return;
+    }
+    setFlashVerse(anchorVerse);
+    scrollToVerse(anchorVerse);
+    const timer = setTimeout(() => {
+      setFlashVerse((cur) => (cur === anchorVerse ? null : cur));
+    }, ANCHOR_FLASH_MS);
+    return () => clearTimeout(timer);
+    // `scrollToVerse` é estável (refs); só a âncora deve reprocessar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchorVerse]);
 
   if (passage.verses.length === 0) {
     return (
@@ -59,11 +118,14 @@ export function ReaderChapterView({
     );
   }
   return (
-    <ScrollView contentContainerStyle={styles.content}>
+    <ScrollView ref={scrollRef} contentContainerStyle={styles.content}>
       {passage.verses.map((v, i) => {
         const n = verseNumber(v.reference.verses);
         const selectable = onVersePress != null && n != null;
         const isSelected = selectable && selectedVerse === n;
+        // F5.32: realce TRANSITÓRIO do versículo-âncora (busca/xref). Reusa o visual
+        // `verseSelected`; independe da seleção (não abre o painel).
+        const isAnchored = n != null && flashVerse === n;
         // F1.11: realce de highlight do usuário (cor escolhida) + marcador de nota.
         // A seleção (`verseSelected`) tem precedência visual sobre o highlight.
         const highlightColor = n != null ? highlightedVerses?.get(n) : undefined;
@@ -74,9 +136,10 @@ export function ReaderChapterView({
             style={[
               styles.verse,
               highlightColor ? { backgroundColor: highlightColor } : null,
-              isSelected ? styles.verseSelected : null,
+              isSelected || isAnchored ? styles.verseSelected : null,
             ]}
             testID={n != null ? `verse-${n}` : undefined}
+            onLayout={n != null ? (event) => onVerseLayout(n, event) : undefined}
             onPress={selectable ? () => onVersePress!(n!) : undefined}
             accessibilityRole={selectable ? 'button' : undefined}
             accessibilityHint={selectable ? t('a11y.verseOptions') : undefined}
