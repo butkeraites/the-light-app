@@ -3377,3 +3377,33 @@ Headless (node, sem browser/rede/chave) `test:web:snapshot` — exercita o motor
 A UI de Share/file-picker/toggle é a **F5.26**; o OAuth/PKCE do Drive é a **F5.24**; push/pull no Drive é a **F5.25**. O motor é cross-target: o web já o liga fim-a-fim na prova; o **nativo** o ligará na F5.26 com um `SnapshotStore` sobre o frontier (`format_reference`/`parse_reference` — `parseReference`/`formatReferenceEn` já têm precedente em TS via `listBooks`, sem exigir mudança no core).
 
 Próximo ADR livre = **ADR-0052** (0036–0051 usados; 0037 foi o PR de planos).
+
+## ADR-0052 — F5.24: LINK do Google Drive no WEB = motor PURO de autorização OAuth 2.0 **PKCE client-side** (client-id público, SEM client-secret), escopo mínimo `drive.appdata`, token só no `TokenStore` injetado; 2ª etapa do sync (ADR-0036), reconcilia ADR-0023
+
+- **Data:** 2026-07-03 · **Status:** aceito · **Tarefa:** F5.24 (`gate: false`, 2ª da decomposição do sync ADR-0036) · **Depende:** **F5.22/ADR-0036** (a decisão de sync = export/import manual + Drive no web, opt-in), **F5.23/ADR-0051** (o SNAPSHOT round-trippável que a F5.25 vai mover ao Drive), **F2.4/ADR-0023 D3** (molde `keystore.ts` de serviço injetável + invariante de não-vazamento de segredo). **NÃO** toca o `the-light` (@ `225b8c9`) nem `core/**` — 100% app-side (web-only). Sem dep nova (Web Crypto/`fetch` injetados; Node/esbuild só na prova).
+
+### Contexto
+O ADR-0036 decidiu, como 2ª camada do sync (a 1ª, F5.23, é o snapshot local round-trippável), a **integração Google Drive no WEB**: o usuário LINKA a própria conta e o snapshot vai/vem da pasta **app-private** do Drive DELE. O Google EXIGE OAuth para isso e não há servidor do app para guardar um client-secret. Esta tarefa entrega **apenas o fluxo de autorização** (link/unlink + gestão de token); push/pull do snapshot é a F5.25, a UI opt-in é a F5.26, a validação com conta REAL é a F5.27 (gate humano).
+
+### Decisão
+Um motor **PURO / de injeção de dependências** `app/lib/driveAuth.ts` (molde `userdataSnapshot.ts`/`keystore.ts`: sem rede/crypto/relógio embutidos — recebe `fetch`, `crypto` (Web Crypto), `redirectUri`, `clientId`, um `TokenStore` (get/set/clear) e `now` opcional):
+1. **OAuth 2.0 com PKCE (S256), cliente PÚBLICO, SEM client-secret.** `generatePkce(crypto)` → `code_verifier` = BASE64URL de 32 bytes aleatórios (43 chars, faixa 43–128 da RFC 7636) + `code_challenge` = BASE64URL(SHA-256(verifier)). `buildAuthUrl(...)` monta `accounts.google.com/o/oauth2/v2/auth` com `response_type=code`, `code_challenge_method=S256`, `access_type=offline`, `prompt=consent`, `scope`, `state` e `redirect_uri` (só campos PÚBLICOS — challenge, nunca o verifier). `exchangeCode(...)` faz POST a `oauth2.googleapis.com/token` com `grant_type=authorization_code`+`code_verifier`+`client_id`+`redirect_uri` — **sem `client_secret`** — e devolve `{accessToken, expiresAt, refreshToken?}`.
+2. **Escopo MÍNIMO `https://www.googleapis.com/auth/drive.appdata`** — só a pasta oculta app-private do Drive (não lê o Drive do usuário, não toca outros arquivos dele).
+3. **Estado/token:** `createDriveAuth(deps)` expõe `beginLink(state)` (PKCE+URL), `completeLink`/`link`/`unlink`, `isLinked`, `currentToken` (com checagem de expiração via `now`), `getLinkState` (`linked{email?,expiresAt} | unlinked`). O token vive SÓ no `TokenStore` injetado (a F5.26 liga a memória de sessão no web; secure storage no nativo) — **nunca em git/log**.
+
+### Não-vazamento de segredo (LEI, molde ADR-0023 D3)
+Client-id é PÚBLICO (pode ficar em config); **NUNCA** há client-secret (cliente público + PKCE). Access token / refresh token / `code_verifier` / `code_challenge` são SENSÍVEIS: `driveAuth.ts` **não faz NENHUMA chamada de log** (a prova faz grep do fonte por `console.*` e por `client_secret`, exigindo AUSÊNCIA), e a prova espiona `console.*` durante toda a execução exigindo que nenhum token/verifier apareça no output (`notoken=ok`).
+
+### Reconciliação com ADR-0023 ("OAuth banido")
+O ADR-0023 baniu OAuth para as **chaves BYOK de IA** (login-de-conta arriscava banir a conta do usuário e violava ToS dos provedores de LLM — ver pesquisa lá). O OAuth do Google Drive é caso DISTINTO e complementar: acessar o **armazenamento do PRÓPRIO usuário** (não uma credencial de LLM de terceiro), na conta DELE, onde o Google EXIGE OAuth e o **PKCE client-side (client-id público, sem segredo)** é o padrão seguro p/ clientes públicos. Sem infra/servidor/segredo do app. Não há conflito; a distinção fica registrada (já antecipada no ADR-0036).
+
+### Offline-first / privacidade / anti-alucinação
+Estritamente **OPT-IN e ADITIVO**: o app é 100% funcional com ZERO conta/rede; nada essencial passa a exigir Google. Esta camada NÃO toca dados do usuário nem o snapshot (só autorização) — nenhum texto bíblico, nenhuma sessão de IA, nenhuma chave BYOK. O módulo é puro/injetável, portanto FORA do entry graph eager do web (perf-budget `moduleCount` inalterado — 839; sem re-baseline).
+
+### Prova
+Headless (node, sem browser/rede/CONTA/chave) `test:web:driveauth` — exercita o MESMO código de produção com `fetch`/`crypto` MOCKADOS: (1) `generatePkce` DETERMINÍSTICO contra o vetor OFICIAL RFC 7636 Apêndice B (verifier + challenge = SHA-256 real); (2) `buildAuthUrl` com scope `drive.appdata`, `response_type=code`, S256, `access_type=offline`/`prompt=consent`, state+redirect, e SEM vazar o verifier; (3) `exchangeCode` POST ao token endpoint (`grant_type=authorization_code`+`code_verifier`, sem `client_secret`) → `link()` grava no TokenStore → `isLinked()`/`currentToken()` (com expiração) → `unlink()` limpa; (4) invariante de não-vazamento (`notoken=ok`). Marcador `DRIVE_AUTH pkce=ok url=ok exchange=ok link=ok unlink=ok notoken=ok`.
+
+### Escopo NÃO coberto (próximas tarefas)
+**MOCK apenas** — NENHUMA chamada real ao Google nesta tarefa. Push/pull do snapshot na pasta app-data + merge no pull → **F5.25**. UI opt-in (toggle OFF por padrão, aviso de privacidade, "funciona offline sem isto", link/unlink) + wiring nativo do motor de snapshot → **F5.26**. Validação com conta/Drive Google REAIS → **F5.27 (⛔ gate humano; conta/token NUNCA transitam pelo loop)**.
+
+Próximo ADR livre = **ADR-0053** (0036–0052 usados; 0037 foi o PR de planos).

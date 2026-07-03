@@ -14,6 +14,7 @@
     "test:web:notes": "node web/__tests__/notes.web.test.mjs",
     "test:web:plans": "node web/__tests__/plans.web.test.mjs",
     "test:web:snapshot": "node web/__tests__/snapshot.web.test.mjs",
+    "test:web:driveauth": "node web/__tests__/driveAuth.web.test.mjs",
     "test:keystore": "node web/__tests__/keystore.test.mjs",
     "test:i18n": "node web/__tests__/i18n.test.mjs",
     "test:i18n-coverage": "node web/__tests__/i18n-coverage.test.mjs",
