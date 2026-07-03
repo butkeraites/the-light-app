@@ -81,6 +81,13 @@ verbatim constants shown in-app.
 Protected translations (e.g. NVI/ARA/ESV) are **never** embedded; they are available only
 through opt-in connectors using the user's own credentials.
 
+### Code license
+
+The Light App's own source code is licensed under the **MIT License** — see [`LICENSE`](LICENSE).
+MIT covers this repository's code only; the embedded third-party content above keeps its own
+terms (public-domain Bible texts, OpenBible.info cross-references CC-BY, STEP/Tyndale lexicon
+CC BY 4.0).
+
 ---
 
 ## Build & run
