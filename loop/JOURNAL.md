@@ -189,3 +189,25 @@
   F5.25 (push/pull+merge) → F5.26 (UI opt-in + wiring nativo) → F5.27 (⛔ validação real, humano).
 - **Próximo:** seedar e executar **F5.24** (link Google Drive no WEB — OAuth 2.0 PKCE client-side,
   escopo `drive.appdata`, MOCK; conta real só na F5.27). Loop **LIVE** — sem HALT.
+
+## Ciclo — 2026-07-03T16:05Z — F5.24 ACEITA (link Google Drive no web — OAuth PKCE)
+
+- **Heartbeat:** 2026-07-03T16:05:00Z.
+- **Tarefa:** F5.24 (link Google Drive no WEB — OAuth 2.0 PKCE client-side, escopo drive.appdata, MOCK). Não-gate. Etapa 2 da trilha de sync (ADR-0036).
+- **Executor:** `a4397c1` — motor puro/injetável `app/lib/driveAuth.ts`: `generatePkce` (challenge=SHA-256 real do verifier),
+  `buildAuthUrl` (response_type=code, S256, escopo mínimo `drive.appdata`, state, redirect), `exchangeCode` (grant_type=authorization_code+
+  code_verifier, SEM client_secret — cliente público + PKCE), `link/unlink/isLinked/currentToken` sobre `TokenStore` injetável.
+  Token/verifier NUNCA logados. Prova `driveAuth.web.test.mjs` (mock fetch/crypto):
+  `DRIVE_AUTH pkce=ok url=ok exchange=ok link=ok unlink=ok notoken=ok`. ADR-0052 (reconcilia ADR-0023 OAuth-banido: banido era OAuth
+  essencial/com-servidor; aqui é transporte opt-in de dados DO usuário, na conta DELE, sem infra/segredo do app).
+- **Reviewer (independente, subagente):** **PASSED**. Re-rodou os gates: tsc 0; `test:web:driveauth` com o marcador exato; perf-budget LOCKED
+  `moduleCount 839 (EXATO, inalterado)` (motor puro fora do entry); expo web 0; snapshot/notes sem regressão. 7 checagens adversariais:
+  (1) PKCE real — challenge por SHA-256 real (webcrypto), vetor RFC 7636 Ap. B (não string igual a si mesma); (2) `grep -c client_secret`=0,
+  teste assevera `client_secret===null`; (3) 0 `console.*` no fonte, asserção `notoken` real (espiona os 6 métodos de console); (4) só mock,
+  zero rede real; (5) puro/DI → fora do entry graph; (6) escopo só-autorização (sem push/pull/UI/chamadas reais; não toca o snapshot F5.23);
+  (7) the-light `225b8c9`, `.claude/settings.json` não commitado, commit toca só DECISIONS.md+driveAuth.ts+package.json+2 testes.
+- **Resultado:** aceito e arquivado (`loop/archive/F5.24.*`). STATUS/PROGRESS/JOURNAL atualizados.
+- **Trilha de sync:** F5.22 (ADR-0036) + F5.23 (motor) + F5.24 (link Drive) ok → falta F5.25 (push/pull+merge) →
+  F5.26 (UI opt-in + wiring nativo) → F5.27 (⛔ validação real, humano).
+- **Próximo:** seedar e executar **F5.25** (push/pull do snapshot na pasta app-data do Drive + merge no pull, reusando F5.23;
+  MOCK; convergência entre 2 devices + idempotência). Loop **LIVE** — sem HALT.
