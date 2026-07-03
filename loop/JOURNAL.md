@@ -296,3 +296,10 @@
 - **Executor:** `ea22a77` — un-gated os 3 links (Platform.OS!=='web' removido) após confirmar que cada rota web é real (getChapter wa-sqlite/OPFS, search FTS5, planos wasm+OPFS); corrigidos comentários obsoletos em index.tsx + search/index.tsx. `dist/index.html` com os 3 hrefs+testIDs.
 - **Reviewer (independente):** **PASSED**. tsc 0; `test:web:reading`(66 livros)/`search`(FTS5 real, 646 hits, João 3:16)/`perf-budget`(moduleCount 839 EXATO, sem re-baseline) verdes; os 3 arquivos de rota sem bloco "indisponível no web" → nenhum dead-link; nativo inalterado; commit só `index.tsx`+`search/index.tsx`; the-light `225b8c9`.
 - **Resultado:** aceito/arquivado (`loop/archive/F5.30.*`). **Próximo:** F5.31 (seletor de tradução na Busca — hoje fixo em KJV; store tem Almeida 1911; reusar padrão do ReaderVersionPicker). Loop LIVE. Próximo ADR livre = ADR-0055.
+
+## Ciclo — 2026-07-03T18:50Z — F5.31 ACEITA (seletor de tradução na Busca) → seedar F5.32
+
+- **Heartbeat:** 2026-07-03T18:50:00Z. **Tarefa:** F5.31 (seletor de tradução na Busca; hoje fixo KJV). Não-gate. Refinamento.
+- **Executor:** `0e4f522` — reusou `ReaderVersionPicker`; lista via `listTranslations` (store); KJV default; `translation` nas deps do debounce → selecionar re-executa `search(dbPath, term, translation)`. +1 chave `search.translationLabel` (pt/en). Snippet/ref verbatim do store.
+- **Reviewer (independente):** **PASSED**. tsc 0; `test:web:search`(KJV+alm1911, "ceus" retorna hits)/`test:i18n`(203)/`test:i18n-coverage` verdes. Re-consulta real (deps `[query,translation]`, não estado morto); lista store-sourced; `ReaderSearchResultItem` sem `useI18n` (anti-alucinação); reuso sem duplicação; commit só `search/index.tsx`+`i18n.ts`; the-light `225b8c9`.
+- **Resultado:** aceito/arquivado (`loop/archive/F5.31.*`). **Próximo:** F5.32 (rolar/destacar o versículo alvo com `?verse=N`; busca/xref hoje caem no topo — esforço M; componente compartilhado corrige web+nativo). Loop LIVE. Próximo ADR livre = ADR-0055.
