@@ -289,3 +289,10 @@
 - **Executor:** `d97ca2c` — removido `accessibilityLabel={t('a11y.result')}` do `Text` de resultado (mantido `role="text"`); leitor de tela agora anuncia o conteúdo real (`resultText` cobre passage/reference/error/idle). Chave `a11y.result` órfã removida do union + pt/en (203→202, paridade).
 - **Reviewer (independente):** **PASSED**. tsc 0; `test:a11y-scan`(71)/`test:i18n-coverage`(202)/`test:i18n` verdes. Fix cobre os 4 outcomes; grep `a11y.result`=NONE no código; sem over-reach; anti-alucinação intacta (`v.text` verbatim); the-light `225b8c9`; commit só `index.tsx`+`i18n.ts`.
 - **Resultado:** aceito/arquivado (`loop/archive/F5.29.*`). **Próximo:** F5.30 (expor links /read /search /plans na home web — hoje só por URL; corrigir comentários obsoletos). Loop LIVE. Próximo ADR livre = ADR-0055.
+
+## Ciclo — 2026-07-03T18:35Z — F5.30 ACEITA (nav web) → seedar F5.31
+
+- **Heartbeat:** 2026-07-03T18:35:00Z. **Tarefa:** F5.30 (expor links /read /search /plans na home web). Não-gate. Refinamento.
+- **Executor:** `ea22a77` — un-gated os 3 links (Platform.OS!=='web' removido) após confirmar que cada rota web é real (getChapter wa-sqlite/OPFS, search FTS5, planos wasm+OPFS); corrigidos comentários obsoletos em index.tsx + search/index.tsx. `dist/index.html` com os 3 hrefs+testIDs.
+- **Reviewer (independente):** **PASSED**. tsc 0; `test:web:reading`(66 livros)/`search`(FTS5 real, 646 hits, João 3:16)/`perf-budget`(moduleCount 839 EXATO, sem re-baseline) verdes; os 3 arquivos de rota sem bloco "indisponível no web" → nenhum dead-link; nativo inalterado; commit só `index.tsx`+`search/index.tsx`; the-light `225b8c9`.
+- **Resultado:** aceito/arquivado (`loop/archive/F5.30.*`). **Próximo:** F5.31 (seletor de tradução na Busca — hoje fixo em KJV; store tem Almeida 1911; reusar padrão do ReaderVersionPicker). Loop LIVE. Próximo ADR livre = ADR-0055.
