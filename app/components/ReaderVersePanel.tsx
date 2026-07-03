@@ -31,6 +31,7 @@ import {
 } from 'react-native';
 
 import { HIGHLIGHT_COLORS, resolveHighlightColor } from '../lib/highlightColors';
+import { useI18n } from '../lib/i18n';
 import { buildNotesExport } from '../lib/notesExport';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import {
@@ -110,6 +111,11 @@ export function ReaderVersePanel({
   onClose: () => void;
 }) {
   const { colors, isDark } = useTheme();
+  // F5.16: só o CROMO (seções, botões, placeholders, a11y) passa por `t()`. O
+  // `{sourceLabel}` e os nomes de livro (`bookNameOf`) vêm do STORE; o corpo da NOTA é
+  // texto livre do usuário; a atribuição CC-BY é VERBATIM — nada disso via `t()`
+  // (anti-alucinação). `{color}` = rótulo da paleta de marcação (dado da app).
+  const { t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [body, setBody] = useState('');
@@ -195,7 +201,7 @@ export function ReaderVersePanel({
       // EXPORT = agregado dos Records (apresentação) — não reescreve o store.
       const [notes, highlights] = await Promise.all([listNotes(dataDir), listHighlights(dataDir)]);
       const text = buildNotesExport(notes, highlights, bookNameOf);
-      await Share.share({ message: text, title: 'Minhas notas — The Light' });
+      await Share.share({ message: text, title: t('versePanel.exportShareTitle') });
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     }
@@ -210,13 +216,13 @@ export function ReaderVersePanel({
         <View style={styles.header}>
           <Text style={styles.title}>{sourceLabel}</Text>
           <Pressable onPress={onClose} testID="verse-panel-close" accessibilityRole="button">
-            <Text style={styles.close}>Fechar</Text>
+            <Text style={styles.close}>{t('common.close')}</Text>
           </Pressable>
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           {/* ── NOTA ─────────────────────────────────────────────────────── */}
-          <Text style={styles.sectionTitle}>Nota</Text>
+          <Text style={styles.sectionTitle}>{t('versePanel.noteSection')}</Text>
           {noteLoading ? (
             <ActivityIndicator color={colors.text} />
           ) : (
@@ -224,12 +230,12 @@ export function ReaderVersePanel({
               style={styles.noteInput}
               value={body}
               onChangeText={setBody}
-              placeholder="Escreva uma nota (Markdown)…"
+              placeholder={t('versePanel.notePlaceholder')}
               placeholderTextColor={colors.muted}
               multiline
               editable={!busy}
               testID="note-input"
-              accessibilityLabel="Editor de nota do versículo"
+              accessibilityLabel={t('versePanel.noteEditorLabel')}
             />
           )}
           <View style={styles.row}>
@@ -240,7 +246,7 @@ export function ReaderVersePanel({
               testID="note-save"
               accessibilityRole="button"
             >
-              <Text style={styles.btnText}>Salvar nota</Text>
+              <Text style={styles.btnText}>{t('versePanel.saveNote')}</Text>
             </Pressable>
             <Pressable
               style={[styles.btn, busy ? styles.btnDisabled : styles.btnGhost]}
@@ -249,12 +255,12 @@ export function ReaderVersePanel({
               testID="note-delete"
               accessibilityRole="button"
             >
-              <Text style={[styles.btnText, styles.btnGhostText]}>Remover nota</Text>
+              <Text style={[styles.btnText, styles.btnGhostText]}>{t('versePanel.deleteNote')}</Text>
             </Pressable>
           </View>
 
           {/* ── MARCAÇÃO (highlight) ─────────────────────────────────────── */}
-          <Text style={styles.sectionTitle}>Marcação</Text>
+          <Text style={styles.sectionTitle}>{t('versePanel.highlightSection')}</Text>
           <View style={styles.swatches}>
             {HIGHLIGHT_COLORS.map((c) => {
               const active = currentHighlight === c.name;
@@ -270,7 +276,7 @@ export function ReaderVersePanel({
                   disabled={busy}
                   testID={`highlight-${c.name}`}
                   accessibilityRole="button"
-                  accessibilityLabel={`Marcar com ${c.label}`}
+                  accessibilityLabel={t('versePanel.highlightWith', { color: c.label })}
                   accessibilityState={{ selected: active }}
                 >
                   {active ? <Text style={styles.swatchCheck}>✓</Text> : null}
@@ -284,7 +290,7 @@ export function ReaderVersePanel({
               testID="highlight-remove"
               accessibilityRole="button"
             >
-              <Text style={[styles.btnText, styles.btnGhostText]}>Desmarcar</Text>
+              <Text style={[styles.btnText, styles.btnGhostText]}>{t('versePanel.unhighlight')}</Text>
             </Pressable>
           </View>
 
@@ -297,9 +303,9 @@ export function ReaderVersePanel({
               onPress={onAsk}
               testID="verse-ask"
               accessibilityRole="button"
-              accessibilityLabel="Perguntar à IA sobre esta passagem"
+              accessibilityLabel={t('versePanel.askLabel')}
             >
-              <Text style={styles.btnText}>Perguntar (IA)</Text>
+              <Text style={styles.btnText}>{t('versePanel.askButton')}</Text>
             </Pressable>
           ) : null}
 
@@ -310,9 +316,9 @@ export function ReaderVersePanel({
               onPress={onStudy}
               testID="verse-study"
               accessibilityRole="button"
-              accessibilityLabel="Estudo profundo (IA) desta passagem"
+              accessibilityLabel={t('versePanel.studyLabel')}
             >
-              <Text style={styles.btnText}>Estudo (IA)</Text>
+              <Text style={styles.btnText}>{t('versePanel.studyButton')}</Text>
             </Pressable>
           ) : null}
 
@@ -323,9 +329,9 @@ export function ReaderVersePanel({
               onPress={onChat}
               testID="verse-chat"
               accessibilityRole="button"
-              accessibilityLabel="Conversar (IA) sobre esta passagem"
+              accessibilityLabel={t('versePanel.chatLabel')}
             >
-              <Text style={styles.btnText}>Conversa (IA)</Text>
+              <Text style={styles.btnText}>{t('versePanel.chatButton')}</Text>
             </Pressable>
           ) : null}
 
@@ -336,9 +342,9 @@ export function ReaderVersePanel({
               onPress={onCompare}
               testID="verse-compare"
               accessibilityRole="button"
-              accessibilityLabel="Comparar respostas de várias IAs sobre esta passagem"
+              accessibilityLabel={t('versePanel.compareLabel')}
             >
-              <Text style={styles.btnText}>Comparar (IA)</Text>
+              <Text style={styles.btnText}>{t('versePanel.compareButton')}</Text>
             </Pressable>
           ) : null}
 
@@ -349,17 +355,17 @@ export function ReaderVersePanel({
             testID="notes-export"
             accessibilityRole="button"
           >
-            <Text style={[styles.btnText, styles.btnGhostText]}>Exportar minhas notas</Text>
+            <Text style={[styles.btnText, styles.btnGhostText]}>{t('versePanel.exportButton')}</Text>
           </Pressable>
 
           {/* ── REFERÊNCIAS CRUZADAS (F1.9) ──────────────────────────────── */}
-          <Text style={styles.sectionTitle}>Referências cruzadas</Text>
+          <Text style={styles.sectionTitle}>{t('xref.section')}</Text>
           {xrefLoading ? (
             <ActivityIndicator color={colors.text} />
           ) : xrefError ? (
             <Text style={styles.error}>{xrefError}</Text>
           ) : refs.length === 0 ? (
-            <Text style={styles.empty}>Sem referências cruzadas para este versículo.</Text>
+            <Text style={styles.empty}>{t('xref.empty')}</Text>
           ) : (
             <View>
               {refs.map((cr) => {
@@ -377,7 +383,7 @@ export function ReaderVersePanel({
                     accessibilityLabel={label}
                   >
                     <Text style={styles.xrefRef}>{label}</Text>
-                    <Text style={styles.xrefVotes}>{String(cr.votes)} votos</Text>
+                    <Text style={styles.xrefVotes}>{t('xref.votes', { count: String(cr.votes) })}</Text>
                   </Pressable>
                 );
               })}

@@ -21,6 +21,7 @@ import {
   View,
 } from 'react-native';
 
+import { useI18n } from '../lib/i18n';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import type { CrossRef } from '../web/reading';
 
@@ -76,6 +77,11 @@ export function ReaderXrefPanel({
   onClose: () => void;
 }) {
   const { colors } = useTheme();
+  // F5.16: só o CROMO (título, fechar, estado-vazio, rótulo "votos") passa por `t()`. O
+  // `{sourceLabel}` (nome do livro do store + cap:versículo) e os nomes de livro de destino
+  // (`bookNameOf`) vêm do STORE — nunca via `t()` (anti-alucinação); a atribuição CC-BY é
+  // VERBATIM (constante `XREF_ATTRIBUTION`, requisito de licença — não traduzida).
+  const { t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   return (
@@ -83,9 +89,9 @@ export function ReaderXrefPanel({
       <Pressable style={styles.backdrop} onPress={onClose} testID="xref-backdrop" />
       <View style={styles.sheet}>
         <View style={styles.header}>
-          <Text style={styles.title}>Referências cruzadas — {sourceLabel}</Text>
+          <Text style={styles.title}>{t('xref.title', { source: sourceLabel })}</Text>
           <Pressable onPress={onClose} testID="xref-close" accessibilityRole="button">
-            <Text style={styles.close}>Fechar</Text>
+            <Text style={styles.close}>{t('common.close')}</Text>
           </Pressable>
         </View>
 
@@ -99,7 +105,7 @@ export function ReaderXrefPanel({
           </View>
         ) : refs.length === 0 ? (
           <View style={styles.centered}>
-            <Text style={styles.empty}>Sem referências cruzadas para este versículo.</Text>
+            <Text style={styles.empty}>{t('xref.empty')}</Text>
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.list}>
@@ -119,7 +125,7 @@ export function ReaderXrefPanel({
                 >
                   <Text style={styles.reference}>{reference}</Text>
                   {/* `votes` é i64 → bigint no binding: String(...) é robusto a ambos. */}
-                  <Text style={styles.votes}>{String(cr.votes)} votos</Text>
+                  <Text style={styles.votes}>{t('xref.votes', { count: String(cr.votes) })}</Text>
                 </Pressable>
               );
             })}

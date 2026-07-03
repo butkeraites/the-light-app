@@ -219,7 +219,37 @@ export type MessageKey =
   | 'a11y.questionField'
   | 'a11y.chatField'
   | 'a11y.compareField'
-  | 'a11y.tavilyKey';
+  | 'a11y.tavilyKey'
+  // ─── CROMO dos componentes de LEITURA restantes (F5.16) ──────────────────────────────
+  // ANTI-ALUCINAÇÃO (LEI): só CROMO (rótulos, botões, seções, a11y, placeholders). O TEXTO
+  // do versículo e os NOMES de livro vêm do STORE (nunca via `t()`); as REFERÊNCIAS cruzadas
+  // são só destino+votos (sem texto bíblico); a atribuição CC-BY (OpenBible) é VERBATIM e NÃO
+  // passa por aqui. `{source}` = rótulo da passagem (nome do livro do store + cap:versículo,
+  // dados); `{count}` = nº de votos (dado); `{color}` = rótulo da paleta de marcação (dado da
+  // app, não texto bíblico) — só INTERPOLADOS, nunca traduzidos.
+  | 'common.close'
+  | 'xref.title'
+  | 'xref.section'
+  | 'xref.empty'
+  | 'xref.votes'
+  | 'versePanel.noteSection'
+  | 'versePanel.notePlaceholder'
+  | 'versePanel.noteEditorLabel'
+  | 'versePanel.saveNote'
+  | 'versePanel.deleteNote'
+  | 'versePanel.highlightSection'
+  | 'versePanel.highlightWith'
+  | 'versePanel.unhighlight'
+  | 'versePanel.exportButton'
+  | 'versePanel.exportShareTitle'
+  | 'versePanel.askLabel'
+  | 'versePanel.askButton'
+  | 'versePanel.studyLabel'
+  | 'versePanel.studyButton'
+  | 'versePanel.chatLabel'
+  | 'versePanel.chatButton'
+  | 'versePanel.compareLabel'
+  | 'versePanel.compareButton';
 
 // Catálogo PORTUGUÊS (default do app). "The Light" é o NOME do produto (marca),
 // idêntico nos dois idiomas de propósito.
@@ -375,6 +405,30 @@ const pt: Record<MessageKey, string> = {
   'a11y.chatField': 'Campo de conversa sobre a passagem',
   'a11y.compareField': 'Campo de pergunta para comparar entre provedores',
   'a11y.tavilyKey': 'Chave Tavily (session-only)',
+  // ─── Componentes de leitura restantes (F5.16) — só CROMO (ver nota na união de chaves) ─
+  'common.close': 'Fechar',
+  'xref.title': 'Referências cruzadas — {source}',
+  'xref.section': 'Referências cruzadas',
+  'xref.empty': 'Sem referências cruzadas para este versículo.',
+  'xref.votes': '{count} votos',
+  'versePanel.noteSection': 'Nota',
+  'versePanel.notePlaceholder': 'Escreva uma nota (Markdown)…',
+  'versePanel.noteEditorLabel': 'Editor de nota do versículo',
+  'versePanel.saveNote': 'Salvar nota',
+  'versePanel.deleteNote': 'Remover nota',
+  'versePanel.highlightSection': 'Marcação',
+  'versePanel.highlightWith': 'Marcar com {color}',
+  'versePanel.unhighlight': 'Desmarcar',
+  'versePanel.exportButton': 'Exportar minhas notas',
+  'versePanel.exportShareTitle': 'Minhas notas — The Light',
+  'versePanel.askLabel': 'Perguntar à IA sobre esta passagem',
+  'versePanel.askButton': 'Perguntar (IA)',
+  'versePanel.studyLabel': 'Estudo profundo (IA) desta passagem',
+  'versePanel.studyButton': 'Estudo (IA)',
+  'versePanel.chatLabel': 'Conversar (IA) sobre esta passagem',
+  'versePanel.chatButton': 'Conversa (IA)',
+  'versePanel.compareLabel': 'Comparar respostas de várias IAs sobre esta passagem',
+  'versePanel.compareButton': 'Comparar (IA)',
 };
 
 // Catálogo ENGLISH. As MESMAS chaves de `pt` (paridade forçada pelo tipo).
@@ -530,6 +584,30 @@ const en: Record<MessageKey, string> = {
   'a11y.chatField': 'Conversation field about the passage',
   'a11y.compareField': 'Question field to compare across providers',
   'a11y.tavilyKey': 'Tavily key (session-only)',
+  // ─── Remaining reading components (F5.16) — CHROME only (see note on the key union) ────
+  'common.close': 'Close',
+  'xref.title': 'Cross references — {source}',
+  'xref.section': 'Cross references',
+  'xref.empty': 'No cross references for this verse.',
+  'xref.votes': '{count} votes',
+  'versePanel.noteSection': 'Note',
+  'versePanel.notePlaceholder': 'Write a note (Markdown)…',
+  'versePanel.noteEditorLabel': 'Verse note editor',
+  'versePanel.saveNote': 'Save note',
+  'versePanel.deleteNote': 'Remove note',
+  'versePanel.highlightSection': 'Highlight',
+  'versePanel.highlightWith': 'Highlight with {color}',
+  'versePanel.unhighlight': 'Unhighlight',
+  'versePanel.exportButton': 'Export my notes',
+  'versePanel.exportShareTitle': 'My notes — The Light',
+  'versePanel.askLabel': 'Ask the AI about this passage',
+  'versePanel.askButton': 'Ask (AI)',
+  'versePanel.studyLabel': 'Deep study (AI) of this passage',
+  'versePanel.studyButton': 'Study (AI)',
+  'versePanel.chatLabel': 'Chat (AI) about this passage',
+  'versePanel.chatButton': 'Chat (AI)',
+  'versePanel.compareLabel': 'Compare answers from multiple AIs about this passage',
+  'versePanel.compareButton': 'Compare (AI)',
 };
 
 /** Catálogos por idioma (uma fonte de verdade de texto de UI). */

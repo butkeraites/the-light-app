@@ -13,6 +13,7 @@
 import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { useI18n } from '../lib/i18n';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import type { Passage } from '../web/reading';
 
@@ -42,6 +43,9 @@ export function ReaderParallelView({
   secondary: Passage;
 }) {
   const { colors } = useTheme();
+  // F5.16: só o CROMO (estado-vazio) passa por `t()`. O TEXTO dos versículos e os rótulos
+  // de coluna (slug da tradução) vêm VERBATIM do store — nunca via `t()` (anti-alucinação).
+  const { t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const primaryMap = useMemo(() => verseMap(primary), [primary]);
@@ -56,7 +60,7 @@ export function ReaderParallelView({
   if (numbers.length === 0) {
     return (
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.empty}>Capítulo não encontrado no banco de leitura.</Text>
+        <Text style={styles.empty}>{t('read.chapterNotFound')}</Text>
       </ScrollView>
     );
   }

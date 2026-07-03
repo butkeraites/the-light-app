@@ -267,6 +267,62 @@ async function main() {
   assert.equal(translate('pt', 'compare.byokBadge'), '· BYOK', 'pt compare.byokBadge (acrônimo)');
   assert.equal(translate('en', 'compare.byokBadge'), '· BYOK', 'en compare.byokBadge (idêntico)');
 
+  // ── F5.16: PROVA de que o CROMO dos componentes de leitura RESTANTES troca de idioma ──
+  // Botões/seções/a11y dos painéis por-versículo e de xref (verse/xref/common) DIVERGEM
+  // PT≠EN → alternar o idioma re-renderiza esse cromo de fato. O `{source}` (rótulo da
+  // passagem, do store), o `{count}` (nº de votos, dado) e o `{color}` (rótulo da paleta,
+  // dado da app) só INTERPOLAM — nunca são traduzidos; a atribuição CC-BY é verbatim (nunca
+  // via t()); o TEXTO do versículo e os NOMES de livro vêm do store, não daqui.
+  assert.equal(translate('pt', 'common.close'), 'Fechar', 'pt common.close');
+  assert.equal(translate('en', 'common.close'), 'Close', 'en common.close');
+  assert.notEqual(
+    translate('pt', 'common.close'),
+    translate('en', 'common.close'),
+    'common.close DIFERE entre pt e en (botão Fechar reativo ao idioma)',
+  );
+  assert.equal(translate('pt', 'versePanel.saveNote'), 'Salvar nota', 'pt verse.saveNote');
+  assert.equal(translate('en', 'versePanel.saveNote'), 'Save note', 'en verse.saveNote');
+  assert.notEqual(
+    translate('pt', 'versePanel.saveNote'),
+    translate('en', 'versePanel.saveNote'),
+    'versePanel.saveNote DIFERE entre pt e en (botão do painel por-versículo reativo)',
+  );
+  // `xref.title` interpola o {source} (rótulo da passagem, do store) VERBATIM; o cromo à
+  // volta ("Referências cruzadas — ") DIVERGE PT≠EN.
+  assert.equal(
+    translate('pt', 'xref.title', { source: 'João 3:16' }),
+    'Referências cruzadas — João 3:16',
+    'pt xref.title interpola {source} VERBATIM (nome do livro vem do store, não de t())',
+  );
+  assert.equal(
+    translate('en', 'xref.title', { source: 'John 3:16' }),
+    'Cross references — John 3:16',
+    'en xref.title interpola {source} VERBATIM',
+  );
+  assert.notEqual(
+    translate('pt', 'xref.title', { source: 'X 1:1' }),
+    translate('en', 'xref.title', { source: 'X 1:1' }),
+    'xref.title DIFERE entre pt e en (com o mesmo {source})',
+  );
+  // `xref.votes` interpola o {count} (nº de votos, dado da fronteira) — só o rótulo é cromo.
+  assert.equal(
+    translate('pt', 'xref.votes', { count: 12 }),
+    '12 votos',
+    'pt xref.votes interpola o {count} (dado)',
+  );
+  assert.equal(
+    translate('en', 'xref.votes', { count: 12 }),
+    '12 votes',
+    'en xref.votes interpola o {count} (dado)',
+  );
+  // `verse.highlightWith` interpola o {color} (rótulo da paleta de marcação, dado da app —
+  // não texto bíblico); o cromo à volta ("Marcar com ") DIVERGE PT≠EN.
+  assert.notEqual(
+    translate('pt', 'versePanel.highlightWith', { color: 'Amarelo' }),
+    translate('en', 'versePanel.highlightWith', { color: 'Amarelo' }),
+    'versePanel.highlightWith DIFERE entre pt e en (com o mesmo {color})',
+  );
+
   // Sem params, o placeholder de interpolação fica intacto (não quebra).
   assert.ok(
     translate('pt', 'home.resolveError').includes('{message}'),
@@ -335,6 +391,11 @@ async function main() {
     'chat',
     'compare',
     'study',
+    // F5.16: cromo dos componentes de leitura restantes (verse/xref panels) + `common`.
+    // `versePanel` (não `verse`) para NÃO colidir com o guard anti-alucinação `^verse\b`.
+    'common',
+    'versePanel',
+    'xref',
   ]);
   for (const key of MESSAGE_KEYS) {
     const ns = key.split('.')[0];
@@ -362,6 +423,7 @@ async function main() {
   console.log('  fluxo de leitura (F5.5): nav.read/read.parallel DIVERGEM PT≠EN; read.bookFallback interpola {number}');
   console.log('  busca + navegação (F5.8): search.inputPlaceholder/a11y.openChapter DIVERGEM PT≠EN; search.noResults/a11y.openBook interpolam {term}/{name} (dados do store/usuário)');
   console.log('  painéis de IA (F5.11): ask.submit/study.submit/ai.interpTitle DIVERGEM PT≠EN; ask.title/ai.meta/compare.consistencyOk interpolam {source}/{provider}/{model}/{count} VERBATIM (citedText/interpretation/reference/CC-BY nunca via t())');
+  console.log('  componentes de leitura restantes (F5.16): common.close/verse.saveNote/xref.title DIVERGEM PT≠EN; xref.title/xref.votes/verse.highlightWith interpolam {source}/{count}/{color} VERBATIM (texto do versículo/nomes de livro do store, CC-BY verbatim, nunca via t())');
   console.log('  persistência: setPref→getPref; SOBREVIVE a nova instância (reabrir); removePref volta ao default');
   console.log("  detecção offline: 'pt-BR'→pt, 'en-US'→en, desconhecido/''→pt; detectDeviceLocale() válido");
   console.log(`  anti-alucinação: todas as ${MESSAGE_KEYS.length} chaves são CROMO (home/search/nav/read/plans/ref/a11y/language/theme); nenhuma de versículo`);
