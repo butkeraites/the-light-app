@@ -8,9 +8,10 @@
 //
 // Uma fonte da verdade / anti-alucinação: NENHUM SQL/FTS/MATCH/bm25/highlight é
 // reimplementado aqui — a tela só embrulha o retorno de `search` (texto verbatim do
-// store). Cores via TOKENS de tema. Só NATIVO: no web, o glue `search` é um stub
-// que lança em runtime (busca web = F1.14); por isso o ponto de entrada (home) é
-// gateado p/ nativo e esta tela não é alcançada no web.
+// store). Cores via TOKENS de tema. PARIDADE WEB (F1.14 DESTUBADO): no web o glue
+// `search` (`reading.web.ts`) roda FTS5 REAL sobre o subset local (`reading-lite.sqlite`,
+// wa-sqlite/OPFS), então esta MESMA tela funciona nas duas plataformas e É alcançável
+// no web — o link é renderizado na home (F5.30), não só via URL digitada.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, View } from 'react-native';

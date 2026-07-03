@@ -183,48 +183,47 @@ export default function HomeScreen() {
         <Text style={styles.readLinkText}>{t('home.syncBackup')}</Text>
       </Pressable>
 
-      {/* F1.3: entrada para a UI de leitura nativa (livro → capítulo → texto +
-          seletor de versão). Lê do store local no device pela fronteira nativa. */}
-      {Platform.OS === 'web' ? null : (
-        <Link
-          href="/read"
-          style={styles.readLink}
-          testID="open-reader"
-          accessibilityRole="link"
-          accessibilityLabel={t('home.readBible')}
-        >
-          {t('home.readBible')}
-        </Link>
-      )}
+      {/* F1.3: entrada para a UI de leitura (livro → capítulo → texto + seletor de
+          versão). Lê do store local: no nativo pela fronteira nativa; no web pelo glue
+          `reading.web.ts` (F1.13 DESTUBADO, wa-sqlite/OPFS). F5.30: paridade web
+          concluída → renderizado nas DUAS plataformas (antes gateado só p/ nativo). */}
+      <Link
+        href="/read"
+        style={styles.readLink}
+        testID="open-reader"
+        accessibilityRole="link"
+        accessibilityLabel={t('home.readBible')}
+      >
+        {t('home.readBible')}
+      </Link>
 
-      {/* F1.6: entrada para a BUSCA nativa (campo + resultados clicáveis). A busca
-          lê pela fronteira `search` (F1.5 → JSI → core); web = stub (F1.14). */}
-      {Platform.OS === 'web' ? null : (
-        <Link
-          href="/search"
-          style={styles.readLink}
-          testID="open-search"
-          accessibilityRole="link"
-          accessibilityLabel={t('home.searchBible')}
-        >
-          {t('home.searchBible')}
-        </Link>
-      )}
+      {/* F1.6: entrada para a BUSCA (campo + resultados clicáveis). Lê pela fronteira
+          `search`: no nativo F1.5 → JSI → core; no web pelo glue FTS5 real
+          `reading.web.ts` (F1.14 DESTUBADO, ≠ stub). F5.30: paridade web concluída →
+          renderizado nas DUAS plataformas (antes gateado só p/ nativo). */}
+      <Link
+        href="/search"
+        style={styles.readLink}
+        testID="open-search"
+        accessibilityRole="link"
+        accessibilityLabel={t('home.searchBible')}
+      >
+        {t('home.searchBible')}
+      </Link>
 
-      {/* F5.7: entrada para os PLANOS de leitura nativos (lista → iniciar → dia de
-          hoje → marcar). Orquestra a geração (F5.1) + o progresso (F5.4) via a
-          fronteira nativa; native-first (paridade web = F5.10) → gateada p/ nativo. */}
-      {Platform.OS === 'web' ? null : (
-        <Link
-          href="/plans"
-          style={styles.readLink}
-          testID="open-plans"
-          accessibilityRole="link"
-          accessibilityLabel={t('home.readingPlans')}
-        >
-          {t('home.readingPlans')}
-        </Link>
-      )}
+      {/* F5.7: entrada para os PLANOS de leitura (lista → iniciar → dia de hoje →
+          marcar). Orquestra a geração (F5.1) + o progresso (F5.4): no nativo pela
+          fronteira nativa; no web geração wasm + progresso OPFS (F5.10/ADR-0050).
+          F5.30: paridade web concluída → renderizado nas DUAS plataformas. */}
+      <Link
+        href="/plans"
+        style={styles.readLink}
+        testID="open-plans"
+        accessibilityRole="link"
+        accessibilityLabel={t('home.readingPlans')}
+      >
+        {t('home.readingPlans')}
+      </Link>
     </View>
   );
 }
