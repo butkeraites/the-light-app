@@ -2,7 +2,9 @@
 //
 // PROVA HEADLESS (node, sem browser, SEM rede/chave) do LÉXICO VERIFICADO WEB: exercita
 // `lexicalEntriesOnHandle` (a função de PRODUÇÃO) sobre um wa-sqlite (VFS de memória) com
-// os BYTES do subset `reading-sample.sqlite` (com léxico STEP CC-BY, F3.5). Prova que:
+// os BYTES do subset de LÉXICO ON-DEMAND `lexicon-sample.sqlite` (F5.15/ADR-0044 — o DADO
+// do léxico STEP CC-BY separado do caminho de leitura; conteúdo IDÊNTICO ao que a F3.5
+// propagava no combinado, ZERO drift). Prova que:
 //   - João 3:16 (livro 43, cap 3, v 16) → ≥1 entrada Strong (do léxico do store) + `sources`
 //     com a atribuição STEP CC-BY VERBATIM;
 //   - passagem sem cobertura (João 3:99) → `{ entries: [], sources: [] }` (sem throw);
@@ -25,7 +27,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const ENTRY = join(__dirname, 'deepStudy-headless-entry.ts');
 const FRONTIER_WASM = join(__dirname, '..', 'generated', 'wasm-bindgen', 'index_bg.wasm');
-const READING_DB = join(__dirname, '..', '..', '..', 'assets', 'data', 'reading-sample.sqlite');
+// F5.15 (ADR-0044): o léxico vive num arquivo SEPARADO, carregado on-demand.
+const LEXICON_DB = join(__dirname, '..', '..', '..', 'assets', 'data', 'lexicon-sample.sqlite');
 const WA_SQLITE_WASM = join(__dirname, '..', 'vendor', 'wa-sqlite-fts5', 'wa-sqlite.wasm');
 
 async function loadBundle() {
@@ -42,23 +45,23 @@ async function loadBundle() {
   return import(pathToFileURL(outfile).href);
 }
 
-async function openReadingDbInMemory() {
+async function openLexiconDbInMemory() {
   const wasmBinary = await readFile(WA_SQLITE_WASM);
   const module = await SQLiteESMFactory({ wasmBinary });
   const sqlite3 = SQLite.Factory(module);
 
   const vfs = new MemoryVFS();
-  const bytes = await readFile(READING_DB);
+  const bytes = await readFile(LEXICON_DB);
   const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-  vfs.mapNameToFile.set('reading-sample.sqlite', {
-    name: 'reading-sample.sqlite',
+  vfs.mapNameToFile.set('lexicon-sample.sqlite', {
+    name: 'lexicon-sample.sqlite',
     flags: SQLite.SQLITE_OPEN_READONLY,
     size: data.byteLength,
     data,
   });
   sqlite3.vfs_register(vfs, false);
 
-  const db = await sqlite3.open_v2('reading-sample.sqlite', SQLite.SQLITE_OPEN_READONLY, vfs.name);
+  const db = await sqlite3.open_v2('lexicon-sample.sqlite', SQLite.SQLITE_OPEN_READONLY, vfs.name);
   return { sqlite3, db };
 }
 
@@ -68,7 +71,7 @@ async function main() {
   await init({ module_or_path: frontierBytes });
   mod.initialize();
 
-  const handle = await openReadingDbInMemory();
+  const handle = await openLexiconDbInMemory();
 
   // (1) João 3:16 → entradas Strong + atribuição STEP CC-BY (do store, verbatim).
   const lex = await lexicalEntriesOnHandle(handle, 43, 3, 16, undefined);
@@ -105,7 +108,7 @@ async function main() {
 
   await handle.sqlite3.close(handle.db);
 
-  console.log('PASS — léxico verificado web (do subset via wa-sqlite, STEP CC-BY):');
+  console.log('PASS — léxico verificado web (de lexicon-sample.sqlite on-demand, STEP CC-BY):');
   console.log(`  João 3:16 -> ${lex.entries.length} entradas Strong; sources: ${lex.sources.length} (STEP CC-BY)`);
   console.log(`  amostra   -> ${JSON.stringify(lex.entries.slice(0, 3).map((e) => `${e.strongs}:${e.gloss ?? ''}`))}`);
   console.log('  sem cobertura (João 3:99) -> vazio sem throw; limit=1 -> 1 entrada');

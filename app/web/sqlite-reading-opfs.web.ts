@@ -1,11 +1,19 @@
 // app/web/sqlite-reading-opfs.web.ts — F1.13 (ADR-0018/ADR-0019; molde F0.10 ADR-0011/0012)
+// · F5.15 (ADR-0044: léxico fora do caminho de leitura)
 //
 // Backend de RUNTIME do store web de LEITURA (BROWSER). Par exato de
-// `sqlite-opfs.web.ts`, porém sobre o SUBSET `reading-sample.sqlite` (~4,4 MB — o
-// MESMO que o nativo empacota, ADR-0014: KJV + Almeida 1911 de Gn/Sl/Jo).
+// `sqlite-opfs.web.ts`, porém sobre o SUBSET WEB de LEITURA `reading-lite.sqlite`
+// (~4,3 MB — F5.15/ADR-0044: translations/books/verses/cross_references/verses_fts,
+// SEM as tabelas de léxico). O DADO do léxico (~9 MB: original_tokens/lexicon/
+// scholarly_sources/morph_legend) SAIU deste arquivo e virou `lexicon-sample.sqlite`,
+// carregado ON-DEMAND só ao abrir estudo/léxico (`sqlite-lexicon-opfs.web.ts`). Assim
+// leitores puros baixam ~4,3 MB (não ~14,4 MB) — a LEITURA funciona 100% offline SEM
+// jamais tocar o léxico. O NATIVO segue no combinado `reading-sample.sqlite` (F1.3/
+// ADR-0014; o split é WEB-scoped). O `reading-lite.sqlite` NÃO tem as tabelas de léxico:
+// uma consulta de léxico neste handle FALHA por design (não retorna vazio silencioso).
 // Responsabilidades:
 //   - PERSISTÊNCIA OFFLINE-FIRST em OPFS: na 1ª vez carrega os bytes do asset
-//     EMPACOTADO `reading-sample.sqlite` em OPFS; nas próximas lê do OPFS.
+//     EMPACOTADO `reading-lite.sqlite` em OPFS; nas próximas lê do OPFS.
 //   - LEITURA via `wa-sqlite`: instancia o SQLite-wasm (build SYNC, sem
 //     SharedArrayBuffer/COOP-COEP) sobre um VFS de MEMÓRIA hidratado com os bytes
 //     persistidos, e roda as MESMAS `queryChapter`/`queryChapterCount`/
@@ -33,20 +41,22 @@ import { MemoryVFS } from 'wa-sqlite/src/examples/MemoryVFS.js';
 // Assets EMPACOTADOS pelo Metro (servidos pela própria origem; offline-first).
 // eslint-disable-next-line import/no-unresolved
 import waSqliteWasmUri from './vendor/wa-sqlite-fts5/wa-sqlite.wasm';
-// `app/assets/data/reading-sample.sqlite` é um SYMLINK (versionado) para o subset
-// canônico em `<repo>/assets/data` (KJV + Almeida 1911, domínio público) — uma
-// única fonte da verdade. Mantê-lo DENTRO do projectRoot permite ao Metro
-// empacotá-lo como asset local (offline-first) sem hacks cross-root.
+// `app/assets/data/reading-lite.sqlite` é um SYMLINK (versionado) para o subset WEB
+// de leitura em `<repo>/assets/data` (KJV + Almeida 1911, domínio público; SEM léxico
+// — F5.15/ADR-0044) — uma única fonte da verdade. Mantê-lo DENTRO do projectRoot
+// permite ao Metro empacotá-lo como asset local (offline-first) sem hacks cross-root.
 // eslint-disable-next-line import/no-unresolved
-import readingDbUri from '../assets/data/reading-sample.sqlite';
+import readingDbUri from '../assets/data/reading-lite.sqlite';
 
 import type { ReadingDb } from './sqlite-reading.web';
 
 /** Diretório/arquivo do subset dentro do OPFS (separado do `sample.sqlite` da F0.10). */
 const OPFS_DIR = 'the-light';
-const OPFS_FILE = 'reading-sample.sqlite';
+// F5.15 (ADR-0044): nome novo — a leitura passou a usar o subset SEM léxico. Um OPFS
+// antigo com `reading-sample.sqlite` (combinado, ~14,4 MB) fica órfão/inofensivo.
+const OPFS_FILE = 'reading-lite.sqlite';
 /** Nome lógico do banco no VFS de memória do `wa-sqlite`. */
-const MEM_DB_NAME = 'reading-sample.sqlite';
+const MEM_DB_NAME = 'reading-lite.sqlite';
 
 /** Conexão aberta com um `close()` para liberar recursos. */
 export interface OpenReadingDb extends ReadingDb {
@@ -62,9 +72,10 @@ async function fetchBytes(uri: string): Promise<ArrayBuffer> {
 }
 
 /**
- * Carrega o `reading-sample.sqlite` em OPFS na 1ª vez (a partir do asset
- * empacotado) e devolve os bytes persistidos. OPFS é o backend de persistência
- * local (offline-first; zero rede em runtime — só fetch da própria origem).
+ * Carrega o `reading-lite.sqlite` (subset de leitura SEM léxico, F5.15/ADR-0044) em
+ * OPFS na 1ª vez (a partir do asset empacotado) e devolve os bytes persistidos. OPFS é
+ * o backend de persistência local (offline-first; zero rede em runtime — só fetch da
+ * própria origem).
  */
 async function readSubsetBytesFromOpfs(): Promise<ArrayBuffer> {
   const root = await navigator.storage.getDirectory();
@@ -88,10 +99,11 @@ async function readSubsetBytesFromOpfs(): Promise<ArrayBuffer> {
 }
 
 /**
- * Abre o store web de LEITURA no BROWSER: persiste/lê o `reading-sample.sqlite` do
- * OPFS e abre um `wa-sqlite` (VFS de memória hidratado com esses bytes) pronto para
- * `queryChapter`/`queryChapterCount`/`queryTranslations`. Lança se OPFS não estiver
- * disponível.
+ * Abre o store web de LEITURA no BROWSER: persiste/lê o `reading-lite.sqlite` (subset
+ * SEM léxico, F5.15/ADR-0044) do OPFS e abre um `wa-sqlite` (VFS de memória hidratado
+ * com esses bytes) pronto para `queryChapter`/`queryChapterCount`/`queryTranslations`.
+ * NÃO carrega o léxico (~9 MB) — esse é on-demand via `openLexiconDbWeb`. Lança se OPFS
+ * não estiver disponível.
  */
 export async function openReadingDbWeb(): Promise<OpenReadingDb> {
   if (typeof navigator === 'undefined' || !navigator.storage?.getDirectory) {

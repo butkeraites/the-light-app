@@ -35,7 +35,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const ENTRY = join(__dirname, 'deepStudy-headless-entry.ts');
 const FRONTIER_WASM = join(__dirname, '..', 'generated', 'wasm-bindgen', 'index_bg.wasm');
-const READING_DB = join(__dirname, '..', '..', '..', 'assets', 'data', 'reading-sample.sqlite');
+// F5.15 (ADR-0044): o estudo lê o TEXTO do subset de leitura (`reading-lite.sqlite`, sem
+// léxico) e o LÉXICO do arquivo separado on-demand (`lexicon-sample.sqlite`).
+const READING_DB = join(__dirname, '..', '..', '..', 'assets', 'data', 'reading-lite.sqlite');
+const LEXICON_DB = join(__dirname, '..', '..', '..', 'assets', 'data', 'lexicon-sample.sqlite');
 const WA_SQLITE_WASM = join(__dirname, '..', 'vendor', 'wa-sqlite-fts5', 'wa-sqlite.wasm');
 
 // João 3:16 — texto VERBATIM do store (domínio público). SÓ no teste (asserção).
@@ -66,23 +69,25 @@ async function loadBundle() {
   return import(pathToFileURL(outfile).href);
 }
 
-async function openReadingDbInMemory() {
+// Abre um wa-sqlite (VFS de memória) sobre os bytes de `dbPath`, com `name` lógico. F5.15
+// (ADR-0044): usado 2×, um handle para o subset de leitura e um para o léxico on-demand.
+async function openDbInMemory(dbPath, name) {
   const wasmBinary = await readFile(WA_SQLITE_WASM);
   const module = await SQLiteESMFactory({ wasmBinary });
   const sqlite3 = SQLite.Factory(module);
 
   const vfs = new MemoryVFS();
-  const bytes = await readFile(READING_DB);
+  const bytes = await readFile(dbPath);
   const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-  vfs.mapNameToFile.set('reading-sample.sqlite', {
-    name: 'reading-sample.sqlite',
+  vfs.mapNameToFile.set(name, {
+    name,
     flags: SQLite.SQLITE_OPEN_READONLY,
     size: data.byteLength,
     data,
   });
   sqlite3.vfs_register(vfs, false);
 
-  const db = await sqlite3.open_v2('reading-sample.sqlite', SQLite.SQLITE_OPEN_READONLY, vfs.name);
+  const db = await sqlite3.open_v2(name, SQLite.SQLITE_OPEN_READONLY, vfs.name);
   return { sqlite3, db };
 }
 
@@ -94,8 +99,9 @@ async function main() {
   await init({ module_or_path: frontierBytes });
   mod.initialize();
 
-  // (2) Store local (wa-sqlite + VFS de memória sobre os bytes do subset).
-  const handle = await openReadingDbInMemory();
+  // (2) Stores locais: TEXTO (reading-lite) + LÉXICO on-demand (lexicon-sample), F5.15.
+  const handle = await openDbInMemory(READING_DB, 'reading-lite.sqlite');
+  const lexHandle = await openDbInMemory(LEXICON_DB, 'lexicon-sample.sqlite');
 
   // (3) `fetch` MOCK: captura o request e devolve um corpo Gemini FIXO. Sem rede real.
   const calls = [];
@@ -111,6 +117,7 @@ async function main() {
   // (4) Pipeline web de ESTUDO ponta a ponta: "gemini" + chave dummy + fetch MOCK.
   const study = await deepStudyOnHandle(
     handle,
+    lexHandle,
     mockFetch,
     'kjv',
     43,
@@ -194,6 +201,7 @@ async function main() {
   const callsBefore = calls.length;
   const offline = await deepStudyOnHandle(
     handle,
+    lexHandle,
     mockFetch,
     'kjv',
     43,
@@ -212,6 +220,7 @@ async function main() {
   assert.equal(offline.provider, 'mock', 'provider mock');
   assert.ok(offline.academicMarkdown.length > 0, 'mock offline: academicMarkdown não-vazio');
 
+  await lexHandle.sqlite3.close(lexHandle.db);
   await handle.sqlite3.close(handle.db);
 
   console.log('PASS — paridade web do estudo profundo (study_web_prepare/finalize + fetch MOCK):');

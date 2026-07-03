@@ -2,8 +2,9 @@
 // F1.15 (ADR-0021: xref)
 //
 // GLUE web de LEITURA + BUSCA + XREF (hand-written, VERSIONADO). A paridade web lê
-// do SUBSET `reading-sample.sqlite` (~4,4 MB; o MESMO que o nativo empacota,
-// ADR-0014) via `wa-sqlite` (OPFS no browser / MemoryVFS na prova), ESPELHANDO os
+// do SUBSET de leitura `reading-lite.sqlite` (~4,3 MB, SEM léxico — F5.15/ADR-0044;
+// o nativo empacota o combinado `reading-sample.sqlite`, ADR-0014) via `wa-sqlite`
+// (OPFS no browser / MemoryVFS na prova), ESPELHANDO os
 // SELECTs da fronteira nativa (F1.2/F1.5/F1.8):
 //   - `listBooks`        → cânon do RUST (wasm `listBooks`), SÍNCRONO (não relista à mão);
 //   - `listTranslations` → `EmbeddedSource::translations` (queryTranslations);
@@ -108,7 +109,7 @@ export function listBooks(): Book[] {
 }
 
 /**
- * Traduções presentes no subset (`reading-sample.sqlite`): KJV (en) e Almeida 1911
+ * Traduções presentes no subset de leitura (`reading-lite.sqlite`): KJV (en) e Almeida 1911
  * (pt). Espelha `EmbeddedSource::translations` (ordem do SQLite). `_dbPath` é aceito
  * por paridade de assinatura com o nativo; o store web abre o subset internamente.
  */
@@ -178,7 +179,7 @@ export async function chapterCount(
 }
 
 /**
- * Busca full-text (FTS5) sobre o subset local (`reading-sample.sqlite`), espelhando
+ * Busca full-text (FTS5) sobre o subset de leitura local (`reading-lite.sqlite`), espelhando
  * `the_light_core::search::search` (MATCH + `bm25` + `highlight` + filtro de livro +
  * limite). REUSA o store da F1.13 (`openReadingDbWeb` — sem recarregar o subset) e
  * delega a `searchOnHandle`, que: checa `has_translation` ANTES (ausente → lança,
@@ -423,9 +424,11 @@ export async function askAnchoredStream(
 // DESTUBADO: paridade web do estudo. O prompt/RAG/verify/citação/aparato vêm do Rust
 // `ai-pure` no wasm (`studyWebPrepare`/`studyWebFinalize`, ZERO drift nativo↔web) e o
 // transporte é `fetch` ao provedor (MVP = Gemini), delegado ao pipeline
-// `deepStudyOnHandle` (`study.web.ts`). O texto do versículo e o léxico verificado vêm do
-// STORE local (subset F1.13/F3.5, via `sqlite-reading.web`/`sqlite-lexicon.web`). Aqui só
-// abrimos o store web (OPFS) e passamos o `globalThis.fetch`. Anti-alucinação: texto/léxico
+// `deepStudyOnHandle` (`study.web.ts`). F5.15 (ADR-0044): o TEXTO do versículo vem do
+// subset de LEITURA (`reading-lite.sqlite`, via `sqlite-reading.web`) e o LÉXICO
+// verificado vem de um store SEPARADO carregado ON-DEMAND (`lexicon-sample.sqlite`, ~9 MB,
+// via `sqlite-lexicon.web` sobre `openLexiconDbWeb`). Aqui só abrimos os stores web (OPFS)
+// e passamos o `globalThis.fetch`. Anti-alucinação: texto/léxico
 // do store; o LLM só interpreta. BYOK/offline-first: sem chave, o app segue offline; a IA é
 // opt-in e só faz rede no `fetch` (a chave, session-only no `keystore.web`, vai só no header
 // — nunca logada). `researchBackend`/`researchKey` são aceitos por paridade mas IGNORADOS
@@ -454,14 +457,22 @@ export async function deepStudy(
   researchBackend?: string,
   researchKey?: string,
 ): Promise<StudyResultOut> {
-  const [{ openReadingDbWeb }, { deepStudyOnHandle }] = await Promise.all([
+  // F5.15 (ADR-0044): o estudo precisa do TEXTO (subset de leitura) + do LÉXICO (~9 MB,
+  // ON-DEMAND). Abrimos DOIS stores: `openReadingDbWeb` (reading-lite, verses) e
+  // `openLexiconDbWeb` (lexicon-sample, léxico STEP CC-BY buscado só agora). Ambos são
+  // assets LOCAIS (offline-first). A UX de carregamento do léxico vive no painel de
+  // estudo (`busy`/aviso), já que este `import()`+fetch do léxico é a "descida" deferida.
+  const [{ openReadingDbWeb }, { openLexiconDbWeb }, { deepStudyOnHandle }] = await Promise.all([
     import('./sqlite-reading-opfs.web'),
+    import('./sqlite-lexicon-opfs.web'),
     import('./study.web'),
   ]);
   const handle = await openReadingDbWeb();
+  const lexHandle = await openLexiconDbWeb();
   try {
     return await deepStudyOnHandle(
       handle,
+      lexHandle,
       defaultFetch,
       translation,
       book,
@@ -478,6 +489,7 @@ export async function deepStudy(
       researchKey,
     );
   } finally {
+    await lexHandle.close();
     await handle.close();
   }
 }
@@ -496,15 +508,18 @@ export async function lexicalEntries(
   _lang: string,
   limit: number | undefined,
 ): Promise<VerifiedLexiconOut> {
-  const [{ openReadingDbWeb }, { lexicalEntriesOnHandle }] = await Promise.all([
-    import('./sqlite-reading-opfs.web'),
+  // F5.15 (ADR-0044): o léxico é INDEPENDENTE do texto — abre SÓ o store de léxico
+  // on-demand (`lexicon-sample.sqlite`, ~9 MB), nunca o subset de leitura. Leitores
+  // puros jamais chegam aqui, então o léxico só "desce" ao abrir o léxico/estudo.
+  const [{ openLexiconDbWeb }, { lexicalEntriesOnHandle }] = await Promise.all([
+    import('./sqlite-lexicon-opfs.web'),
     import('./study.web'),
   ]);
-  const handle = await openReadingDbWeb();
+  const lexHandle = await openLexiconDbWeb();
   try {
-    return await lexicalEntriesOnHandle(handle, book, chapter, verse, limit);
+    return await lexicalEntriesOnHandle(lexHandle, book, chapter, verse, limit);
   } finally {
-    await handle.close();
+    await lexHandle.close();
   }
 }
 

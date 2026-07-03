@@ -43,7 +43,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const ENTRY = join(__dirname, 'multiProvider-headless-entry.ts');
 const FRONTIER_WASM = join(__dirname, '..', 'generated', 'wasm-bindgen', 'index_bg.wasm');
-const READING_DB = join(__dirname, '..', '..', '..', 'assets', 'data', 'reading-sample.sqlite');
+const READING_DB = join(__dirname, '..', '..', '..', 'assets', 'data', 'reading-lite.sqlite');
 const WA_SQLITE_WASM = join(__dirname, '..', 'vendor', 'wa-sqlite-fts5', 'wa-sqlite.wasm');
 
 // João 3:16 — texto VERBATIM do store (domínio público). SÓ no teste (asserção).
@@ -78,15 +78,15 @@ async function openReadingDbInMemory() {
   const vfs = new MemoryVFS();
   const bytes = await readFile(READING_DB);
   const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-  vfs.mapNameToFile.set('reading-sample.sqlite', {
-    name: 'reading-sample.sqlite',
+  vfs.mapNameToFile.set('reading-lite.sqlite', {
+    name: 'reading-lite.sqlite',
     flags: SQLite.SQLITE_OPEN_READONLY,
     size: data.byteLength,
     data,
   });
   sqlite3.vfs_register(vfs, false);
 
-  const db = await sqlite3.open_v2('reading-sample.sqlite', SQLite.SQLITE_OPEN_READONLY, vfs.name);
+  const db = await sqlite3.open_v2('reading-lite.sqlite', SQLite.SQLITE_OPEN_READONLY, vfs.name);
   return { sqlite3, db };
 }
 

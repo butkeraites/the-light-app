@@ -203,6 +203,7 @@ export type MessageKey =
   | 'study.tavilyKeyPlaceholder'
   | 'study.tavilyPrivacy'
   | 'study.submit'
+  | 'study.loadingLexicon'
   | 'study.warnings'
   | 'study.citations'
   | 'study.lexicon'
@@ -357,6 +358,7 @@ const pt: Record<MessageKey, string> = {
   'study.tavilyPrivacy':
     'Privacidade: ligada, esta opção consulta o Tavily (rede) usando sua chave BYOK. A chave fica só nesta sessão (na memória, perdida ao recarregar), nunca é salva no dispositivo nem registrada, e viaja apenas no corpo da requisição. As citações Web são montadas pelo app a partir das URLs retornadas (nunca pela IA); o texto bíblico e as glosas continuam vindo do seu acervo local.',
   'study.submit': 'Estudar',
+  'study.loadingLexicon': 'Carregando o léxico (dado local sob demanda, ~9 MB na 1ª vez)…',
   'study.warnings': 'Avisos',
   'study.citations': 'Citações',
   'study.lexicon': 'Léxico (línguas originais)',
@@ -511,6 +513,7 @@ const en: Record<MessageKey, string> = {
   'study.tavilyPrivacy':
     'Privacy: when on, this option queries Tavily (network) using your BYOK key. The key stays only in this session (in memory, lost on reload), is never saved on the device nor logged, and travels only in the request body. Web citations are assembled by the app from the returned URLs (never by the AI); the biblical text and glosses still come from your local library.',
   'study.submit': 'Study',
+  'study.loadingLexicon': 'Loading the lexicon (on-demand local data, ~9 MB on first use)…',
   'study.warnings': 'Warnings',
   'study.citations': 'Citations',
   'study.lexicon': 'Lexicon (original languages)',

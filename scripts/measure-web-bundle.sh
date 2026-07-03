@@ -78,14 +78,23 @@ const BUDGET = {
     // F5.6: wasm agora é build RELEASE + wasm-opt -Oz (era DEBUG ~4,24 MB).
     // 4.244.884 -> 1.198.888 B (-71,8%). Byte-exato/determinístico (release+LTO+wasm-opt).
     frontierWasm: { bytes: 1198888, re: /^assets\/web\/generated\/wasm-bindgen\/index_bg\..*\.wasm$/ },
-    readingDb: { bytes: 14409728, re: /^assets\/_assets\/data\/reading-sample\..*\.sqlite$/ },
+    // F5.15 (ADR-0044): o `reading-sample.sqlite` COMBINADO (14.409.728 B) SAIU do dist
+    // web. A LEITURA agora usa `reading-lite.sqlite` (SEM léxico, 4.530.176 B) e o DADO do
+    // léxico virou `lexicon-sample.sqlite` (9.502.720 B), carregado ON-DEMAND (chunk async
+    // `sqlite-lexicon-opfs`, só ao abrir estudo/léxico) — FORA do caminho de leitura. Um
+    // leitor puro baixa 4.530.176 B (não 14.409.728) — −9,88 MB no 1º open de leitura.
+    // Ambos byte-estáveis (derivados de forma determinística por gen-reading-sample-db.sh).
+    readingLiteDb: { bytes: 4530176, re: /^assets\/_assets\/data\/reading-lite\..*\.sqlite$/ },
+    lexiconDb: { bytes: 9502720, re: /^assets\/_assets\/data\/lexicon-sample\..*\.sqlite$/ },
     waSqliteFts5: { bytes: 666267, re: /^assets\/web\/vendor\/wa-sqlite-fts5\/wa-sqlite\..*\.wasm$/ },
   },
-  // F5.12 (ADR-0041): assets que DEVEM ter saído do bundle (dead-weight removido). O
-  // budget FALHA se qualquer um reaparecer no `dist` (regressão do dead-asset removal).
+  // F5.12 (ADR-0041) · F5.15 (ADR-0044): assets que DEVEM ter saído do bundle (dead-weight
+  // removido / substituído). O budget FALHA se qualquer um reaparecer no `dist`.
   removed: {
     waSqliteNpm: /^assets\/node_modules\/wa-sqlite\/dist\/wa-sqlite\..*\.wasm$/,
     sampleDb: /^assets\/_assets\/data\/sample\..*\.sqlite$/,
+    // F5.15: o combinado (com léxico) foi substituído pelo split reading-lite+lexicon.
+    readingSampleCombined: /^assets\/_assets\/data\/reading-sample\..*\.sqlite$/,
   },
   // Entry-JS "eager" (NÃO byte-determinístico). moduleCount é EXATO; bytes/gzip crus
   // são nominal ± tolerância. Tolerâncias folgadas o suficiente p/ o flutter upstream
@@ -113,13 +122,28 @@ const BUDGET = {
   //   • assets do bundle: −689.415 B (o npm wa-sqlite async + o sample.sqlite deixaram o dist).
   // O restante do entry é o baseline de 1º paint (React Native Web + React + expo-router +
   // a glue wasm-bindgen da fronteira + i18n/tema). A lógica de tolerância (só p/ o entry-JS
-  // volátil, não p/ o wasm) fica intacta. O split do DADO ~9 MB do léxico (F5.15) e a
-  // pré-compressão (F5.17) seguem fora do escopo.
+  // volátil, não p/ o wasm) fica intacta.
+  //
+  // NOTA F5.15 (ADR-0044) — split do DADO do léxico FORA do caminho de leitura: o
+  // `reading-sample.sqlite` combinado (14.409.728 B, com léxico) deixou o dist web e virou
+  // DOIS assets — `reading-lite.sqlite` (4.530.176 B, leitura/busca/xref SEM léxico) +
+  // `lexicon-sample.sqlite` (9.502.720 B, léxico STEP CC-BY carregado ON-DEMAND no chunk
+  // async `sqlite-lexicon-opfs`, só ao abrir estudo/léxico). O entry EAGER (1º paint) não
+  // referencia NENHUM dos dois (herdado do code-split F5.9 dos stores OPFS): só "descem"
+  // ao abrir capítulo (reading-lite) ou estudo/léxico (lexicon-sample). moduleCount do
+  // entry INALTERADO (o novo store de léxico é chunk async, não eager). A pré-compressão
+  // (F5.17) segue fora do escopo.
+  // F5.15 (ADR-0044): +3 módulos EAGER (837, era 834) — a glue LEVE do novo store de
+  // léxico on-demand + o wiring do `import()` dinâmico de `sqlite-lexicon-opfs` em
+  // `reading.web.ts`. NÃO é a factory pesada do wa-sqlite (essa segue em chunk async;
+  // verificado: MemoryVFS/SQLiteESMFactory/vfs_register AUSENTES do entry). Efeito
+  // (nominal = CENTRO do flutter upstream do Metro, medido em 2 exports):
+  // eagerBytes 1.306.320 → ~1.312.001 (+~5,7 KB); eagerGzip 331.038 → ~332.520 (+~1,5 KB).
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 834,
-    eagerBytes: { nominal: 1306320, tolerance: 1024 },
-    eagerGzipBytes: { nominal: 331038, tolerance: 2048 },
+    moduleCount: 837,
+    eagerBytes: { nominal: 1312001, tolerance: 1024 },
+    eagerGzipBytes: { nominal: 332520, tolerance: 2048 },
   },
 };
 
@@ -225,10 +249,14 @@ const doc = {
   },
   // Convenience plana (bytes crus dos assets byte-estáveis).
   frontierWasmBytes: stableAssets.frontierWasm.bytes,
-  readingDbBytes: stableAssets.readingDb.bytes,
+  // F5.15 (ADR-0044): `readingDbBytes` (combinado 14.409.728) foi SUBSTITUÍDO pelo split —
+  // `readingLiteDbBytes` (leitura, SEM léxico) + `lexiconDbBytes` (léxico ON-DEMAND).
+  readingLiteDbBytes: stableAssets.readingLiteDb.bytes,
+  lexiconDbBytes: stableAssets.lexiconDb.bytes,
   waSqliteFts5Bytes: stableAssets.waSqliteFts5.bytes,
   // F5.12 (ADR-0041): `waSqliteNpmBytes`/`sampleDbBytes` REMOVIDOS — o npm wa-sqlite
   // async (558.343 B) e o `sample.sqlite` de 1 versículo (131.072 B) deixaram o dist.
+  // F5.15 (ADR-0044): o `reading-sample.sqlite` combinado também deixou o dist web.
   removedAssets: Object.keys(BUDGET.removed),
   entryJs: {
     note:

@@ -9,22 +9,24 @@
     "entryJs": "NÃO byte-determinístico (Metro module-id em ordem de grafo async) — moduleCount exato + bytes/gzip nominal±tolerância, re-verificados"
   },
   "frontierWasmBytes": 1198888,
-  "readingDbBytes": 14409728,
+  "readingLiteDbBytes": 4530176,
+  "lexiconDbBytes": 9502720,
   "waSqliteFts5Bytes": 666267,
   "removedAssets": [
     "waSqliteNpm",
-    "sampleDb"
+    "sampleDb",
+    "readingSampleCombined"
   ],
   "entryJs": {
     "note": "Entry-JS \"eager\" carregado no 1º paint. moduleCount (nº de `__d(`) é EXATO e independe da ordem — a grandeza de budget do JS (code-split futuro a reduz de forma medível). eagerBytes/eagerGzipBytes são NOMINAL ± TOLERÂNCIA (Metro não é byte-determinístico); o script mede o valor vivo e falha se sair da faixa.",
     "glob": "_expo/static/js/web/entry-*.js",
-    "moduleCount": 834,
+    "moduleCount": 837,
     "eagerBytes": {
-      "nominal": 1306320,
+      "nominal": 1312001,
       "tolerance": 1024
     },
     "eagerGzipBytes": {
-      "nominal": 331038,
+      "nominal": 332520,
       "tolerance": 2048
     }
   },
@@ -34,10 +36,15 @@
       "bytes": 1198888,
       "gzipBytes": 430849
     },
-    "readingDb": {
-      "path": "app/dist/assets/_assets/data/reading-sample.f875f829555c11254b76df84bf4861e8.sqlite",
-      "bytes": 14409728,
-      "gzipBytes": 5200087
+    "readingLiteDb": {
+      "path": "app/dist/assets/_assets/data/reading-lite.bfab1458b5b33506ad64ff77f7395e41.sqlite",
+      "bytes": 4530176,
+      "gzipBytes": 1728435
+    },
+    "lexiconDb": {
+      "path": "app/dist/assets/_assets/data/lexicon-sample.ed80b4fb0da94cda4584ab16604f138e.sqlite",
+      "bytes": 9502720,
+      "gzipBytes": 2957473
     },
     "waSqliteFts5": {
       "path": "app/dist/assets/web/vendor/wa-sqlite-fts5/wa-sqlite.6a09cc3e685430e6e8cec82e0e4132fb.wasm",
@@ -46,9 +53,9 @@
     }
   },
   "totals": {
-    "stableAssetsBytes": 16274883,
-    "stableAssetsGzipBytes": 5958515,
-    "nominalTotalBytes": 17581203,
-    "nominalTotalGzipBytes": 6289553
+    "stableAssetsBytes": 15898051,
+    "stableAssetsGzipBytes": 5444336,
+    "nominalTotalBytes": 17210052,
+    "nominalTotalGzipBytes": 5776856
   }
 }

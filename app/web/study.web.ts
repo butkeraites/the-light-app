@@ -14,9 +14,11 @@
 //     Rust (mesma impl do nativo) e monta o `StudyResultOut` com `passageText` do store
 //     SEPARADO da `interpretation` do LLM + `academicMarkdown` (F3.8).
 //
-// O LÉXICO vem do STORE local (subset `reading-sample.sqlite`, F3.5/ADR-0027) via
-// `queryVerifiedLexicon` (SELECT + shaping = infra TS, ADR-0011) — glosas/lemas/Strong
-// VERBATIM do léxico STEP CC-BY, nunca de LLM. O `fetch` é INJETÁVEL (prova = MOCK).
+// O LÉXICO vem de um STORE local SEPARADO (`lexicon-sample.sqlite`, ~9 MB, carregado
+// ON-DEMAND — F5.15/ADR-0044; antes era o combinado `reading-sample.sqlite`, F3.5/
+// ADR-0027) via `queryVerifiedLexicon` (SELECT + shaping = infra TS, ADR-0011) —
+// glosas/lemas/Strong VERBATIM do léxico STEP CC-BY, nunca de LLM. O `fetch` é
+// INJETÁVEL (prova = MOCK).
 //
 // Importa as FUNÇÕES direto de `the_light_app_core` (não de `index.web`, que arrasta o
 // `.wasm` como asset): o mesmo singleton wasm; a prova headless (esbuild/node) instancia o
@@ -98,20 +100,23 @@ async function resolveWebSources(
 }
 
 /**
- * Léxico verificado de uma passagem, do STORE local (subset) — infra TS (ADR-0011). É o
+ * Léxico verificado de uma passagem, do STORE local de LÉXICO — infra TS (ADR-0011). É o
  * corpo de `reading.web.ts::lexicalEntries`, e a fonte dos dados léxicos que alimentam o
- * `studyWebPrepare`. Anti-alucinação: entradas/atribuição são VERBATIM do store (STEP
- * CC-BY); NENHUMA lógica de anti-alucinação/aparato em TS. Passagem sem cobertura →
- * `{ entries: [], sources: [] }` (sem throw).
+ * `studyWebPrepare`. F5.15 (ADR-0044): o `lexHandle` aponta para `lexicon-sample.sqlite`
+ * (o DADO do léxico, ~9 MB, carregado ON-DEMAND) — SEPARADO do subset de leitura, que não
+ * tem mais as tabelas de léxico. O SELECT/agregação são IDÊNTICOS (zero drift): só muda o
+ * arquivo de onde as MESMAS linhas STEP CC-BY vêm. Anti-alucinação: entradas/atribuição
+ * VERBATIM do store; NENHUMA lógica de anti-alucinação/aparato em TS. Passagem sem
+ * cobertura → `{ entries: [], sources: [] }` (sem throw).
  */
 export async function lexicalEntriesOnHandle(
-  handle: ReadingDb,
+  lexHandle: ReadingDb,
   book: number,
   chapter: number,
   verse: number | undefined,
   limit: number | undefined,
 ): Promise<VerifiedLexiconOut> {
-  return queryVerifiedLexicon(handle, book, chapter, verse, limit ?? DEFAULT_LEXICON_LIMIT);
+  return queryVerifiedLexicon(lexHandle, book, chapter, verse, limit ?? DEFAULT_LEXICON_LIMIT);
 }
 
 /**
@@ -125,13 +130,17 @@ function versesForPassage(verse: number | undefined, rows: ChapterRow[]): AiVers
 }
 
 /**
- * PIPELINE web do ESTUDO PROFUNDO sobre um handle de leitura ABERTO + um `fetch`
- * INJETÁVEL — a função de PRODUÇÃO exercitada pela prova headless (VFS de memória + fetch
- * MOCK) e pelo browser (OPFS + `globalThis.fetch`, via `reading.web.ts`). Passos:
+ * PIPELINE web do ESTUDO PROFUNDO sobre DOIS handles ABERTOS (leitura + léxico) + um
+ * `fetch` INJETÁVEL — a função de PRODUÇÃO exercitada pela prova headless (VFS de memória
+ * + fetch MOCK) e pelo browser (OPFS + `globalThis.fetch`, via `reading.web.ts`). F5.15
+ * (ADR-0044): o texto do versículo vem do `handle` de LEITURA (`reading-lite.sqlite`,
+ * sem léxico) e o léxico vem do `lexHandle` (`lexicon-sample.sqlite`, ~9 MB carregado
+ * ON-DEMAND). Antes ambos vinham do mesmo `reading-sample.sqlite` combinado; o SELECT/
+ * shaping são IDÊNTICOS (zero drift) — só muda o arquivo. Passos:
  *   1) `hasTranslation` ANTES (paridade com o nativo → `UnknownTranslation`);
  *   2) `queryChapter` (SELECT existente) + recorte → `verses` do STORE (verbatim);
- *   3) `queryVerifiedLexicon` (SELECT + shaping do léxico do store, ADR-0011) → entradas
- *      Strong + `sources` (STEP CC-BY);
+ *   3) `queryVerifiedLexicon` sobre o `lexHandle` (SELECT + shaping do léxico, ADR-0011) →
+ *      entradas Strong + `sources` (STEP CC-BY);
  *   4) `studyWebPrepare` (wasm) → `passageText` (store, numerado) + `system`/`user` (ai-pure);
  *   5) transporte TS (`fetch`) → `interpretation` (a única rede, opt-in, com a chave);
  *   6) `studyWebFinalize` (wasm) → `StudyResultOut` (verify/citação/aparato/markdown em
@@ -150,6 +159,7 @@ function versesForPassage(verse: number | undefined, rows: ChapterRow[]): AiVers
  */
 export async function deepStudyOnHandle(
   handle: ReadingDb,
+  lexHandle: ReadingDb,
   fetchImpl: AiFetch,
   translation: string,
   book: number,
@@ -172,8 +182,9 @@ export async function deepStudyOnHandle(
   const rows = await queryChapter(handle, translation, book, chapter);
   const verses = versesForPassage(verse, rows);
 
-  // Léxico do store (infra TS, ADR-0011) → entradas p/ o prompt (VERBATIM do léxico STEP).
-  const lex = await queryVerifiedLexicon(handle, book, chapter, verse, DEFAULT_LEXICON_LIMIT);
+  // Léxico do store de LÉXICO on-demand (infra TS, ADR-0011) → entradas p/ o prompt
+  // (VERBATIM do léxico STEP; F5.15/ADR-0044 = `lexHandle`/`lexicon-sample.sqlite`).
+  const lex = await queryVerifiedLexicon(lexHandle, book, chapter, verse, DEFAULT_LEXICON_LIMIT);
   const lexEntries: StudyLexEntryInput[] = lex.entries.map((e) => ({
     strongs: e.strongs,
     lemma: e.lemma,

@@ -42,7 +42,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const ENTRY = join(__dirname, 'reading-headless-entry.ts');
 const FRONTIER_WASM = join(__dirname, '..', 'generated', 'wasm-bindgen', 'index_bg.wasm');
-const READING_DB = join(__dirname, '..', '..', '..', 'assets', 'data', 'reading-sample.sqlite');
+const READING_DB = join(__dirname, '..', '..', '..', 'assets', 'data', 'reading-lite.sqlite');
 const WA_SQLITE_WASM = join(__dirname, '..', 'vendor', 'wa-sqlite-fts5', 'wa-sqlite.wasm');
 
 // João 3:16 — texto VERBATIM do store (domínio público). SÓ no teste (asserção).
@@ -79,15 +79,15 @@ async function openReadingDbInMemory() {
   const vfs = new MemoryVFS();
   const bytes = await readFile(READING_DB);
   const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-  vfs.mapNameToFile.set('reading-sample.sqlite', {
-    name: 'reading-sample.sqlite',
+  vfs.mapNameToFile.set('reading-lite.sqlite', {
+    name: 'reading-lite.sqlite',
     flags: SQLite.SQLITE_OPEN_READONLY,
     size: data.byteLength,
     data,
   });
   sqlite3.vfs_register(vfs, false);
 
-  const db = await sqlite3.open_v2('reading-sample.sqlite', SQLite.SQLITE_OPEN_READONLY, vfs.name);
+  const db = await sqlite3.open_v2('reading-lite.sqlite', SQLite.SQLITE_OPEN_READONLY, vfs.name);
   return { sqlite3, db };
 }
 
@@ -167,9 +167,31 @@ async function main() {
   assert.ok(ids.includes('alm1911'), 'listTranslations deve incluir alm1911');
   assert.equal(ids[0], 'kjv', 'ordem do SQLite (language, id): kjv (en) antes de alm1911 (pt)');
 
+  // (2f) F5.15 (ADR-0044): o subset de LEITURA (`reading-lite.sqlite`) NÃO tem as tabelas
+  // de LÉXICO — o DADO do léxico (~9 MB) saiu do caminho de leitura (vai on-demand em
+  // `lexicon-sample.sqlite`). Prova por SCHEMA: nenhuma tabela de léxico presente; as de
+  // leitura/busca (verses/verses_fts) continuam. Uma consulta de léxico aqui FALHARIA.
+  const tableNames = new Set();
+  for await (const stmt of handle.sqlite3.statements(
+    handle.db,
+    "SELECT name FROM sqlite_master WHERE type='table'",
+  )) {
+    while ((await handle.sqlite3.step(stmt)) === SQLite.SQLITE_ROW) {
+      tableNames.add(handle.sqlite3.column_text(stmt, 0));
+    }
+  }
+  for (const lexTable of ['original_tokens', 'lexicon', 'scholarly_sources', 'morph_legend']) {
+    assert.ok(
+      !tableNames.has(lexTable),
+      `reading-lite NÃO deve conter a tabela de léxico "${lexTable}" (F5.15: léxico fora da leitura)`,
+    );
+  }
+  assert.ok(tableNames.has('verses'), 'reading-lite deve conter a tabela de leitura "verses"');
+  assert.ok(tableNames.has('verses_fts'), 'reading-lite deve conter o índice de busca "verses_fts"');
+
   await handle.sqlite3.close(handle.db);
 
-  console.log('PASS — leitura web (wa-sqlite + VFS de memória sobre reading-sample.sqlite):');
+  console.log('PASS — leitura web (wa-sqlite + VFS de memória sobre reading-lite.sqlite, SEM léxico):');
   console.log(`  listBooks() (Rust/wasm)     -> ${books.length} livros (inclui João/43)`);
   console.log(`  getChapter("kjv",43,3) v16  -> "${kjvV16.text}"`);
   console.log(`  getChapter("alm1911",43,3) v16 -> "${almV16.text}"`);

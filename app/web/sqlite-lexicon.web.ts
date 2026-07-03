@@ -1,8 +1,10 @@
 // app/web/sqlite-lexicon.web.ts — F3.12a (ADR-0031; par de sqlite-xref.web.ts)
 //
 // GLUE web do STORE de LÉXICO VERIFICADO (hand-written, VERSIONADO). Camada de
-// INFRAESTRUTURA que roda a consulta de léxico sobre o MESMO `wa-sqlite`/subset da
-// leitura (F1.13) — o subset propaga `original_tokens`/`lexicon`/`scholarly_sources`
+// INFRAESTRUTURA que roda a consulta de léxico sobre um `wa-sqlite` aberto no
+// `lexicon-sample.sqlite` (F5.15/ADR-0044: o DADO do léxico, ~9 MB, carregado ON-DEMAND
+// e SEPARADO do subset de leitura — antes era o combinado `reading-sample.sqlite`, F1.13/
+// F3.5). O arquivo propaga `original_tokens`/`lexicon`/`scholarly_sources`
 // desde a F3.5/ADR-0027 (João 3:16: 26 tokens Strong; STEP CC-BY) — ESPELHANDO o
 // retrieval do core (`the_light_core::ai::lexicon::verified_lexicon`, rev pinado
 // 04b9b24), que é `embedded`-only (rusqlite) e NÃO entra no wasm:
@@ -22,8 +24,8 @@
 // VERBATIM do store local (STEP Bible / TBESH–TBESG, CC-BY), nunca gerados por LLM.
 //
 // VFS-agnóstica (par exato de `sqlite-xref.web.ts`): OPFS no browser
-// (`openReadingDbWeb`, REUSADO — sem recarregar o subset); a prova headless em node usa
-// um VFS de memória sobre os MESMOS bytes de `assets/data/reading-sample.sqlite`.
+// (`openLexiconDbWeb`, ON-DEMAND — só ao abrir estudo/léxico); a prova headless em node
+// usa um VFS de memória sobre os bytes de `assets/data/lexicon-sample.sqlite`.
 import * as SQLite from 'wa-sqlite';
 
 import type { LexEntry, VerifiedLexiconOut } from './generated/the_light_app_core';

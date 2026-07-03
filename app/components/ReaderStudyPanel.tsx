@@ -396,6 +396,18 @@ export function ReaderStudyPanel({
             )}
           </Pressable>
 
+          {/* ── CARREGANDO (UX do dado ON-DEMAND) — F5.15 (ADR-0044) ──────────
+              O léxico (~9 MB) foi SEPARADO do caminho de leitura: só "desce"
+              (lexicon-sample.sqlite, asset local — sem rede externa) quando o estudo/
+              léxico roda. Este indicador torna a deferência HONESTA na 1ª abertura;
+              nas próximas o léxico já está em OPFS (local, instantâneo). */}
+          {busy ? (
+            <View style={styles.loadingRow} testID="study-loading-lexicon">
+              <ActivityIndicator color={colors.muted} />
+              <Text style={styles.loadingText}>{t('study.loadingLexicon')}</Text>
+            </View>
+          ) : null}
+
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           {/* ── PASSAGEM (texto bíblico, verbatim do store) ───────────────────
@@ -585,6 +597,8 @@ function makeStyles(colors: ThemeColors) {
     btnPrimary: { backgroundColor: colors.chipActiveBg },
     btnDisabled: { backgroundColor: colors.divider, opacity: 0.6 },
     btnText: { fontSize: 15, fontWeight: '700', color: colors.chipActiveText },
+    loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
+    loadingText: { fontSize: 13, color: colors.muted, flexShrink: 1 },
     passageBlock: {
       marginTop: 14,
       borderLeftWidth: 3,

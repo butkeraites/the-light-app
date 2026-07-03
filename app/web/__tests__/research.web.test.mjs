@@ -30,7 +30,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const ENTRY = join(__dirname, 'deepStudy-headless-entry.ts');
 const FRONTIER_WASM = join(__dirname, '..', 'generated', 'wasm-bindgen', 'index_bg.wasm');
-const READING_DB = join(__dirname, '..', '..', '..', 'assets', 'data', 'reading-sample.sqlite');
+// F5.15 (ADR-0044): estudo lê TEXTO do reading-lite + LÉXICO on-demand do lexicon-sample.
+const READING_DB = join(__dirname, '..', '..', '..', 'assets', 'data', 'reading-lite.sqlite');
+const LEXICON_DB = join(__dirname, '..', '..', '..', 'assets', 'data', 'lexicon-sample.sqlite');
 const WA_SQLITE_WASM = join(__dirname, '..', 'vendor', 'wa-sqlite-fts5', 'wa-sqlite.wasm');
 
 // João 3:16 — texto VERBATIM do store (domínio público). SÓ no teste (asserção).
@@ -65,23 +67,23 @@ async function loadBundle() {
   return import(pathToFileURL(outfile).href);
 }
 
-async function openReadingDbInMemory() {
+async function openDbInMemory(dbPath, name) {
   const wasmBinary = await readFile(WA_SQLITE_WASM);
   const module = await SQLiteESMFactory({ wasmBinary });
   const sqlite3 = SQLite.Factory(module);
 
   const vfs = new MemoryVFS();
-  const bytes = await readFile(READING_DB);
+  const bytes = await readFile(dbPath);
   const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-  vfs.mapNameToFile.set('reading-sample.sqlite', {
-    name: 'reading-sample.sqlite',
+  vfs.mapNameToFile.set(name, {
+    name,
     flags: SQLite.SQLITE_OPEN_READONLY,
     size: data.byteLength,
     data,
   });
   sqlite3.vfs_register(vfs, false);
 
-  const db = await sqlite3.open_v2('reading-sample.sqlite', SQLite.SQLITE_OPEN_READONLY, vfs.name);
+  const db = await sqlite3.open_v2(name, SQLite.SQLITE_OPEN_READONLY, vfs.name);
   return { sqlite3, db };
 }
 
@@ -114,12 +116,14 @@ async function main() {
   await init({ module_or_path: frontierBytes });
   mod.initialize();
 
-  const handle = await openReadingDbInMemory();
+  const handle = await openDbInMemory(READING_DB, 'reading-lite.sqlite');
+  const lexHandle = await openDbInMemory(LEXICON_DB, 'lexicon-sample.sqlite');
 
   // ── (A) Estudo Acadêmico COM pesquisa web Wikipedia (opt-in). ──────────────────────
   const calls = [];
   const study = await deepStudyOnHandle(
     handle,
+    lexHandle,
     makeMockFetch(calls),
     'kjv',
     43,
@@ -174,6 +178,7 @@ async function main() {
   const callsB = [];
   const noWeb = await deepStudyOnHandle(
     handle,
+    lexHandle,
     makeMockFetch(callsB),
     'kjv',
     43,
@@ -198,6 +203,7 @@ async function main() {
   );
   assert.equal(noWeb.passageText, `16 ${JOHN_3_16_KJV}`, 'passageText segue verbatim do store sem research');
 
+  await lexHandle.sqlite3.close(lexHandle.db);
   await handle.sqlite3.close(handle.db);
 
   console.log('PASS — pesquisa web Wikipedia OPT-IN no estudo web (fetch MOCK Wikipedia + LLM):');

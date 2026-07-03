@@ -83,6 +83,21 @@ local.properties
 /assets/data/reading-sample.sqlite-wal
 /assets/data/reading-sample.sqlite-shm
 /assets/data/reading-sample.sqlite-journal
+# Subsets WEB (F5.15/ADR-0044): DERIVADOS do reading-sample.sqlite por
+# `scripts/gen-reading-sample-db.sh` (sqlite3 CLI). `reading-lite` = leitura/busca/
+# xref SEM léxico (~4,3 MB, caminho de LEITURA); `lexicon-sample` = léxico STEP CC-BY
+# (~9 MB, carregado ON-DEMAND só no estudo/léxico). Artefatos de BUILD reprodutíveis,
+# NÃO versionados (como o reading-sample.sqlite). Os SYMLINKS em app/assets/data/
+# (dentro do projectRoot p/ o Metro) SÃO versionados — as regras abaixo são
+# ancoradas à raiz e não casam os symlinks em app/.
+/assets/data/reading-lite.sqlite
+/assets/data/reading-lite.sqlite-wal
+/assets/data/reading-lite.sqlite-shm
+/assets/data/reading-lite.sqlite-journal
+/assets/data/lexicon-sample.sqlite
+/assets/data/lexicon-sample.sqlite-wal
+/assets/data/lexicon-sample.sqlite-shm
+/assets/data/lexicon-sample.sqlite-journal
 # Cache de dev/build: datasets brutos JSON baixados (seed-dir) + CARGO_TARGET_DIR
 # do xtask (fora do checkout do the-light). SEMPRE ignorado.
 /.cache/
