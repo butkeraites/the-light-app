@@ -87,9 +87,12 @@ rm -rf "$ROOT/rust_modules" "$TS_DIR"
 echo "==> [1/4] ubrn build web --no-wasm-pack (bindings .ts + wasm-crate)"
 "$UBRN" build web --config "$CONFIG" --no-wasm-pack
 
-# ── [2/4] Compilar o wasm-crate p/ wasm32 (gera .wasm + Cargo.lock) ──────────
-echo "==> [2/4] cargo build --target wasm32-unknown-unknown ($WASM_MANIFEST_REL)"
-cargo build --manifest-path "$WASM_MANIFEST" --target wasm32-unknown-unknown
+# ── [2/4] Compilar o wasm-crate p/ wasm32 em RELEASE (gera .wasm + Cargo.lock) ─
+# F5.6: build em RELEASE (era DEBUG ~4.24 MB não-otimizado). Usa o [profile.release]
+# do wasm-crate.patch.toml (opt-level="s" + lto + codegen-units=1 + strip debuginfo).
+# ZERO-DRIFT: release só otimiza tamanho/velocidade; mesma fronteira/mesmos bindings.
+echo "==> [2/4] cargo build --release --target wasm32-unknown-unknown ($WASM_MANIFEST_REL)"
+cargo build --release --manifest-path "$WASM_MANIFEST" --target wasm32-unknown-unknown
 
 # ── [3/4] Casar o CLI wasm-bindgen com a versão do Cargo.lock ────────────────
 WB_LOCK="$WASM_CRATE_DIR/Cargo.lock"
@@ -112,8 +115,9 @@ command -v wasm-bindgen >/dev/null 2>&1 || {
   echo "ERRO: wasm-bindgen CLI indisponível após a instalação." >&2; exit 1; }
 
 # ── [4/4] Gerar o glue wasm-bindgen (mesma invocação do ubrn web) ────────────
-WASM_FILE="$(find "$WASM_CRATE_DIR/target/wasm32-unknown-unknown/debug" -maxdepth 1 -name '*.wasm' | sort | head -1)"
-[ -n "$WASM_FILE" ] || { echo "ERRO: artefato .wasm não encontrado em $WASM_CRATE_DIR/target" >&2; exit 1; }
+# F5.6: lê o artefato do dir RELEASE (era debug/).
+WASM_FILE="$(find "$WASM_CRATE_DIR/target/wasm32-unknown-unknown/release" -maxdepth 1 -name '*.wasm' | sort | head -1)"
+[ -n "$WASM_FILE" ] || { echo "ERRO: artefato .wasm (release) não encontrado em $WASM_CRATE_DIR/target" >&2; exit 1; }
 echo "==> [4/4] wasm-bindgen --target $TARGET -> $TS_REL/wasm-bindgen"
 wasm-bindgen \
   --target "$TARGET" \
@@ -121,6 +125,33 @@ wasm-bindgen \
   --out-name index \
   --out-dir "$TS_DIR/wasm-bindgen" \
   "$WASM_FILE"
+
+# ── [wasm-opt] Otimização de TAMANHO pós wasm-bindgen (F5.6) ──────────────────
+# Passa `wasm-opt -Oz` (otimiza agressivamente p/ tamanho) + strip de debug/producers
+# sobre o index_bg.wasm emitido, IN PLACE. ZERO-DRIFT: wasm-opt preserva a semântica
+# do módulo (é o mesmo otimizador que o wasm-pack/trunk usam por padrão); só reduz
+# bytes. wasm-opt (binaryen) NÃO vem no PATH nem é dep de cargo do projeto — então o
+# instalamos fixado se faltar (guardado como o CLI wasm-bindgen acima). Se a instalação
+# FALHAR (ex.: toolchain C++ ausente), NÃO derrubamos o pipeline: emitimos um AVISO e
+# seguimos com o wasm de release (que já é o maior ganho vs. o debug). offline-first é
+# regra de RUNTIME; instalar ferramenta de build é permitido.
+BINDGEN_WASM="$TS_DIR/wasm-bindgen/index_bg.wasm"
+WASM_OPT_VERSION="0.116.1" # crate `wasm-opt` (wrapper binaryen); provê o binário `wasm-opt`
+if ! command -v wasm-opt >/dev/null 2>&1; then
+  echo "==> [wasm-opt] binário ausente — instalando wasm-opt =$WASM_OPT_VERSION (binaryen)"
+  cargo install wasm-opt --version "$WASM_OPT_VERSION" --locked \
+    || echo "AVISO: 'cargo install wasm-opt' falhou; seguindo SEM wasm-opt (wasm de release já aplicado)." >&2
+fi
+if command -v wasm-opt >/dev/null 2>&1 && [ -f "$BINDGEN_WASM" ]; then
+  BEFORE_BYTES="$(wc -c < "$BINDGEN_WASM" | tr -d ' ')"
+  echo "==> [wasm-opt] -Oz --strip-debug --strip-producers ($BEFORE_BYTES B -> ...)"
+  wasm-opt -Oz --strip-debug --strip-producers -o "$BINDGEN_WASM.opt" "$BINDGEN_WASM"
+  mv "$BINDGEN_WASM.opt" "$BINDGEN_WASM"
+  AFTER_BYTES="$(wc -c < "$BINDGEN_WASM" | tr -d ' ')"
+  echo "    wasm-opt OK: $BEFORE_BYTES B -> $AFTER_BYTES B"
+else
+  echo "AVISO: wasm-opt indisponível — index_bg.wasm fica só com o build de release (sem -Oz)." >&2
+fi
 
 # ── Sanear JSDoc dos bindings gerados: `**/` → `** /` (ADR-0027) ──────────────
 # Mesmo saneamento do `gen-bindings-ios.sh`: o `ubrn` copia os doc-comments Rust

@@ -67,22 +67,31 @@ const OUT = process.env.OUT_FILE;
 const BUDGET = {
   // Assets content-addressed (byte-estáveis) — bytes crus EXATOS esperados.
   stable: {
-    frontierWasm: { bytes: 4244884, re: /^assets\/web\/generated\/wasm-bindgen\/index_bg\..*\.wasm$/ },
+    // F5.6: wasm agora é build RELEASE + wasm-opt -Oz (era DEBUG ~4,24 MB).
+    // 4.244.884 -> 1.198.888 B (-71,8%). Byte-exato/determinístico (release+LTO+wasm-opt).
+    frontierWasm: { bytes: 1198888, re: /^assets\/web\/generated\/wasm-bindgen\/index_bg\..*\.wasm$/ },
     readingDb: { bytes: 14409728, re: /^assets\/_assets\/data\/reading-sample\..*\.sqlite$/ },
     waSqliteFts5: { bytes: 666267, re: /^assets\/web\/vendor\/wa-sqlite-fts5\/wa-sqlite\..*\.wasm$/ },
     waSqliteNpm: { bytes: 558343, re: /^assets\/node_modules\/wa-sqlite\/dist\/wa-sqlite\..*\.wasm$/ },
     sampleDb: { bytes: 131072, re: /^assets\/_assets\/data\/sample\..*\.sqlite$/ },
   },
   // Entry-JS "eager" (NÃO byte-determinístico). moduleCount é EXATO; bytes/gzip crus
-  // são nominal ± tolerância. Faixa observada: raw 1.435.849–1.435.971 (spread 122);
-  // gzip 370.192–371.853 (spread 1.661). Tolerâncias folgadas o suficiente p/ o
-  // flutter upstream, apertadas o suficiente p/ pegar regressão real (moduleCount
-  // pega mudanças estruturais como code-split de forma EXATA).
+  // são nominal ± tolerância. Faixa observada (re-centrada — ver NOTA F5.6): raw
+  // 1.441.485–1.441.607 (spread 122); gzip 371.011–372.667 (spread 1.656). Tolerâncias
+  // folgadas o suficiente p/ o flutter upstream, apertadas o suficiente p/ pegar
+  // regressão real (moduleCount pega mudanças estruturais como code-split de forma EXATA).
+  //
+  // NOTA F5.6: o nominal do entry-JS subiu ~5,7 KB vs. a baseline F5.3 (1.435.910). Isso
+  // NÃO vem da F5.6 (que só troca o build do wasm: gen-bindings-web.sh + wasm-crate.patch.toml
+  // + o binário wasm — a glue wasm-bindgen index.js é BYTE-IDÊNTICA, 53.500 B, 75 exports),
+  // e sim de código de app entrado APÓS a F5.3 (F4.4/F4.5/F4.6: streaming SSE nativo, Tavily).
+  // moduleCount segue 854 (mesma estrutura). Re-centramos o nominal p/ refletir o main atual;
+  // a lógica de tolerância (só p/ o entry-JS volátil, não p/ o wasm) fica intacta.
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
     moduleCount: 854,
-    eagerBytes: { nominal: 1435910, tolerance: 1024 },
-    eagerGzipBytes: { nominal: 371023, tolerance: 2048 },
+    eagerBytes: { nominal: 1441546, tolerance: 1024 },
+    eagerGzipBytes: { nominal: 371839, tolerance: 2048 },
   },
 };
 

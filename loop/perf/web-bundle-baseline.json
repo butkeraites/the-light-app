@@ -8,7 +8,7 @@
     "stableAssets": "byte-exact (content-addressed)",
     "entryJs": "NÃO byte-determinístico (Metro module-id em ordem de grafo async) — moduleCount exato + bytes/gzip nominal±tolerância, re-verificados"
   },
-  "frontierWasmBytes": 4244884,
+  "frontierWasmBytes": 1198888,
   "readingDbBytes": 14409728,
   "waSqliteFts5Bytes": 666267,
   "waSqliteNpmBytes": 558343,
@@ -18,19 +18,19 @@
     "glob": "_expo/static/js/web/entry-*.js",
     "moduleCount": 854,
     "eagerBytes": {
-      "nominal": 1435910,
+      "nominal": 1441546,
       "tolerance": 1024
     },
     "eagerGzipBytes": {
-      "nominal": 371023,
+      "nominal": 371839,
       "tolerance": 2048
     }
   },
   "assets": {
     "frontierWasm": {
-      "path": "app/dist/assets/web/generated/wasm-bindgen/index_bg.f03f474511f486de4c36302cb415008a.wasm",
-      "bytes": 4244884,
-      "gzipBytes": 1136449
+      "path": "app/dist/assets/web/generated/wasm-bindgen/index_bg.412b7b84bd6fa8d24314a4bb48d40169.wasm",
+      "bytes": 1198888,
+      "gzipBytes": 430849
     },
     "readingDb": {
       "path": "app/dist/assets/_assets/data/reading-sample.f875f829555c11254b76df84bf4861e8.sqlite",
@@ -54,9 +54,9 @@
     }
   },
   "totals": {
-    "stableAssetsBytes": 20010294,
-    "stableAssetsGzipBytes": 6941334,
-    "nominalTotalBytes": 21446204,
-    "nominalTotalGzipBytes": 7312357
+    "stableAssetsBytes": 16964298,
+    "stableAssetsGzipBytes": 6235734,
+    "nominalTotalBytes": 18405844,
+    "nominalTotalGzipBytes": 6607573
   }
 }

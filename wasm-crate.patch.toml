@@ -27,8 +27,24 @@
 #     triple wasm32-unknown-unknown"). Opt-in explícito em `resolver = "2"` faz o
 #     cargo respeitar o gate de alvo e PODAR o caminho `embedded`/sqlite no wasm32.
 #     (Isto NÃO toca a fronteira: corrige só a config de build do wrapper gerado.)
+#
+# F5.6 — o build web passou a compilar o wasm-crate em RELEASE (era DEBUG, ~4.24 MB
+# não-otimizado). Este [profile.release] agora É usado (gen-bindings-web.sh compila
+# com `--release` e lê target/.../release). Além de opt-level="s" (otimiza tamanho),
+# ligamos flags de TAMANHO que preservam a semântica (zero-drift): `lto=true` e
+# `codegen-units=1` (mais oportunidades de inline/dead-code entre unidades → binário
+# menor, mesma lógica) e `strip="debuginfo"` (remove só debuginfo, não símbolos de
+# comportamento). NÃO usamos `panic="abort"`: o UniFFI faz `catch_unwind` na
+# fronteira FFI p/ converter panic→erro; manter o strategy default preserva esse
+# comportamento observável. A redução extra fina fica com o `wasm-opt -Oz` (pós
+# wasm-bindgen) no script — ver gen-bindings-web.sh, passo [wasm-opt]. Tudo é build
+# config do wrapper GERADO; a fronteira/os bindings/o the-light-core pinado ficam
+# intactos (zero mudança de API/assinatura/comportamento).
 [profile.release]
 opt-level = "s"
+lto = true
+codegen-units = 1
+strip = "debuginfo"
 
 [workspace]
 resolver = "2"
