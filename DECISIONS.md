@@ -3314,3 +3314,37 @@ Com `225b8c9` (ADR-0037), a geração PURA de planos compila em wasm sob `ai-pur
 
 ### Consequências
 Planos de leitura com PARIDADE WEB completa (geração idêntica ao nativo; progresso OPFS local; offline-first/anti-alucinação preservados — refs/nomes do core, texto lido do store pelo Reader). O orçamento perf acompanha a realidade da feature (crescimento legítimo, git-provável), mantendo a guarda como trava anti-regressão. Fronteira de progresso do core (F5.4) segue nativa + stub web (PlanStore é fs). FORA de escopo: lembrete diário no web (nativo-only por design); link de `/plans` na home web (gateado como `/read`/`/search`, concern de nav-web à parte; a rota é acessível por URL direta).
+
+
+## ADR-0036 — F5.22 (gate): SYNC OPCIONAL de dados do usuário = **export/import manual (todos os alvos)** + **integração Google Drive no WEB** (opt-in, OAuth/PKCE client-side, pasta app-private do Drive); offline-first permanece a base
+
+- **Data:** 2026-07-03 · **Status:** **aceito (decisão do gate)** — decidido pelo humano; F5.22 é o BRIEF DE DECISÃO (sem código de produto). A implementação vem em F5.23–F5.27. · **Tarefa:** F5.22 (gate) · **Decidido por:** o humano ("manual export/import; no web, integração Google Drive linkando a conta").
+
+### Contexto
+Sincronizar dados do usuário (notas, marcações, progresso de plano) entre dispositivos SEM quebrar o offline-first (não-negociável: o app é 100% funcional com ZERO conta/rede). O `notesExport::buildNotesExport` (F1.11) já monta um export a partir dos Records (`list_notes`/`list_highlights`) — mas em Markdown legível (p/ Share), não round-trippável. A persistência é fs no nativo e OPFS no web (F1.16).
+
+### Decisão
+Duas camadas, ambas **opt-in** e **aditivas** (o app segue offline-first sem nenhuma delas):
+1. **Export/import manual (TODOS os alvos)** — um SNAPSHOT JSON máquina-legível dos dados do usuário (notas + marcações + progresso de plano), montado dos Records (NÃO reimplementa o formato do store), round-trippável: exportar (Share/salvar) e importar (merge de volta). Zero servidor, zero conta, zero rede. É o piso.
+2. **Google Drive no WEB (opt-in)** — o usuário LINKA a própria conta Google via **OAuth 2.0 PKCE client-side** (SEM servidor do app; client-id público + PKCE, sem segredo) e o snapshot é gravado na **pasta app-data do Drive** (`drive.appdata` — oculta, app-private, na conta DO USUÁRIO); push/pull automáticos. Token em session/secure storage, nunca em git/log. Funciona 100% offline sem linkar.
+
+### Escopo dos dados
+Sincroniza: **notas, marcações, progresso de plano** (dados do próprio usuário). **NÃO** sincroniza: histórico de conversas de IA (`sessions` — privacidade), o banco bíblico (domínio público, bundled), chaves BYOK. Nenhum texto bíblico, nenhum segredo.
+
+### Conflito / merge
+Snapshot = ESTADO completo → merge no import/pull: notas/marcações fazem UNIÃO por referência (colisão → last-modified vence); progresso de plano = LWW (ou `max(completed)`). Determinístico, testável por MOCK (sem rede). CRDT é overkill p/ este dado.
+
+### Criptografia / privacidade
+Transporte = HTTPS (Google Drive). A pasta app-private + a conta DO USUÁRIO = o dado fica no Drive do próprio usuário, escopo do app. **E2e com passphrase = futuro opcional** (o dado já está na nuvem privada do usuário; não é requisito da v1). **Opt-in, OFF por padrão; SEM telemetria; token nunca em git/log; nenhum servidor/conta do app.**
+
+### Reconciliação com ADR-0023 ("OAuth banido")
+O ADR-0023 baniu OAuth para as **chaves BYOK de IA** (preferindo chave direta — credencial paga do usuário melhor tratada como BYOK direto). O OAuth do Google Drive é um caso DISTINTO: acessar o **armazenamento do próprio usuário** (não uma chave de LLM), onde o Google EXIGE OAuth e o PKCE client-side (client-id público, sem segredo) é o padrão seguro. A distinção fica registrada; não há conflito.
+
+### Decomposição (F5.23–F5.27, re-escopada por esta decisão)
+- **F5.23** — Export/import JSON (todos os alvos): snapshot round-trippável (notas+marcações+progresso) + import-com-merge; prova headless. Fundação p/ o Drive. Baixo esforço, valor imediato. **(A SEMEAR primeiro.)**
+- **F5.24** — Link Google Drive no web: OAuth 2.0 PKCE, escopo `drive.appdata`, token session/secure, hook link/unlink. Prova por MOCK (sem conta real).
+- **F5.25** — Push/pull no Drive (web): upload/download do snapshot na pasta app-data + merge no pull (reusa F5.23). Prova por MOCK.
+- **F5.26** — UI opt-in de sync: toggle OFF por padrão, aviso de privacidade, "funciona offline sem isto", link/unlink.
+- **F5.27** — ⛔ **Validação real** (gate): conta/Drive Google reais; o loop NUNCA roda sozinho; conta/token nunca transitam pelo loop (humano valida e reporta sucesso).
+
+Próximo ADR livre = **ADR-0051** (números 0038–0050 já usados; 0037 foi o PR de planos).
