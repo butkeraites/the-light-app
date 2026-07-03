@@ -324,3 +324,20 @@
 - **Executor:** `838cf45` — README completo fundamentado em VISION/PLAN/package.json/scripts (sem inventar); tabela de atribuição autoritativa (subsume NOTICE) com strings CC-BY byte-exatas das constantes in-app; build/run reais. Só `README.md` commitado.
 - **Reviewer (independente):** **PASSED**. grep XREF/STEP OK em README + fonte (byte-exato); tsc 0. Auditoria feature-a-feature: nenhuma alegação falsa (PT/EN only, tema claro/escuro only `PALETTES`, Claude/GPT/Gemini reais, Drive opt-in/OFF, anti-alucinação `ai::citation` existe, BYOK secure vault, Expo 56 = `~56.0.0`); commit só `README.md`; the-light `225b8c9`. Observação: código tem 4º provider `ollama` (modelos locais) omitido no README — under-statement, não falso → endereçar na F5.35.
 - **Resultado:** aceito/arquivado (`loop/archive/F5.34.*`). **Próximo:** F5.35 (tela Sobre/Créditos/Licenças — ÚLTIMA da varredura de refinamento: rota alcançável da Home/header, 4 fontes+licenças, offline-first/BYOK/anti-alucinação, link p/ backup/export, providers incl. Ollama). Loop LIVE. Próximo ADR livre = ADR-0055.
+
+## Ciclo — 2026-07-03T19:55Z — F5.35 ACEITA → VARREDURA DE REFINAMENTO COMPLETA (8/8) → REPOUSO
+
+- **Heartbeat:** 2026-07-03T19:55:00Z. **Tarefa:** F5.35 (tela Sobre/Créditos/Licenças). Não-gate. Refinamento (ÚLTIMA).
+- **Executor:** `89c34ad` — rota `about.tsx` (Home Link + Stack), 4 fontes+licenças com strings CC-BY byte-exatas, offline-first/BYOK/anti-alucinação, backup reusa chunk lazy `SyncSettings`, providers reais (Claude/GPT/Gemini/Ollama). Novo drift-guard `test:about-attr`. Perf re-baseline sancionado (839→840 = +1 rota eager; ADR-0055).
+- **Reviewer (independente):** **PASSED**. tsc 0; i18n-coverage(225)/a11y-scan(73)/contrast(AA)/about-attr/i18n/perf-budget(840)/expo web verdes. Drift-guard não-vacuoso (byte-compara contra constantes fonte, exige pt==en); providers = `SUPPORTED_PROVIDERS`; backup mesmo chunk async; re-baseline legítimo (SyncSettings/driveAuth ficam async; tolerâncias inalteradas); the-light `225b8c9`.
+- **Resultado:** aceito/arquivado (`loop/archive/F5.35.*`).
+
+### VARREDURA DE REFINAMENTO COMPLETA (F5.28–F5.35, 8/8, cada uma reviewer-independente)
+F5.28 i18n cores destaque · F5.29 a11y result Home · F5.30 nav web · F5.31 seletor tradução Busca · F5.32 verse-anchor · F5.33 tema tri-estado · F5.34 README · F5.35 tela Sobre.
+
+### ESTADO: REPOUSO (não HALT)
+Plano (Fases 0–5) construído + refinado. Trabalho AUTÔNOMO esgotado. O que resta NÃO é autônomo:
+- **F5.27** (⛔ validação real do Drive) — deferida, aguarda o **client-id da GCP** do humano (`loop/deferred/`).
+- **LICENSE do repo** — decisão humana (qual licença p/ o código próprio).
+- **Import por arquivo nativo / split reading-lite nativo** — exigem build nativo, não verificáveis pelos guardas headless web.
+Não fabricar busywork. **Próximo:** aguardar input humano (LICENSE · client-id GCP · ou abrir nova fase/escopo). Próximo ADR livre = **ADR-0056**.
