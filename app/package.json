@@ -13,6 +13,7 @@
     "test:web:xref": "node web/__tests__/xref.web.test.mjs",
     "test:web:notes": "node web/__tests__/notes.web.test.mjs",
     "test:keystore": "node web/__tests__/keystore.test.mjs",
+    "test:i18n": "node web/__tests__/i18n.test.mjs",
     "test:web:ai": "node web/__tests__/askAnchored.web.test.mjs",
     "test:web:ai-stream": "node web/__tests__/askAnchoredStream.web.test.mjs",
     "test:web:ai-multiprovider": "node web/__tests__/multiProvider.web.test.mjs",

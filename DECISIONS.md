@@ -2857,3 +2857,83 @@ nativo (SSE/NDJSON em rede) = **etapa humana** (fora do loop; base de conteúdo 
   (proposta do PR), `DECISIONS.md` (este ADR), `loop/queue/F4.6-pr-streaming-nativo-sse.task.md`
   (task `in_progress`). **NENHUM** arquivo do `the-light`/`core/**`/`core/Cargo.toml` tocado; pin
   `04b9b24` intacto.
+
+## ADR-0038 — F5.2: camada de i18n de CROMO de UI (PT/EN) dependency-free + KV de preferências OFFLINE + detecção de idioma do device (sem rede/dep nova); tela HOME migrada ponta a ponta
+
+> Numeração: ADR-0036 está reservado ao gate de sync (F5.22) e ADR-0037 à PR `ai-pure`
+> de planos (F5.10). O próximo ADR REALMENTE livre para o workstream de i18n/a11y/temas
+> é este, **ADR-0038** (confirmado contra `DECISIONS.md` + backlog/loop).
+
+### Contexto
+O app tinha 100% da UI em português hardcoded e nenhuma camada de internacionalização.
+O `theme.ts` (F1.4/ADR-0015) já estabeleceu o molde de uma camada de UI dependency-free
+(`.ts` puro com `createElement`, `Provider`/hook, tokens centralizados) — mas o modo de tema
+NÃO persiste entre reinícios (só na sessão), porque não havia um KV de preferências offline.
+O `keystore.ts` (F2.4/ADR-0023) estabeleceu o molde de serviço com **backend injetável**
+(`SecureBackend`) para teste headless. Faltava (a) um catálogo de strings PT/EN, (b) um KV
+de preferências OFFLINE reutilizável e (c) provar a fatia vertical fim-a-fim numa tela.
+
+### Decisão
+1. **i18n dependency-free (`app/lib/i18n.ts`):** `Locale = 'pt' | 'en'`; catálogos `pt`/`en`
+   tipados como `Record<MessageKey, string>` — o TypeScript **força a paridade** (toda chave
+   existe nos dois idiomas em tempo de compilação). `translate(locale, key, params?)` PURA
+   (interpola `{param}` por `split/join`, sem depender de ES2021). `I18nProvider`/`useI18n()`
+   expõem `{ locale, t, setLocale, isSystem }` (molde `theme.ts`, só `react` — **sem
+   `react-native`**, o que mantém o módulo bundlável headless). **NÃO** se introduziu
+   `i18next`/`expo-localization`/`AsyncStorage` (regra da task).
+2. **Detecção OFFLINE do idioma do device:** `detectDeviceLocale()` usa `navigator.language`
+   (web) e cai em `Intl.DateTimeFormat().resolvedOptions().locale` (nativo/Hermes com Intl),
+   `pt` como fallback. `normalizeLocale` faz `pt-*`→`pt`, `en-*`→`en`, desconhecido→`pt`
+   (preserva o PT-default atual). Zero rede.
+3. **KV de preferências OFFLINE (`app/lib/prefs.ts` + `prefs.web.ts`):** `createPrefs(backend?)`
+   com `PrefsBackend` INJETÁVEL (molde do keystore). Nativo = arquivo `prefs.json` sob o
+   `documentDirectory` (`expo-file-system/legacy`, import LAZY — molde `userdata.ts`); web =
+   `localStorage`. API `getPref`/`setPref`/`removePref` (`string→string`), namespaceada por
+   `tla.pref.<key>`, **nunca logada**. É DISTINTO do keystore: prefs guardam dado NÃO-secreto
+   (idioma), por isso `localStorage` no web é adequado (o OPOSTO da política session-only de
+   CHAVES BYOK, ADR-0025). Este KV é o **alicerce reutilizável** do workstream (theme-persist
+   futuro reusa-o, fechando a lacuna do ADR-0015).
+4. **Persistência do idioma:** no boot, o `I18nProvider` re-hidrata o override salvo (prefs);
+   `setLocale` persiste; `isSystem=true` enquanto não há override salvo. Falha de storage é
+   tolerada (offline-first não quebra a UI).
+5. **Seletor (`app/components/LanguageToggleButton.tsx`):** alterna PT⇄EN, `testID='language-toggle'`,
+   `accessibilityRole='switch'`, label via `t()`, cor por token de tema. Inserido no header ao
+   lado do `ThemeToggleButton` (`_layout.tsx` agora envolve a stack em `I18nProvider` e mostra
+   ambos os toggles em TODAS as telas — inclusive a home).
+6. **Home migrada ponta a ponta (`app/app/index.tsx`):** 100% das strings via `t()`; elementos
+   interativos com `accessibilityRole`/`Label` + testIDs; **ZERO hex** (todas as cores de
+   `useTheme()`) — a home passa a ser temática e acessível. O resultado é guardado como DADO
+   estruturado (`Outcome`) e formatado no RENDER, de modo que trocar o idioma re-renderiza o
+   CROMO na hora.
+
+### Garantias (não-negociáveis)
+- **Anti-alucinação (LEI):** `t()` traduz APENAS cromo de UI. O TEXTO do versículo (`v.text`)
+  vem VERBATIM do store (Rust) e nunca passa por `t()`; os rótulos de referência (`livro`/`cap.`/
+  `v.`) são cromo, mas os NÚMEROS são dados. A prova headless verifica, estruturalmente, que
+  TODA `MessageKey` está num namespace de cromo (`home`/`ref`/`a11y`/`language`) — nenhuma chave
+  de conteúdo bíblico. Atribuições CC-BY não são tocadas.
+- **Conceitos distintos:** `locale`/`language` (idioma da INTERFACE) ≠ `translation` (VERSÃO
+  bíblica). O módulo NÃO usa o nome `translation` (só o menciona em comentário para documentar
+  a distinção).
+- **Offline-first:** detecção e persistência 100% locais (sem rede/conta). Idioma default =
+  device (fallback PT). A escolha sobrevive a reinícios.
+- **the-light:** `core/src/lib.rs` e `core/Cargo.toml` INALTERADOS; pin `2fc2dab` intacto —
+  tarefa 100% app-side.
+
+### Prova (headless, determinística) e gates
+- `app/web/__tests__/i18n.test.mjs` (script `test:i18n`; esbuild, sem wasm/rede): paridade de
+  catálogo pt↔en (sem chave órfã dos dois lados); `translate()` PT/EN corretos + uma chave que
+  DIVERGE (troca observável) + interpolação; round-trip de persistência sobre backend em memória
+  que SOBREVIVE a uma nova instância de `Prefs` (reabrir o app) + re-hidratação; fallback de
+  detecção (`pt-BR`→pt, `en-US`→en, desconhecido→pt); higiene (sem `console.*`).
+- Gates verdes: `tsc --noEmit` (0), `expo export --platform web` (exit 0, 7 rotas), sem
+  regressão dos `test:web:*`/`test:keystore` existentes. `grep` de hex na home = vazio.
+- **eslint:** o repo NÃO tem config de eslint (nenhum `.eslintrc`/`eslint.config.*`;
+  `eslint --print-config` confirma "not configured"). Seguindo a regra "não inventar eslint",
+  o gate de eslint do bloco de verificação da task é **N/A** neste repo (os demais gates cobrem).
+
+### Consequências
+- **Fundação do workstream:** o KV de prefs e o catálogo tipado são a base de F5.5/8/11/…
+  (migração das demais telas, que ainda têm strings PT hardcoded — os títulos de navegação em
+  `_layout.tsx` seguem PT nesta fatia, por design de tracer). `theme-persist` reusa `prefs`.
+- **Nenhuma dependência nova** foi adicionada (regra da task cumprida).
