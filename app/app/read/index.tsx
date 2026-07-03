@@ -13,6 +13,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { ReaderBookList } from '../../components/ReaderBookList';
 import { WasmGate } from '../../components/WasmGate';
+import { useI18n } from '../../lib/i18n';
 import { useTheme, type ThemeColors } from '../../lib/theme';
 import { listBooks, type Book } from '../../web/reading';
 
@@ -27,18 +28,24 @@ export default function BooksScreen() {
 function BooksContent() {
   const navigation = useNavigation();
   const { colors } = useTheme();
+  const { t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [books, setBooks] = useState<Book[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Título reativo ao idioma: `t` muda de referência quando o locale troca, então o
+  // efeito re-roda e reescreve o título via setOptions (sem reiniciar).
   useEffect(() => {
-    navigation.setOptions({ title: 'Ler a Bíblia' });
+    navigation.setOptions({ title: t('nav.read') });
+  }, [navigation, t]);
+
+  useEffect(() => {
     try {
       setBooks(listBooks());
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [navigation]);
+  }, []);
 
   if (error) {
     return (

@@ -15,6 +15,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { ReaderChapterGrid } from '../../../components/ReaderChapterGrid';
 import { WasmGate } from '../../../components/WasmGate';
 import { ensureReadingDb } from '../../../lib/db';
+import { useI18n } from '../../../lib/i18n';
 import { useTheme, type ThemeColors } from '../../../lib/theme';
 import { chapterCount, listBooks } from '../../../web/reading';
 
@@ -33,15 +34,24 @@ export default function ChaptersScreen() {
 function ChaptersContent() {
   const navigation = useNavigation();
   const { colors } = useTheme();
+  const { locale, t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { book } = useLocalSearchParams<{ book: string }>();
   const bookNumber = Number(book);
   const [count, setCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Título = NOME do livro. O nome vem SEMPRE do STORE/core (namePt/nameEn) — nunca de
+  // `t()` (anti-alucinação): o `locale` só ESCOLHE qual campo do store exibir. Reativo:
+  // o efeito re-roda ao trocar de idioma (deps `locale`/`t`). O rótulo de fallback (livro
+  // ausente do store) é CROMO traduzível.
   useEffect(() => {
-    const name = listBooks().find((b) => b.number === bookNumber)?.namePt ?? `Livro ${bookNumber}`;
+    const b = listBooks().find((x) => x.number === bookNumber);
+    const name = b ? (locale === 'en' ? b.nameEn : b.namePt) : t('read.bookFallback', { number: bookNumber });
     navigation.setOptions({ title: name });
+  }, [navigation, bookNumber, locale, t]);
+
+  useEffect(() => {
     let alive = true;
     (async () => {
       try {
@@ -55,7 +65,7 @@ function ChaptersContent() {
     return () => {
       alive = false;
     };
-  }, [navigation, bookNumber]);
+  }, [bookNumber]);
 
   if (error) {
     return (

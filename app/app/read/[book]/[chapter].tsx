@@ -25,6 +25,7 @@ import { ReaderComparePanel } from '../../../components/ReaderComparePanel';
 import { ensureReadingDb } from '../../../lib/db';
 import { ensureUserDataDir } from '../../../lib/userdata';
 import { resolveHighlightColor } from '../../../lib/highlightColors';
+import { useI18n } from '../../../lib/i18n';
 import { useTheme, type ThemeColors } from '../../../lib/theme';
 import {
   crossRefs,
@@ -65,6 +66,10 @@ export default function ChapterScreen() {
 function ChapterContent() {
   const navigation = useNavigation();
   const { colors, isDark } = useTheme();
+  // F5.5: `locale` da UI. Distinto de `translation` (versão bíblica): o `locale` traduz
+  // o CROMO e escolhe o campo de nome do livro no STORE; ele NÃO altera o texto citado.
+  // É também o `lang` repassado aos painéis de IA (a resposta segue o idioma da UI).
+  const { locale, t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { book, chapter } = useLocalSearchParams<{ book: string; chapter: string }>();
   const bookNumber = Number(book);
@@ -111,10 +116,18 @@ function ChapterContent() {
   // versículo → NOME da cor (dado do usuário); resolvido p/ hex no render.
   const [highlightColors, setHighlightColors] = useState<Map<number, string>>(new Map());
 
+  // Título = "<nome do livro> <capítulo>". O nome vem SEMPRE do STORE/core
+  // (namePt/nameEn) — nunca de `t()` (anti-alucinação): o `locale` só ESCOLHE o campo.
+  // O número do capítulo é DADO. Reativo ao idioma (deps `locale`/`t`).
   useEffect(() => {
-    const name = listBooks().find((b) => b.number === bookNumber)?.namePt ?? `Livro ${bookNumber}`;
+    const b = listBooks().find((x) => x.number === bookNumber);
+    const name = b
+      ? locale === 'en'
+        ? b.nameEn
+        : b.namePt
+      : t('read.bookFallback', { number: bookNumber });
     navigation.setOptions({ title: `${name} ${chapterNumber}` });
-  }, [navigation, bookNumber, chapterNumber]);
+  }, [navigation, bookNumber, chapterNumber, locale, t]);
 
   // Carrega as traduções disponíveis (seletor de versão) uma vez.
   useEffect(() => {
@@ -139,10 +152,10 @@ function ChapterContent() {
       return;
     }
     setSecondTranslation((prev) => {
-      if (prev && prev !== translation && translations.some((t) => t.id === prev)) {
+      if (prev && prev !== translation && translations.some((tr) => tr.id === prev)) {
         return prev;
       }
-      return translations.find((t) => t.id !== translation)?.id ?? null;
+      return translations.find((tr) => tr.id !== translation)?.id ?? null;
     });
   }, [translations, translation]);
 
@@ -316,7 +329,7 @@ function ChapterContent() {
   }
 
   // 2ª tradução só oferece versões DIFERENTES da primária.
-  const secondaryOptions = translations.filter((t) => t.id !== translation);
+  const secondaryOptions = translations.filter((tr) => tr.id !== translation);
   const canParallel = secondaryOptions.length > 0;
 
   return (
@@ -337,9 +350,10 @@ function ChapterContent() {
             testID="parallel-toggle"
             accessibilityRole="switch"
             accessibilityState={{ checked: parallel }}
+            accessibilityLabel={t('read.parallel')}
           >
             <Text style={[styles.toggleText, parallel ? styles.toggleTextActive : null]}>
-              Lado a lado
+              {t('read.parallel')}
             </Text>
           </Pressable>
         </View>
@@ -446,7 +460,7 @@ function ChapterContent() {
         }
         dbPath={dbPath}
         translation={translation}
-        lang="pt"
+        lang={locale}
         onClose={() => setAskVerse(null)}
       />
 
@@ -466,7 +480,7 @@ function ChapterContent() {
         verse={studyVerse}
         dbPath={dbPath}
         translation={translation}
-        lang="pt"
+        lang={locale}
         onClose={() => setStudyVerse(null)}
       />
 
@@ -485,7 +499,7 @@ function ChapterContent() {
         verse={chatVerse}
         dbPath={dbPath}
         translation={translation}
-        lang="pt"
+        lang={locale}
         onClose={() => setChatVerse(null)}
       />
 
@@ -508,7 +522,7 @@ function ChapterContent() {
         }
         dbPath={dbPath}
         translation={translation}
-        lang="pt"
+        lang={locale}
         onClose={() => setCompareVerse(null)}
       />
     </View>

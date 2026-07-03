@@ -134,6 +134,38 @@ async function main() {
     'Could not resolve: input X',
     'en home.resolveError interpola {message}',
   );
+  // ── F5.5: PROVA de que strings do FLUXO DE LEITURA trocam de idioma ──────────────────
+  // Título de header (nav.read) e rótulo da tela de leitura (read.parallel) DIVERGEM
+  // PT≠EN → alternar o idioma re-renderiza o cromo do fluxo de leitura de fato.
+  assert.equal(translate('pt', 'nav.read'), 'Ler a Bíblia', 'pt nav.read');
+  assert.equal(translate('en', 'nav.read'), 'Read the Bible', 'en nav.read');
+  assert.notEqual(
+    translate('pt', 'nav.read'),
+    translate('en', 'nav.read'),
+    'nav.read DIFERE entre pt e en (título de header do fluxo de leitura é reativo)',
+  );
+  assert.equal(translate('pt', 'read.parallel'), 'Lado a lado', 'pt read.parallel');
+  assert.equal(translate('en', 'read.parallel'), 'Side by side', 'en read.parallel');
+  assert.notEqual(
+    translate('pt', 'read.parallel'),
+    translate('en', 'read.parallel'),
+    'read.parallel DIFERE entre pt e en (rótulo da tela de leitura é reativo)',
+  );
+  // nav.home é a MARCA → idêntica nos dois idiomas (proposital).
+  assert.equal(translate('pt', 'nav.home'), 'The Light', 'pt nav.home (marca)');
+  assert.equal(translate('en', 'nav.home'), 'The Light', 'en nav.home (marca, igual)');
+  // Fallback de livro AUSENTE do store é CROMO com {number} interpolado (o nome REAL do
+  // livro vem do store/core, nunca daqui — anti-alucinação).
+  assert.equal(
+    translate('pt', 'read.bookFallback', { number: 5 }),
+    'Livro 5',
+    'pt read.bookFallback interpola {number}',
+  );
+  assert.equal(
+    translate('en', 'read.bookFallback', { number: 5 }),
+    'Book 5',
+    'en read.bookFallback interpola {number}',
+  );
   // Sem params, o placeholder de interpolação fica intacto (não quebra).
   assert.ok(
     translate('pt', 'home.resolveError').includes('{message}'),
@@ -177,7 +209,10 @@ async function main() {
   assert.ok(isLocale(detected), `detectDeviceLocale() devolve um Locale válido (veio: ${detected})`);
 
   // ══ (5) ANTI-ALUCINAÇÃO estrutural: TODA chave é CROMO de UI (nenhum "versículo") ══════
-  const CHROME_NAMESPACES = new Set(['home', 'ref', 'a11y', 'language']);
+  // F5.5 estendeu o cromo ao fluxo de leitura: `nav.*` (títulos de header do expo-router),
+  // `read.*` (rótulos das telas read/*) e `theme.*` (a11y do toggle de tema). Nenhuma delas
+  // é texto bíblico/versão — os NOMES de livro vêm do store/core, nunca de `t()`.
+  const CHROME_NAMESPACES = new Set(['home', 'nav', 'read', 'ref', 'a11y', 'language', 'theme']);
   for (const key of MESSAGE_KEYS) {
     const ns = key.split('.')[0];
     assert.ok(
@@ -201,9 +236,10 @@ async function main() {
   console.log('PASS — i18n de CROMO (PT/EN) + KV de prefs OFFLINE (backend fake, sem device/rede):');
   console.log(`  paridade de catálogo pt↔en: ${MESSAGE_KEYS.length} chaves, mesmos conjuntos (sem órfã)`);
   console.log('  translate(): PT/EN corretos; home.readBible DIVERGE (troca observável); interpola {message}');
+  console.log('  fluxo de leitura (F5.5): nav.read/read.parallel DIVERGEM PT≠EN; read.bookFallback interpola {number}');
   console.log('  persistência: setPref→getPref; SOBREVIVE a nova instância (reabrir); removePref volta ao default');
   console.log("  detecção offline: 'pt-BR'→pt, 'en-US'→en, desconhecido/''→pt; detectDeviceLocale() válido");
-  console.log(`  anti-alucinação: todas as ${MESSAGE_KEYS.length} chaves são CROMO (home/ref/a11y/language); nenhuma de versículo`);
+  console.log(`  anti-alucinação: todas as ${MESSAGE_KEYS.length} chaves são CROMO (home/nav/read/ref/a11y/language/theme); nenhuma de versículo`);
   console.log('  higiene: i18n.ts / prefs.ts / prefs.web.ts sem console.* (prefs nunca loga)');
 }
 

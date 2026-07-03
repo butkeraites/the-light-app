@@ -54,6 +54,18 @@ export type MessageKey =
   | 'home.searchBible'
   | 'home.resolveError'
   | 'home.verseNotFound'
+  // Títulos de header do expo-router (fluxo de leitura + busca). "The Light" é a
+  // MARCA — idêntica nos dois idiomas de propósito.
+  | 'nav.home'
+  | 'nav.read'
+  | 'nav.chapters'
+  | 'nav.reading'
+  | 'nav.search'
+  // CROMO das telas de leitura (read/*). `read.bookFallback` é só o rótulo de um
+  // livro AUSENTE no store (edge-case) — os NOMES reais de livro vêm do store/core
+  // (namePt/nameEn), NUNCA de `t()` (anti-alucinação).
+  | 'read.parallel'
+  | 'read.bookFallback'
   | 'ref.book'
   | 'ref.chapter'
   | 'ref.verseSingle'
@@ -61,7 +73,10 @@ export type MessageKey =
   | 'ref.wholeChapter'
   | 'a11y.searchInput'
   | 'a11y.result'
-  | 'language.switchToOther';
+  | 'language.switchToOther'
+  // Rótulos de acessibilidade do toggle de TEMA (mostra o modo-ALVO).
+  | 'theme.switchToLight'
+  | 'theme.switchToDark';
 
 // Catálogo PORTUGUÊS (default do app). "The Light" é o NOME do produto (marca),
 // idêntico nos dois idiomas de propósito.
@@ -74,6 +89,13 @@ const pt: Record<MessageKey, string> = {
   'home.searchBible': 'Buscar na Bíblia →',
   'home.resolveError': 'Não foi possível resolver: {message}',
   'home.verseNotFound': 'Versículo não encontrado no store local.',
+  'nav.home': 'The Light',
+  'nav.read': 'Ler a Bíblia',
+  'nav.chapters': 'Capítulos',
+  'nav.reading': 'Leitura',
+  'nav.search': 'Buscar',
+  'read.parallel': 'Lado a lado',
+  'read.bookFallback': 'Livro {number}',
   'ref.book': 'livro',
   'ref.chapter': 'cap.',
   'ref.verseSingle': 'v.',
@@ -82,6 +104,8 @@ const pt: Record<MessageKey, string> = {
   'a11y.searchInput': 'Campo de busca de passagem bíblica',
   'a11y.result': 'Resultado da interpretação',
   'language.switchToOther': 'Mudar para Inglês',
+  'theme.switchToLight': 'Mudar para tema claro',
+  'theme.switchToDark': 'Mudar para tema escuro',
 };
 
 // Catálogo ENGLISH. As MESMAS chaves de `pt` (paridade forçada pelo tipo).
@@ -94,6 +118,13 @@ const en: Record<MessageKey, string> = {
   'home.searchBible': 'Search the Bible →',
   'home.resolveError': 'Could not resolve: {message}',
   'home.verseNotFound': 'Verse not found in the local store.',
+  'nav.home': 'The Light',
+  'nav.read': 'Read the Bible',
+  'nav.chapters': 'Chapters',
+  'nav.reading': 'Reading',
+  'nav.search': 'Search',
+  'read.parallel': 'Side by side',
+  'read.bookFallback': 'Book {number}',
   'ref.book': 'book',
   'ref.chapter': 'ch.',
   'ref.verseSingle': 'v.',
@@ -102,6 +133,8 @@ const en: Record<MessageKey, string> = {
   'a11y.searchInput': 'Bible passage search field',
   'a11y.result': 'Interpretation result',
   'language.switchToOther': 'Switch to Portuguese',
+  'theme.switchToLight': 'Switch to light theme',
+  'theme.switchToDark': 'Switch to dark theme',
 };
 
 /** Catálogos por idioma (uma fonte de verdade de texto de UI). */

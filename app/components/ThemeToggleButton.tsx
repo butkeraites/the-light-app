@@ -6,13 +6,16 @@
 // `testID` estável p/ inspeção. Não faz I/O nem lógica de domínio.
 import { Pressable, StyleSheet, Text } from 'react-native';
 
+import { useI18n } from '../lib/i18n';
 import { useTheme } from '../lib/theme';
 
 export function ThemeToggleButton() {
   const { isDark, toggle, colors } = useTheme();
+  // F5.5: rótulo de a11y via `t()` (reativo ao idioma), espelhando o LanguageToggleButton.
+  const { t } = useI18n();
   // Glyphs BMP (renderizam como texto monocromático): sol (U+2600) / lua (U+263E).
   const glyph = isDark ? '☀' : '☾';
-  const label = isDark ? 'Mudar para tema claro' : 'Mudar para tema escuro';
+  const label = isDark ? t('theme.switchToLight') : t('theme.switchToDark');
   return (
     <Pressable
       onPress={toggle}

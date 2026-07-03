@@ -19,7 +19,7 @@ import { View } from 'react-native';
 
 import { LanguageToggleButton } from '../components/LanguageToggleButton';
 import { ThemeToggleButton } from '../components/ThemeToggleButton';
-import { I18nProvider } from '../lib/i18n';
+import { I18nProvider, useI18n } from '../lib/i18n';
 import { ThemeProvider, useTheme } from '../lib/theme';
 import { ensureWasmReady } from '../web/wasm';
 
@@ -48,6 +48,11 @@ function HeaderControls() {
 
 function RootNavigator() {
   const { colors } = useTheme();
+  // F5.5: consumir o i18n AQUI faz o `RootNavigator` RE-RENDERIZAR ao trocar o idioma,
+  // então os títulos estáticos das `Stack.Screen` (via `t()`) atualizam na hora — sem
+  // reiniciar. As telas de leitura que definem título dinâmico (nome do livro do STORE)
+  // via `navigation.setOptions` também reagem: seus efeitos dependem do `locale`.
+  const { t } = useI18n();
   // F5.3: AQUECE o wasm da fronteira em SEGUNDO PLANO (não-bloqueante). A stack pinta
   // de imediato; as telas de leitura que chamam `listBooks()` (síncrono, exige wasm)
   // se gateiam com `<WasmGate>`. No NATIVO `ensureWasmReady()` é no-op (o cânon vem do
@@ -72,19 +77,19 @@ function RootNavigator() {
       }}
     >
       {/* F5.2: a HOME também ganha header temático + os toggles (idioma + tema). O
-          título "The Light" é a MARCA (idêntica em PT/EN). */}
-      <Stack.Screen name="index" options={{ title: 'The Light', ...screenChrome }} />
-      {/* F1.3: fluxo de leitura nativo (livro → capítulo → texto). Os títulos
-          dinâmicos (nome do livro / capítulo) são definidos por cada tela via
-          navigation.setOptions; aqui registramos as rotas, o back e (F1.4) o
-          header temático + os toggles. Os títulos estáticos abaixo permanecem PT
-          nesta fatia (migração das demais telas = tarefas F5.x seguintes). */}
-      <Stack.Screen name="read/index" options={{ title: 'Ler a Bíblia', ...screenChrome }} />
-      <Stack.Screen name="read/[book]/index" options={{ title: 'Capítulos', ...screenChrome }} />
-      <Stack.Screen name="read/[book]/[chapter]" options={{ title: 'Leitura', ...screenChrome }} />
+          título "The Light" é a MARCA (idêntica em PT/EN, via `t('nav.home')`). */}
+      <Stack.Screen name="index" options={{ title: t('nav.home'), ...screenChrome }} />
+      {/* F1.3: fluxo de leitura nativo (livro → capítulo → texto). F5.5: os títulos
+          estáticos abaixo agora vêm de `t()` (reativos ao idioma). Os títulos
+          DINÂMICOS (nome do livro / capítulo) são redefinidos por cada tela via
+          navigation.setOptions — reagindo ao `locale` — e o NOME do livro vem do
+          STORE (namePt/nameEn), nunca de `t()` (anti-alucinação). */}
+      <Stack.Screen name="read/index" options={{ title: t('nav.read'), ...screenChrome }} />
+      <Stack.Screen name="read/[book]/index" options={{ title: t('nav.chapters'), ...screenChrome }} />
+      <Stack.Screen name="read/[book]/[chapter]" options={{ title: t('nav.reading'), ...screenChrome }} />
       {/* F1.6: busca nativa (campo + resultados com referência clicável). Lê pela
           fronteira `search` (F1.5 → JSI → core); header temático + toggles. */}
-      <Stack.Screen name="search/index" options={{ title: 'Buscar', ...screenChrome }} />
+      <Stack.Screen name="search/index" options={{ title: t('nav.search'), ...screenChrome }} />
     </Stack>
   );
 }
