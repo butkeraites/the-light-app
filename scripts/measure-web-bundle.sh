@@ -32,6 +32,16 @@
 # byte-estável mudar de conteúdo ou o entry-JS sair da tolerância (aí a baseline
 # precisa ser atualizada deliberadamente).
 #
+# F5.17 (ADR-0045) — TRANSFER (over-the-wire), não só bytes-em-disco: após o export, o
+# passo [2/4] PRÉ-COMPRIME os assets grandes (`scripts/compress-web-assets.sh` → `.gz`
+# gzip-9 + `.br` brotli-11, zero-drift verificado) e o budget passa a gravar o TAMANHO
+# DE TRANSFER (gzip + brotli) dos assets byte-estáveis, além do `firstPaintTransferBytes`
+# (entry-JS eager comprimido — a headline de 1º paint). Os `.gz`/`.br` são artefatos de
+# BUILD; a REDUÇÃO real over-the-wire depende de um host servir a variante com
+# `Content-Encoding` (nginx `gzip_static`/`brotli_static`, Netlify, Cloudflare Pages…) —
+# ver ADR-0045 / `loop/perf/SERVING.md`. Não afirmamos ganho em runtime que o `expo
+# export` estático (sem servidor) não entrega sozinho.
+#
 # Uso:  ./scripts/measure-web-bundle.sh
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
@@ -41,21 +51,25 @@ APP="$ROOT/app"
 DIST="$APP/dist"
 OUT_DIR="$ROOT/loop/perf"
 OUT="$OUT_DIR/web-bundle-baseline.json"
+COMPRESS_LIB="$ROOT/scripts/lib/web-compress.cjs"
 
 [ -d "$APP" ] || { echo "ERRO: app/ não encontrado em $APP" >&2; exit 1; }
 
-echo "==> [1/2] expo export --platform web (offline; só assets locais)"
+echo "==> [1/3] expo export --platform web (offline; só assets locais)"
 rm -rf "$DIST"
 ( cd "$APP" && npx expo export --platform web )
 [ -d "$DIST" ] || { echo "ERRO: export não gerou $DIST" >&2; exit 1; }
 
-echo "==> [2/2] parseando $DIST -> $OUT (verificando budget)"
+echo "==> [2/3] pré-comprimindo assets (.gz/.br) + verificando zero-drift"
+"$ROOT/scripts/compress-web-assets.sh" "$DIST"
+
+echo "==> [3/3] parseando $DIST -> $OUT (verificando budget + TRANSFER)"
 mkdir -p "$OUT_DIR"
 
-DIST_DIR="$DIST" DIST_REL="app/dist" OUT_FILE="$OUT" node - <<'NODE'
+DIST_DIR="$DIST" DIST_REL="app/dist" OUT_FILE="$OUT" COMPRESS_LIB="$COMPRESS_LIB" node - <<'NODE'
 const fs = require('node:fs');
 const path = require('node:path');
-const zlib = require('node:zlib');
+const { gzipBytes, brotliBytes } = require(process.env.COMPRESS_LIB);
 
 const DIST = process.env.DIST_DIR;
 const DIST_REL = process.env.DIST_REL;
@@ -136,14 +150,23 @@ const BUDGET = {
   // F5.15 (ADR-0044): +3 módulos EAGER (837, era 834) — a glue LEVE do novo store de
   // léxico on-demand + o wiring do `import()` dinâmico de `sqlite-lexicon-opfs` em
   // `reading.web.ts`. NÃO é a factory pesada do wa-sqlite (essa segue em chunk async;
-  // verificado: MemoryVFS/SQLiteESMFactory/vfs_register AUSENTES do entry). Efeito
-  // (nominal = CENTRO do flutter upstream do Metro, medido em 2 exports):
-  // eagerBytes 1.306.320 → ~1.312.001 (+~5,7 KB); eagerGzip 331.038 → ~332.520 (+~1,5 KB).
+  // verificado: MemoryVFS/SQLiteESMFactory/vfs_register AUSENTES do entry).
+  //
+  // NOTA F5.17 (ADR-0045) — re-centragem + TRANSFER do entry: (a) o estrutural NÃO mudou
+  // (moduleCount 837 EXATO; a F5.17 só adiciona build/serving/medição, não toca o app);
+  // (b) re-centramos os nominais raw/gzip ao CENTRO do flutter upstream do Metro NESTE
+  // ambiente (medido em 4 exports: moduleCount 837 estável; raw 1.314.209–1.314.331; gzip
+  // 332.032–333.735; brotli 262.517–262.760) — o nominal antigo (1.312.001) ficara ~2,3 KB
+  // abaixo por drift de versão do Metro/Expo, não por mudança do app; (c) adicionamos
+  // `eagerBrotliBytes` (o entry servido com `Content-Encoding: br`). O `firstPaintTransfer`
+  // (headline de 1º paint over-the-wire) = eagerGzip (piso universal) / eagerBrotli (default
+  // moderno). Tolerâncias folgadas p/ o flutter, apertadas p/ pegar regressão real.
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
     moduleCount: 837,
-    eagerBytes: { nominal: 1312001, tolerance: 1024 },
-    eagerGzipBytes: { nominal: 332520, tolerance: 2048 },
+    eagerBytes: { nominal: 1314270, tolerance: 1024 },
+    eagerGzipBytes: { nominal: 332884, tolerance: 2048 },
+    eagerBrotliBytes: { nominal: 262639, tolerance: 1024 },
   },
 };
 
@@ -163,8 +186,10 @@ const relToDist = (abs) => path.relative(DIST, abs).split(path.sep).join('/');
 const relOut = (abs) => DIST_REL + '/' + relToDist(abs);
 function sizes(abs) {
   const buf = fs.readFileSync(abs);
-  // gzip -9 determinístico (zlib grava mtime=0 no header) → contagem de bytes estável.
-  return { bytes: buf.length, gzipBytes: zlib.gzipSync(buf, { level: 9 }).length };
+  // gzip -9 + brotli -q11 determinísticos (mesmos parâmetros do compress-web-assets.sh,
+  // via scripts/lib/web-compress.cjs) → tamanho de TRANSFER byte-estável p/ assets
+  // content-addressed (F5.17).
+  return { bytes: buf.length, gzipBytes: gzipBytes(buf), brotliBytes: brotliBytes(buf) };
 }
 function match(re) {
   return all.filter((f) => re.test(relToDist(f)));
@@ -177,16 +202,25 @@ function one(re) {
 
 const failures = [];
 
-// ── Assets byte-estáveis: bytes+gzip EXATOS, verificados contra o budget. ──
+// ── Assets byte-estáveis: bytes + TRANSFER (gzip + brotli) EXATOS, verificados contra
+//    o budget. Por serem content-addressed (byte-estáveis), gzip/brotli são
+//    determinísticos → gravados EXATOS (F5.17). ──
 const stableAssets = {};
 let stableBytes = 0;
 let stableGzip = 0;
+let stableBrotli = 0;
 for (const [name, spec] of Object.entries(BUDGET.stable)) {
   const abs = one(spec.re);
   const s = sizes(abs);
-  stableAssets[name] = { path: relOut(abs), bytes: s.bytes, gzipBytes: s.gzipBytes };
+  stableAssets[name] = {
+    path: relOut(abs),
+    bytes: s.bytes,
+    gzipBytes: s.gzipBytes,
+    brotliBytes: s.brotliBytes,
+  };
   stableBytes += s.bytes;
   stableGzip += s.gzipBytes;
+  stableBrotli += s.brotliBytes;
   if (s.bytes !== spec.bytes) {
     failures.push(`${name}: bytes ${s.bytes} != esperado ${spec.bytes} (conteúdo mudou? atualize a baseline)`);
   }
@@ -208,6 +242,7 @@ const observedModuleCount = (entryText.match(/__d\(/g) || []).length;
 const entrySizes = sizes(entryAbs);
 const observedBytes = entrySizes.bytes;
 const observedGzip = entrySizes.gzipBytes;
+const observedBrotli = entrySizes.brotliBytes;
 
 if (observedModuleCount !== BUDGET.entry.moduleCount) {
   failures.push(`entryJs.moduleCount ${observedModuleCount} != esperado ${BUDGET.entry.moduleCount}`);
@@ -223,6 +258,11 @@ if (!inBand(observedGzip, BUDGET.entry.eagerGzipBytes)) {
     `entryJs eagerGzipBytes ${observedGzip} fora de ${BUDGET.entry.eagerGzipBytes.nominal}±${BUDGET.entry.eagerGzipBytes.tolerance}`,
   );
 }
+if (!inBand(observedBrotli, BUDGET.entry.eagerBrotliBytes)) {
+  failures.push(
+    `entryJs eagerBrotliBytes ${observedBrotli} fora de ${BUDGET.entry.eagerBrotliBytes.nominal}±${BUDGET.entry.eagerBrotliBytes.tolerance}`,
+  );
+}
 
 // ── Documento gravado — SÓ valores estáveis (assets byte-estáveis + moduleCount) e
 //    constantes de budget. Nenhum valor volátil (bytes/gzip/hash crus do entry-JS,
@@ -233,27 +273,57 @@ const doc = {
   description:
     'Orçamento (budget) do bundle web do The Light App. HONESTO sobre determinismo: os ' +
     'assets content-addressed (wasm da fronteira, subset de leitura, engine wa-sqlite+FTS5) ' +
-    'são BYTE-ESTÁVEIS e gravados EXATOS; o entry-JS "eager" NÃO é byte-determinístico ' +
-    '(Metro renumera os módulos em ordem de grafo não-determinística — flutter ~122 B ' +
-    'raw / ~1,7 KB gzip entre runs) e é gravado como moduleCount EXATO + bytes/gzip ' +
-    'NOMINAL ± TOLERÂNCIA, re-verificados a cada run. Assim este JSON é reprodutível ' +
-    '(idêntico byte-a-byte a cada `scripts/measure-web-bundle.sh`) sem inchar o bundle ' +
-    'enviado. Métrica de recorde para F5.6/F5.9/F5.19. Offline: assets locais (sem rede).',
+    'são BYTE-ESTÁVEIS e gravados EXATOS (bytes crus + TRANSFER gzip/brotli); o entry-JS ' +
+    '"eager" NÃO é byte-determinístico (Metro renumera os módulos em ordem de grafo não- ' +
+    'determinística — flutter ~122 B raw / ~1,7 KB gzip entre runs) e é gravado como ' +
+    'moduleCount EXATO + bytes/gzip/brotli NOMINAL ± TOLERÂNCIA, re-verificados a cada run. ' +
+    'Assim este JSON é reprodutível (idêntico byte-a-byte a cada `scripts/measure-web-bundle.sh`) ' +
+    'sem inchar o bundle enviado. F5.17 (ADR-0045): as colunas gzip/brotli são o TAMANHO DE ' +
+    'TRANSFER (over-the-wire) — realizado quando o host serve a variante pré-comprimida com ' +
+    'Content-Encoding (ver `serving`). Métrica de recorde para F5.6/F5.9/F5.19. Offline: assets ' +
+    'locais (sem rede).',
   generatedBy: 'scripts/measure-web-bundle.sh',
   distDir: DIST_REL,
   determinism: {
-    stableAssets: 'byte-exact (content-addressed)',
+    stableAssets: 'byte-exact (content-addressed) — bytes + gzip + brotli EXATOS',
     entryJs:
       'NÃO byte-determinístico (Metro module-id em ordem de grafo async) — moduleCount ' +
-      'exato + bytes/gzip nominal±tolerância, re-verificados',
+      'exato + bytes/gzip/brotli nominal±tolerância, re-verificados',
   },
-  // Convenience plana (bytes crus dos assets byte-estáveis).
+  // F5.17 (ADR-0045): estratégia de serving que TORNA REAL o transfer size. Os `.gz`/`.br`
+  // são artefatos de BUILD (emitidos por scripts/compress-web-assets.sh); a REDUÇÃO
+  // over-the-wire só acontece quando um host serve a variante com Content-Encoding.
+  serving: {
+    precompressed: '.gz (gzip -9) + .br (brotli -q11) emitidos ao lado dos assets (zero-drift verificado)',
+    contentEncoding:
+      'transfer size REALIZADO só quando o host serve a variante pré-comprimida (nginx ' +
+      'gzip_static/brotli_static, Netlify, Cloudflare Pages, Vercel…). O `expo export` ' +
+      'estático (sem servidor) NÃO seta Content-Encoding sozinho — ver loop/perf/SERVING.md.',
+    caching:
+      'assets content-hashed (name.<hash>.ext) → seguros p/ Cache-Control: public, ' +
+      'max-age=31536000, immutable. HTML/entry: cache curto/revalidação.',
+    offlineFirst:
+      'preservado — assets LOCAIS same-origin; o browser descomprime transparente, o ' +
+      'fetch() do app devolve os bytes ORIGINAIS (byte-idênticos). Sem CDN/servidor externo.',
+    docs: 'ADR-0045 · loop/perf/SERVING.md',
+  },
+  // Convenience plana (bytes crus + TRANSFER dos assets byte-estáveis).
   frontierWasmBytes: stableAssets.frontierWasm.bytes,
+  // F5.17 (ADR-0045): TRANSFER (over-the-wire) da wasm da fronteira — gzip (piso universal)
+  // e brotli (default moderno). Byte-exatos (asset content-addressed).
+  frontierWasmBytesGzip: stableAssets.frontierWasm.gzipBytes,
+  frontierWasmBytesBrotli: stableAssets.frontierWasm.brotliBytes,
   // F5.15 (ADR-0044): `readingDbBytes` (combinado 14.409.728) foi SUBSTITUÍDO pelo split —
   // `readingLiteDbBytes` (leitura, SEM léxico) + `lexiconDbBytes` (léxico ON-DEMAND).
   readingLiteDbBytes: stableAssets.readingLiteDb.bytes,
   lexiconDbBytes: stableAssets.lexiconDb.bytes,
   waSqliteFts5Bytes: stableAssets.waSqliteFts5.bytes,
+  // F5.17 (ADR-0045): HEADLINE de 1º paint OVER-THE-WIRE — o entry-JS eager COMPRIMIDO
+  // (o que realmente desce no 1º paint quando servido com Content-Encoding). gzip = piso
+  // universal (todo host/browser); brotli = default moderno (menor). Nominais (o entry
+  // não é byte-determinístico), re-verificados a cada run dentro da tolerância.
+  firstPaintTransferBytes: BUDGET.entry.eagerGzipBytes.nominal,
+  firstPaintTransferBytesBrotli: BUDGET.entry.eagerBrotliBytes.nominal,
   // F5.12 (ADR-0041): `waSqliteNpmBytes`/`sampleDbBytes` REMOVIDOS — o npm wa-sqlite
   // async (558.343 B) e o `sample.sqlite` de 1 versículo (131.072 B) deixaram o dist.
   // F5.15 (ADR-0044): o `reading-sample.sqlite` combinado também deixou o dist web.
@@ -262,8 +332,9 @@ const doc = {
     note:
       'Entry-JS "eager" carregado no 1º paint. moduleCount (nº de `__d(`) é EXATO e ' +
       'independe da ordem — a grandeza de budget do JS (code-split futuro a reduz de ' +
-      'forma medível). eagerBytes/eagerGzipBytes são NOMINAL ± TOLERÂNCIA (Metro não é ' +
-      'byte-determinístico); o script mede o valor vivo e falha se sair da faixa.',
+      'forma medível). eagerBytes/eagerGzipBytes/eagerBrotliBytes são NOMINAL ± TOLERÂNCIA ' +
+      '(Metro não é byte-determinístico); o script mede o valor vivo e falha se sair da faixa. ' +
+      'O gzip/brotli é o TAMANHO DE TRANSFER do 1º paint (ver firstPaintTransferBytes).',
     glob: BUDGET.entry.glob,
     moduleCount: observedModuleCount,
     eagerBytes: { nominal: BUDGET.entry.eagerBytes.nominal, tolerance: BUDGET.entry.eagerBytes.tolerance },
@@ -271,15 +342,21 @@ const doc = {
       nominal: BUDGET.entry.eagerGzipBytes.nominal,
       tolerance: BUDGET.entry.eagerGzipBytes.tolerance,
     },
+    eagerBrotliBytes: {
+      nominal: BUDGET.entry.eagerBrotliBytes.nominal,
+      tolerance: BUDGET.entry.eagerBrotliBytes.tolerance,
+    },
   },
   assets: stableAssets,
   totals: {
-    // Soma EXATA dos assets byte-estáveis (reprodutível).
+    // Soma EXATA dos assets byte-estáveis (reprodutível) — bytes + TRANSFER gzip/brotli.
     stableAssetsBytes: stableBytes,
     stableAssetsGzipBytes: stableGzip,
+    stableAssetsBrotliBytes: stableBrotli,
     // Total NOMINAL do dist (estáveis + entry-JS nominal); o entry-JS oscila ±tolerância.
     nominalTotalBytes: stableBytes + BUDGET.entry.eagerBytes.nominal,
     nominalTotalGzipBytes: stableGzip + BUDGET.entry.eagerGzipBytes.nominal,
+    nominalTotalBrotliBytes: stableBrotli + BUDGET.entry.eagerBrotliBytes.nominal,
   },
 };
 
@@ -287,22 +364,30 @@ fs.writeFileSync(OUT, JSON.stringify(doc, null, 2) + '\n');
 
 // ── Resumo (inclui o VIVO observado, p/ transparência) + PASS/FAIL. ──
 const mb = (n) => (n / (1024 * 1024)).toFixed(2) + ' MB';
-console.log('web-bundle-baseline — assets byte-estáveis (EXATO):');
+console.log('web-bundle-baseline — assets byte-estáveis (EXATO): raw / gzip / brotli (TRANSFER)');
 for (const [name, a] of Object.entries(stableAssets)) {
-  console.log('  ' + name.padEnd(14) + String(a.bytes).padStart(10) + '  (' + mb(a.bytes) + ')  gzip ' + String(a.gzipBytes).padStart(10));
+  console.log(
+    '  ' + name.padEnd(14) + String(a.bytes).padStart(10) + '  (' + mb(a.bytes) + ')  gzip ' +
+      String(a.gzipBytes).padStart(9) + '  br ' + String(a.brotliBytes).padStart(9),
+  );
 }
 console.log('entry-JS "eager" (NÃO byte-determinístico):');
-console.log('  moduleCount    ' + observedModuleCount + '  (budget ' + BUDGET.entry.moduleCount + ', EXATO)');
-console.log('  eagerBytes     vivo=' + observedBytes + '  budget=' + BUDGET.entry.eagerBytes.nominal + '±' + BUDGET.entry.eagerBytes.tolerance);
-console.log('  eagerGzipBytes vivo=' + observedGzip + '  budget=' + BUDGET.entry.eagerGzipBytes.nominal + '±' + BUDGET.entry.eagerGzipBytes.tolerance);
-console.log('totais: stableAssetsBytes=' + stableBytes + '  nominalTotalBytes=' + doc.totals.nominalTotalBytes + '  (' + mb(doc.totals.nominalTotalBytes) + ')');
+console.log('  moduleCount      ' + observedModuleCount + '  (budget ' + BUDGET.entry.moduleCount + ', EXATO)');
+console.log('  eagerBytes       vivo=' + observedBytes + '  budget=' + BUDGET.entry.eagerBytes.nominal + '±' + BUDGET.entry.eagerBytes.tolerance);
+console.log('  eagerGzipBytes   vivo=' + observedGzip + '  budget=' + BUDGET.entry.eagerGzipBytes.nominal + '±' + BUDGET.entry.eagerGzipBytes.tolerance);
+console.log('  eagerBrotliBytes vivo=' + observedBrotli + '  budget=' + BUDGET.entry.eagerBrotliBytes.nominal + '±' + BUDGET.entry.eagerBrotliBytes.tolerance);
+console.log(
+  'TRANSFER (over-the-wire): firstPaint gzip=' + doc.firstPaintTransferBytes + '  brotli=' + doc.firstPaintTransferBytesBrotli +
+    '  | stableAssets raw=' + mb(stableBytes) + ' gzip=' + mb(stableGzip) + ' brotli=' + mb(stableBrotli),
+);
+console.log('totais: nominalTotalBytes=' + doc.totals.nominalTotalBytes + '  (' + mb(doc.totals.nominalTotalBytes) + ')  nominalTotalBrotliBytes=' + doc.totals.nominalTotalBrotliBytes);
 
 if (failures.length > 0) {
   console.error('\nBUDGET FAIL:');
   for (const f of failures) console.error('  - ' + f);
   process.exit(1);
 }
-console.log('\nBUDGET OK — todos os assets byte-estáveis batem; entry-JS dentro da tolerância.');
+console.log('\nBUDGET OK — assets byte-estáveis batem (raw+transfer); entry-JS dentro da tolerância; .gz/.br emitidos (zero-drift).');
 NODE
 
 echo "==> gravado $OUT"

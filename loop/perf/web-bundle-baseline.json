@@ -1,61 +1,82 @@
 {
   "metric": "web-bundle-baseline",
   "task": "F5.3",
-  "description": "Orçamento (budget) do bundle web do The Light App. HONESTO sobre determinismo: os assets content-addressed (wasm da fronteira, subset de leitura, engine wa-sqlite+FTS5) são BYTE-ESTÁVEIS e gravados EXATOS; o entry-JS \"eager\" NÃO é byte-determinístico (Metro renumera os módulos em ordem de grafo não-determinística — flutter ~122 B raw / ~1,7 KB gzip entre runs) e é gravado como moduleCount EXATO + bytes/gzip NOMINAL ± TOLERÂNCIA, re-verificados a cada run. Assim este JSON é reprodutível (idêntico byte-a-byte a cada `scripts/measure-web-bundle.sh`) sem inchar o bundle enviado. Métrica de recorde para F5.6/F5.9/F5.19. Offline: assets locais (sem rede).",
+  "description": "Orçamento (budget) do bundle web do The Light App. HONESTO sobre determinismo: os assets content-addressed (wasm da fronteira, subset de leitura, engine wa-sqlite+FTS5) são BYTE-ESTÁVEIS e gravados EXATOS (bytes crus + TRANSFER gzip/brotli); o entry-JS \"eager\" NÃO é byte-determinístico (Metro renumera os módulos em ordem de grafo não- determinística — flutter ~122 B raw / ~1,7 KB gzip entre runs) e é gravado como moduleCount EXATO + bytes/gzip/brotli NOMINAL ± TOLERÂNCIA, re-verificados a cada run. Assim este JSON é reprodutível (idêntico byte-a-byte a cada `scripts/measure-web-bundle.sh`) sem inchar o bundle enviado. F5.17 (ADR-0045): as colunas gzip/brotli são o TAMANHO DE TRANSFER (over-the-wire) — realizado quando o host serve a variante pré-comprimida com Content-Encoding (ver `serving`). Métrica de recorde para F5.6/F5.9/F5.19. Offline: assets locais (sem rede).",
   "generatedBy": "scripts/measure-web-bundle.sh",
   "distDir": "app/dist",
   "determinism": {
-    "stableAssets": "byte-exact (content-addressed)",
-    "entryJs": "NÃO byte-determinístico (Metro module-id em ordem de grafo async) — moduleCount exato + bytes/gzip nominal±tolerância, re-verificados"
+    "stableAssets": "byte-exact (content-addressed) — bytes + gzip + brotli EXATOS",
+    "entryJs": "NÃO byte-determinístico (Metro module-id em ordem de grafo async) — moduleCount exato + bytes/gzip/brotli nominal±tolerância, re-verificados"
+  },
+  "serving": {
+    "precompressed": ".gz (gzip -9) + .br (brotli -q11) emitidos ao lado dos assets (zero-drift verificado)",
+    "contentEncoding": "transfer size REALIZADO só quando o host serve a variante pré-comprimida (nginx gzip_static/brotli_static, Netlify, Cloudflare Pages, Vercel…). O `expo export` estático (sem servidor) NÃO seta Content-Encoding sozinho — ver loop/perf/SERVING.md.",
+    "caching": "assets content-hashed (name.<hash>.ext) → seguros p/ Cache-Control: public, max-age=31536000, immutable. HTML/entry: cache curto/revalidação.",
+    "offlineFirst": "preservado — assets LOCAIS same-origin; o browser descomprime transparente, o fetch() do app devolve os bytes ORIGINAIS (byte-idênticos). Sem CDN/servidor externo.",
+    "docs": "ADR-0045 · loop/perf/SERVING.md"
   },
   "frontierWasmBytes": 1198888,
+  "frontierWasmBytesGzip": 430849,
+  "frontierWasmBytesBrotli": 311729,
   "readingLiteDbBytes": 4530176,
   "lexiconDbBytes": 9502720,
   "waSqliteFts5Bytes": 666267,
+  "firstPaintTransferBytes": 332884,
+  "firstPaintTransferBytesBrotli": 262639,
   "removedAssets": [
     "waSqliteNpm",
     "sampleDb",
     "readingSampleCombined"
   ],
   "entryJs": {
-    "note": "Entry-JS \"eager\" carregado no 1º paint. moduleCount (nº de `__d(`) é EXATO e independe da ordem — a grandeza de budget do JS (code-split futuro a reduz de forma medível). eagerBytes/eagerGzipBytes são NOMINAL ± TOLERÂNCIA (Metro não é byte-determinístico); o script mede o valor vivo e falha se sair da faixa.",
+    "note": "Entry-JS \"eager\" carregado no 1º paint. moduleCount (nº de `__d(`) é EXATO e independe da ordem — a grandeza de budget do JS (code-split futuro a reduz de forma medível). eagerBytes/eagerGzipBytes/eagerBrotliBytes são NOMINAL ± TOLERÂNCIA (Metro não é byte-determinístico); o script mede o valor vivo e falha se sair da faixa. O gzip/brotli é o TAMANHO DE TRANSFER do 1º paint (ver firstPaintTransferBytes).",
     "glob": "_expo/static/js/web/entry-*.js",
     "moduleCount": 837,
     "eagerBytes": {
-      "nominal": 1312001,
+      "nominal": 1314270,
       "tolerance": 1024
     },
     "eagerGzipBytes": {
-      "nominal": 332520,
+      "nominal": 332884,
       "tolerance": 2048
+    },
+    "eagerBrotliBytes": {
+      "nominal": 262639,
+      "tolerance": 1024
     }
   },
   "assets": {
     "frontierWasm": {
       "path": "app/dist/assets/web/generated/wasm-bindgen/index_bg.412b7b84bd6fa8d24314a4bb48d40169.wasm",
       "bytes": 1198888,
-      "gzipBytes": 430849
+      "gzipBytes": 430849,
+      "brotliBytes": 311729
     },
     "readingLiteDb": {
       "path": "app/dist/assets/_assets/data/reading-lite.bfab1458b5b33506ad64ff77f7395e41.sqlite",
       "bytes": 4530176,
-      "gzipBytes": 1728435
+      "gzipBytes": 1728435,
+      "brotliBytes": 1089464
     },
     "lexiconDb": {
       "path": "app/dist/assets/_assets/data/lexicon-sample.ed80b4fb0da94cda4584ab16604f138e.sqlite",
       "bytes": 9502720,
-      "gzipBytes": 2957473
+      "gzipBytes": 2957473,
+      "brotliBytes": 1841054
     },
     "waSqliteFts5": {
       "path": "app/dist/assets/web/vendor/wa-sqlite-fts5/wa-sqlite.6a09cc3e685430e6e8cec82e0e4132fb.wasm",
       "bytes": 666267,
-      "gzipBytes": 327579
+      "gzipBytes": 327579,
+      "brotliBytes": 282578
     }
   },
   "totals": {
     "stableAssetsBytes": 15898051,
     "stableAssetsGzipBytes": 5444336,
-    "nominalTotalBytes": 17210052,
-    "nominalTotalGzipBytes": 5776856
+    "stableAssetsBrotliBytes": 3524825,
+    "nominalTotalBytes": 17212321,
+    "nominalTotalGzipBytes": 5777220,
+    "nominalTotalBrotliBytes": 3787464
   }
 }
