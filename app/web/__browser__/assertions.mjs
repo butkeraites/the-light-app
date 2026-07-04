@@ -800,6 +800,42 @@ async function runSettingsCta(ctx) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
+// Fluxo (F6.7): SELETOR de provedor nos painéis ESTUDO e CONVERSA — des-mock. Abre cada painel
+// pela ação por-versículo e assevera que o SELETOR de provedor renderiza (chip `mock` default
+// offline + um chip de provedor BYOK real), provando que Study/Chat deixaram de hardcodar o
+// mock e agora expõem a escolha de provedor (a chave BYOK é lida sob demanda no envio real —
+// NÃO exercitado aqui: sem chave/rede, determinístico). Não envia (só abre + verifica o cromo).
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+async function runStudyChatSelector(ctx) {
+  const { page } = ctx;
+
+  // ── ESTUDO: abre via verse-study, assevera o seletor (mock default + provedor real). ──
+  await goto(ctx, '/read/43/3');
+  await waitBodyIncludes(page, KJV_JOHN_3_16);
+  await clickSel(page, q('verse-16'));
+  await waitSel(page, q('verse-study'));
+  await clickSel(page, q('verse-study'));
+  await waitSel(page, q('study-provider-mock'), RENDER_TIMEOUT_MS); // seletor: `mock` default offline
+  await waitSel(page, q('study-provider-anthropic'), ACTION_TIMEOUT_MS); // + chip BYOK real
+  await waitSel(page, q('study-submit'), ACTION_TIMEOUT_MS); // painel abriu por inteiro
+  await assertNoForbidden(ctx, 'study-chat-selector/study');
+  ctx.log('  [study-chat] painel de ESTUDO abre com seletor de provedor (mock default + BYOK reais)');
+
+  // ── CONVERSA: `goto` fresco RESETA a UI (sem depender de fechar o modal); abre via verse-chat. ──
+  await goto(ctx, '/read/43/3');
+  await waitBodyIncludes(page, KJV_JOHN_3_16);
+  await clickSel(page, q('verse-16'));
+  await waitSel(page, q('verse-chat'));
+  await clickSel(page, q('verse-chat'));
+  await waitSel(page, q('chat-provider-mock'), RENDER_TIMEOUT_MS); // seletor: `mock` default offline
+  await waitSel(page, q('chat-provider-anthropic'), ACTION_TIMEOUT_MS); // + chip BYOK real
+  await waitSel(page, q('chat-send'), ACTION_TIMEOUT_MS); // painel abriu por inteiro
+  await assertNoForbidden(ctx, 'study-chat-selector/chat');
+  ctx.log('  [study-chat] painel de CONVERSA abre com seletor de provedor (mock default + BYOK reais)');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
 // Fluxo 6 (F6.2): IA REACHABILITY — Ask c/ chave DUMMY; registra o alcance por provedor.
 //   401 = alcança o provedor (CORS ok) · CORS-wall = barrado (R7, esperado até F6.8).
 //   Falha SÓ se o app TRAVAR / engolir a falha em silêncio.
@@ -1037,6 +1073,9 @@ export const flows = [
   // F6.6: CTA "configurar provedor" (AiProviderNotice) → tela de AJUSTES (/settings). Roda com
   // `goto` fresco (cofre de sessão vazio) ANTES do ai-reachability (que configura chaves dummy).
   { name: 'settings', run: runSettingsCta },
+  // F6.7: Study/Chat des-mockados — o seletor de provedor abre em ambos (mock default + BYOK).
+  // Roda com goto fresco (offline, sem chave/rede); não envia — só prova o cromo do seletor.
+  { name: 'study-chat-selector', run: runStudyChatSelector },
   { name: 'ai-reachability', run: runAiReachability },
   // F6.3: roda SÓ sob SMOKE_WASM_WRONG_MIME=1 (dist) — o driver filtra os fluxos (ver
   // smoke.browser.mjs). Sob o flag, ESTE é o ÚNICO fluxo; sem o flag, ele é EXCLUÍDO.
