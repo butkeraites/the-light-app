@@ -4,8 +4,8 @@
 // NENHUM provedor de IA está configurado (nem chave BYOK de Claude/GPT/Gemini nem Ollama no
 // cofre), o painel exibe este AVISO CLARO E ACIONÁVEL — em vez de um erro cru ou tela vazia que
 // pareça "app quebrado". Diz que o recurso usa IA, como configurar um provedor (BYOK) e um
-// botão que leva à tela SOBRE (onde a configuração é explicada). Reassegura, ainda, que os
-// recursos OFFLINE (leitura/busca/notas/planos) funcionam sem provedor e sem conta.
+// botão que leva à tela de AJUSTES (F6.6 — hub canônico de chave BYOK, com campos por provedor).
+// Reassegura, ainda, que os recursos OFFLINE (leitura/busca/notas/planos) funcionam sem provedor.
 //
 // OFFLINE-FIRST / BYOK / anti-alucinação: este componente é 100% CROMO — não lê chave/valor,
 // não toca rede, não exibe texto bíblico. Só o hook `useConfiguredAiProviders` consulta o cofre,
@@ -59,8 +59,8 @@ export function useConfiguredAiProviders(active: boolean): { checked: boolean; p
 
 /**
  * Aviso "sem provedor de IA configurado" + CTA. `onConfigure` deve fechar o painel e navegar à
- * tela SOBRE (onde a configuração BYOK é explicada) — o painel injeta o handler, pois é ele
- * quem detém o `onClose`/navegação.
+ * tela de AJUSTES (F6.6 — onde a chave BYOK é inserida, campos por provedor) — o painel injeta o
+ * handler, pois é ele quem detém o `onClose`/navegação.
  */
 export function AiProviderNotice({ onConfigure }: { onConfigure: () => void }) {
   const { colors } = useTheme();

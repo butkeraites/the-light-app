@@ -87,10 +87,10 @@ export function ReaderChatPanel({
   const { checked: providersChecked, providers: providersWithKey } = useConfiguredAiProviders(visible);
   const showNoProviderNotice = providersChecked && providersWithKey.length === 0;
 
-  // F5.37: leva à tela SOBRE (config BYOK explicada). Fecha o painel antes de navegar.
+  // F6.6: leva à tela de AJUSTES (hub canônico de chave BYOK, campos por provedor). Fecha antes.
   function onConfigureProvider() {
     onClose();
-    router.push('/about');
+    router.push('/settings');
   }
 
   // Ao trocar de passagem (nova âncora) ou fechar, limpa a conversa inteira — o histórico

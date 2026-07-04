@@ -12,6 +12,7 @@
   "noteF535": "F5.35 (ADR-0055): re-baseline DELIBERADO/justificado — +1 rota EAGER (tela SOBRE/créditos/licenças). (a) ESTRUTURAL moduleCount 839 → 840 (+1 módulo eager EXATO, determinístico em 3 exports IDÊNTICOS): a nova rota `app/app/about.tsx` (créditos/licenças das 4 fontes embarcadas — KJV/Almeida domínio público, OpenBible CC-BY, STEP/Tyndale CC BY 4.0 — + princípios offline-first/BYOK/anti-alucinação + provedores de IA + atalho de backup) entra no require.context do expo-router (web `output: static` ⇒ todas as rotas são eager no entry). O painel `SyncSettings` que ela REUSA segue `import()` SOB DEMANDA (chunk ASYNC, NÃO eager) — só a rota leve pesa. NÃO é regressão: é a feature (tela Sobre). (b) BYTES: a rota + ~18 chaves de CROMO (PT+EN, incluindo as 2 atribuições CC-BY verbatim idênticas pt/en) somam ~10,4 KB raw / ~1,7 KB brotli ao entry: eagerBytes 1.330.402 → 1.340.803; eagerGzipBytes 336.848 → 338.708; eagerBrotliBytes 266.106 → 267.845. Nominais re-centrados nos valores medidos em 3 exports DETERMINÍSTICOS (idênticos); tolerâncias INALTERADAS. transferHeadline segue eagerGzip/eagerBrotli. Espelhado em `scripts/measure-web-bundle.sh` (nota F5.35).",
   "noteF536": "F5.36 (ADR-0056): re-baseline DELIBERADO/justificado — SÓ o asset ON-DEMAND `readingLiteDbBytes` 4.530.176 → 40.308.736 B (+35,78 MB). O `reading-lite.sqlite` deixou de ser um SAMPLE de dev de 3 livros (Gênesis/Salmos/João) e virou a Bíblia COMPLETA: 66 livros × 2 traduções (KJV domínio público + Almeida 1911), corrigindo o bug reportado 'Mateus 1 indisponível' e cobrindo leitura/busca(FTS5)/xref na Bíblia inteira. NÃO é regressão de 1º paint: este DB é carregado ON-DEMAND (fetch → OPFS, F5.3), NUNCA no entry EAGER — moduleCount fica 840 EXATO (verificado no export) e eagerBytes/gzip/brotli do entry NÃO mudam (transferHeadline inalterado). O léxico segue AMOSTRADO (`lexiconDbBytes` 9.502.720 B inalterado; {Gn,Sl,Jo}; completo ~90MB = follow-up F5.38, on-demand + AI-gated). Offline-first preservado: asset local, download único cacheado em OPFS, sem rede em runtime para ler. Espelhado em `scripts/measure-web-bundle.sh` (nota F5.36).",
   "noteF537": "F5.37 (ADR-0057): re-baseline DELIBERADO — ESTRUTURAL moduleCount 840 → 841 (+1 módulo eager EXATO): a F5.37 (clareza de UX do gating de IA) adicionou `app/components/AiProviderNotice.tsx` (aviso 'este recurso usa IA — configure um provedor Claude/GPT/Gemini/Ollama em Ajustes' nos 4 painéis de IA + reassurance de que leitura/busca/notas/planos funcionam offline), importado pelas rotas de leitura (eager no web output:static). NÃO é regressão: é a feature. BYTES do entry re-centrados: o componente + ~8 chaves i18n (PT+EN) somam ~4,8 KB raw / ~1,0 KB brotli — eagerBytes 1.340.803 → 1.345.650; eagerGzipBytes 338.708 → 339.903; eagerBrotliBytes 267.845 → 268.816 (medido; export determinístico). Tolerâncias INALTERADAS. A revisão da F5.37 não incluiu perf-budget → a drift (moduleCount E bytes) passou; corrigida aqui junto da F5.38 (Driver autorizado). Follow-up possível: tornar o AiProviderNotice lazy p/ tirá-lo do eager. Espelhado em `scripts/measure-web-bundle.sh` (nota F5.37).",
+  "noteF66": "F6.6 (ADR-0023/0025): re-baseline DELIBERADO/justificado — +1 rota EAGER (tela AJUSTES / chaves BYOK). (a) ESTRUTURAL moduleCount 841 → 842 (+1 módulo eager EXATO): a nova rota `app/app/settings.tsx` — hub canônico de configuração de chave BYOK (uma linha por provedor Claude/GPT/Gemini/Ollama, com status só-NOMES via `listProviders()`, input `secureTextEntry` p/ `setKey`, remover `deleteKey`, e o aviso EXPLÍCITO web-só-sessão ADR-0025) — entra no require.context do expo-router (web output:static ⇒ todas as rotas são eager no entry). NÃO é regressão: é a feature (destrava o CTA 'configurar provedor' dos 4 painéis de IA, que antes ia p/ /about sem campos). (b) BYTES: a rota + ~14 chaves de CROMO (PT+EN) somam ~8,6 KB raw / ~1,4 KB brotli ao entry: eagerBytes 1.345.650 → 1.354.253; eagerGzipBytes 339.903 → 342.700; eagerBrotliBytes 268.816 → 270.266. Nominais re-centrados no CENTRO do flutter medido em exports (raw 1.354.190–1.354.316; gzip 341.813–343.587; brotli 270.160–270.371); tolerâncias INALTERADAS. transferHeadline segue eagerGzip/eagerBrotli. Espelhado em `scripts/measure-web-bundle.sh` (nota F6.6).",
   "exact": {
     "frontierWasmBytes": 1223324,
     "frontierWasmBytesGzip": 440559,
@@ -21,14 +22,14 @@
     "waSqliteFts5Bytes": 666267
   },
   "entry": {
-    "moduleCount": 841,
-    "eagerBytes": { "nominal": 1345650, "tolerance": 1024 },
-    "eagerGzipBytes": { "nominal": 339903, "tolerance": 2048 },
-    "eagerBrotliBytes": { "nominal": 268816, "tolerance": 1024 }
+    "moduleCount": 842,
+    "eagerBytes": { "nominal": 1354253, "tolerance": 1024 },
+    "eagerGzipBytes": { "nominal": 342700, "tolerance": 2048 },
+    "eagerBrotliBytes": { "nominal": 270266, "tolerance": 1024 }
   },
   "transferHeadline": {
-    "firstPaintTransferBytes": 339903,
-    "firstPaintTransferBytesBrotli": 268816
+    "firstPaintTransferBytes": 342700,
+    "firstPaintTransferBytesBrotli": 270266
   },
   "removedAssets": [
     "waSqliteNpm",

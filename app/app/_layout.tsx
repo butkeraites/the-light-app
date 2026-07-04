@@ -98,6 +98,11 @@ function RootNavigator() {
           STEP/Tyndale CC BY 4.0) + princípios (offline-first/BYOK/anti-alucinação) + atalho de
           backup (reusa SyncSettings). 100% CROMO, sem rede/segredo. Header temático + toggles. */}
       <Stack.Screen name="about" options={{ title: t('nav.about'), ...screenChrome }} />
+      {/* F6.6: tela de AJUSTES / chaves BYOK — hub canônico de configuração de chave dos
+          provedores de IA (Claude/GPT/Gemini/Ollama). É onde os 4 CTAs "configurar provedor"
+          (AiProviderNotice) aterrissam. Status só-nomes (`listProviders`), inputs secure, nada
+          vaza/persiste chave web além da sessão (ADR-0025). Header temático + toggles. */}
+      <Stack.Screen name="settings" options={{ title: t('nav.settings'), ...screenChrome }} />
     </Stack>
   );
 }

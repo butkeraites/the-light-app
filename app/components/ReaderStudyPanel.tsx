@@ -167,10 +167,10 @@ export function ReaderStudyPanel({
   const { checked: providersChecked, providers: providersWithKey } = useConfiguredAiProviders(visible);
   const showNoProviderNotice = providersChecked && providersWithKey.length === 0;
 
-  // F5.37: leva à tela SOBRE (config BYOK explicada). Fecha o painel antes de navegar.
+  // F6.6: leva à tela de AJUSTES (hub canônico de chave BYOK, campos por provedor). Fecha antes.
   function onConfigureProvider() {
     onClose();
-    router.push('/about');
+    router.push('/settings');
   }
 
   // Ao trocar de passagem ou fechar, limpa o resultado (nunca persiste texto entre refs).

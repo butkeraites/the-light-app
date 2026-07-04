@@ -132,10 +132,11 @@ export function ReaderAskPanel({
   // F5.37: nenhum provedor de IA configurado (checado, cofre vazio) → aviso claro + CTA.
   const showNoProviderNotice = providersChecked && providersWithKey.length === 0;
 
-  // F5.37: leva à tela SOBRE (onde a config BYOK é explicada). Fecha o painel antes de navegar.
+  // F6.6: leva à tela de AJUSTES (hub canônico de chave BYOK, com campos por provedor). Fecha o
+  // painel antes de navegar. A entrada inline abaixo permanece (complementa; Ajustes é o hub).
   function onConfigureProvider() {
     onClose();
-    router.push('/about');
+    router.push('/settings');
   }
 
   async function onAsk() {

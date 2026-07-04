@@ -230,12 +230,22 @@ const BUDGET = {
   //   corrigida aqui c/ a F5.38. BYTES: +~4,8 KB raw / ~1,0 KB brotli (componente + ~8 chaves i18n);
   //   eagerBytes 1.340.803 -> 1.345.650; gzip 338.708 -> 339.903; brotli 267.845 -> 268.816
   //   (export deterministico; tolerancias INALTERADAS). Follow-up: AiProviderNotice lazy p/ sair do eager.
+  // NOTA F6.6 (ADR-0023/0025) — re-baseline DELIBERADO: +1 rota EAGER (tela AJUSTES / chaves BYOK).
+  //   (a) ESTRUTURAL moduleCount 841 -> 842 (+1 modulo eager EXATO): a nova rota `app/app/settings.tsx`
+  //       (hub canonico de chave BYOK — 1 linha por provedor Claude/GPT/Gemini/Ollama com status
+  //       so-nomes via `listProviders`, input secure `setKey`, remover `deleteKey` + aviso web-so-sessao
+  //       ADR-0025) entra no require.context do expo-router (web output:static = todas as rotas eager).
+  //       NAO e regressao: e a feature (destrava o CTA 'configurar provedor' dos 4 paineis de IA).
+  //   (b) BYTES: a rota + ~14 chaves de CROMO (PT+EN) somam ~8,6 KB raw / ~1,4 KB brotli ao entry.
+  //       Nominais re-centrados no centro do flutter medido em exports (raw 1.354.190-1.354.316; gzip
+  //       341.813-343.587; brotli 270.160-270.371); tolerancias INALTERADAS. Espelhado em
+  //       `loop/perf/web-bundle-budget.json` (nota `noteF66`).
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 841,
-    eagerBytes: { nominal: 1345650, tolerance: 1024 },
-    eagerGzipBytes: { nominal: 339903, tolerance: 2048 },
-    eagerBrotliBytes: { nominal: 268816, tolerance: 1024 },
+    moduleCount: 842,
+    eagerBytes: { nominal: 1354253, tolerance: 1024 },
+    eagerGzipBytes: { nominal: 342700, tolerance: 2048 },
+    eagerBrotliBytes: { nominal: 270266, tolerance: 1024 },
   },
 };
 

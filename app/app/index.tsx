@@ -237,6 +237,19 @@ export default function HomeScreen() {
       >
         {t('home.about')}
       </Link>
+
+      {/* F6.6: entrada para a tela de AJUSTES / chaves BYOK — hub canônico onde o usuário
+          configura as chaves dos provedores de IA (Claude/GPT/Gemini/Ollama). Recursos offline
+          seguem sem chave; só a IA precisa dela. Renderizada nas duas plataformas. */}
+      <Link
+        href="/settings"
+        style={styles.readLink}
+        testID="open-settings"
+        accessibilityRole="link"
+        accessibilityLabel={t('a11y.openSettings')}
+      >
+        {t('home.settings')}
+      </Link>
     </View>
   );
 }

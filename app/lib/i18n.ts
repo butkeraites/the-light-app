@@ -359,7 +359,29 @@ export type MessageKey =
   // a tela de leitura mostra esta mensagem + o botão de retry, em vez de um spinner infinito
   // silencioso. Só CROMO (mensagem de UI + rótulo de botão) — nenhum texto bíblico.
   | 'wasm.loadError'
-  | 'wasm.retry';
+  | 'wasm.retry'
+  // ─── CROMO da tela de AJUSTES / CHAVES BYOK (F6.6) ───────────────────────────────────
+  // Hub canônico de configuração de chave BYOK: uma linha por provedor (anthropic/openai/
+  // gemini/ollama) com status (só NOMES via `listProviders()`, nunca valores), entrada
+  // `secureTextEntry` p/ salvar (`setKey`) e botão remover (`deleteKey`). É onde os 4 CTAs
+  // "configurar provedor" (AiProviderNotice) aterrissam. Só CROMO aqui: a chave NUNCA passa
+  // por `t()` nem é exibida; o `{provider}` é o id técnico do provedor (dado, interpolado).
+  // `settings.keyStorageNote` deixa EXPLÍCITA a realidade da chave: web = só-sessão (perdida
+  // no reload, ADR-0025); nativo = cofre seguro do aparelho (Keychain/Keystore).
+  | 'home.settings'
+  | 'nav.settings'
+  | 'a11y.openSettings'
+  | 'a11y.settingsSaveKey'
+  | 'a11y.settingsRemoveKey'
+  | 'settings.title'
+  | 'settings.intro'
+  | 'settings.keyStorageNote'
+  | 'settings.providersTitle'
+  | 'settings.statusConfigured'
+  | 'settings.statusNotConfigured'
+  | 'settings.keyPlaceholder'
+  | 'settings.saveKey'
+  | 'settings.removeKey';
 
 // Catálogo PORTUGUÊS (default do app). "The Light" é o NOME do produto (marca),
 // idêntico nos dois idiomas de propósito.
@@ -474,7 +496,7 @@ const pt: Record<MessageKey, string> = {
   'compare.anchorTitle': 'Passagem (texto bíblico) — âncora comum',
   'compare.consistencyOk': '✓ Mesma passagem do acervo em todas as {count} colunas',
   'compare.consistencyBad': '⚠ Passagens divergentes entre as colunas',
-  'compare.columnNoKey': 'Sem chave para este provedor (BYOK). Configure em Sobre.',
+  'compare.columnNoKey': 'Sem chave para este provedor (BYOK). Configure em Ajustes.',
   'compare.disclaimer':
     'IA — confira nas Escrituras. O texto bíblico (âncora) vem do seu acervo local (verbatim), idêntico para todos os modelos; a IA apenas interpreta. Custo estimado indisponível (a fronteira não o expõe).',
   'study.title': 'Estudo · {source}',
@@ -521,7 +543,7 @@ const pt: Record<MessageKey, string> = {
   'a11y.chatField': 'Campo de conversa sobre a passagem',
   'a11y.compareField': 'Campo de pergunta para comparar entre provedores',
   'a11y.tavilyKey': 'Chave Tavily (session-only)',
-  'a11y.aiConfigure': 'Abrir a tela Sobre para configurar um provedor de IA (BYOK)',
+  'a11y.aiConfigure': 'Abrir a tela de Ajustes para configurar um provedor de IA (BYOK)',
   // ─── Componentes de leitura restantes (F5.16) — só CROMO (ver nota na união de chaves) ─
   'common.close': 'Fechar',
   'xref.title': 'Referências cruzadas — {source}',
@@ -634,6 +656,23 @@ const pt: Record<MessageKey, string> = {
   'wasm.loadError':
     'Não foi possível carregar o mecanismo de leitura. Verifique a conexão com o app e tente de novo.',
   'wasm.retry': 'Tentar de novo',
+  // ─── Ajustes / chaves BYOK (F6.6) — só CROMO (ver nota na união de chaves) ────────────
+  'home.settings': 'Ajustes e chaves →',
+  'nav.settings': 'Ajustes',
+  'a11y.openSettings': 'Abrir a tela de Ajustes para configurar chaves de IA (BYOK)',
+  'a11y.settingsSaveKey': 'Salvar a chave do provedor {provider}',
+  'a11y.settingsRemoveKey': 'Remover a chave do provedor {provider}',
+  'settings.title': 'Ajustes e chaves de IA',
+  'settings.intro':
+    'Configure aqui as chaves dos provedores de IA (BYOK). Cada recurso de IA — Perguntar, Estudo, Comparar e Conversa — usa a chave que você guardar. Os recursos offline (leitura, busca, notas, planos) não precisam de chave.',
+  'settings.keyStorageNote':
+    'No navegador, as chaves ficam só nesta sessão e são perdidas ao recarregar (ADR-0025); no app, ficam no cofre seguro do aparelho (Keychain/Keystore). Nunca são registradas nem exibidas — só viajam na chamada ao provedor que você escolher.',
+  'settings.providersTitle': 'Provedores de IA',
+  'settings.statusConfigured': 'Configurado',
+  'settings.statusNotConfigured': 'Sem chave',
+  'settings.keyPlaceholder': 'Chave do provedor "{provider}"',
+  'settings.saveKey': 'Salvar chave',
+  'settings.removeKey': 'Remover chave',
 };
 
 // Catálogo ENGLISH. As MESMAS chaves de `pt` (paridade forçada pelo tipo).
@@ -748,7 +787,7 @@ const en: Record<MessageKey, string> = {
   'compare.anchorTitle': 'Passage (biblical text) — common anchor',
   'compare.consistencyOk': '✓ Same passage from the library across all {count} columns',
   'compare.consistencyBad': '⚠ Divergent passages across columns',
-  'compare.columnNoKey': 'No key for this provider (BYOK). Set it up in About.',
+  'compare.columnNoKey': 'No key for this provider (BYOK). Set it up in Settings.',
   'compare.disclaimer':
     'AI — verify against Scripture. The biblical text (anchor) comes from your local library (verbatim), identical for all models; the AI only interprets. Estimated cost unavailable (the boundary does not expose it).',
   'study.title': 'Study · {source}',
@@ -795,7 +834,7 @@ const en: Record<MessageKey, string> = {
   'a11y.chatField': 'Conversation field about the passage',
   'a11y.compareField': 'Question field to compare across providers',
   'a11y.tavilyKey': 'Tavily key (session-only)',
-  'a11y.aiConfigure': 'Open the About screen to set up an AI provider (BYOK)',
+  'a11y.aiConfigure': 'Open the Settings screen to set up an AI provider (BYOK)',
   // ─── Remaining reading components (F5.16) — CHROME only (see note on the key union) ────
   'common.close': 'Close',
   'xref.title': 'Cross references — {source}',
@@ -908,6 +947,23 @@ const en: Record<MessageKey, string> = {
   'wasm.loadError':
     'The reading engine could not be loaded. Check the app connection and try again.',
   'wasm.retry': 'Try again',
+  // ─── Settings / BYOK keys (F6.6) — CHROME only (see note on the key union) ────────────
+  'home.settings': 'Settings & keys →',
+  'nav.settings': 'Settings',
+  'a11y.openSettings': 'Open the Settings screen to configure AI keys (BYOK)',
+  'a11y.settingsSaveKey': 'Save the key for provider {provider}',
+  'a11y.settingsRemoveKey': 'Remove the key for provider {provider}',
+  'settings.title': 'AI settings & keys',
+  'settings.intro':
+    'Set up your AI provider keys (BYOK) here. Each AI feature — Ask, Study, Compare and Conversation — uses the key you save. Offline features (reading, search, notes, plans) need no key.',
+  'settings.keyStorageNote':
+    'In the browser, keys stay only in this session and are lost on reload (ADR-0025); in the app, they live in the device secure vault (Keychain/Keystore). They are never logged or displayed — they only travel in the call to the provider you choose.',
+  'settings.providersTitle': 'AI providers',
+  'settings.statusConfigured': 'Configured',
+  'settings.statusNotConfigured': 'No key',
+  'settings.keyPlaceholder': 'Key for provider "{provider}"',
+  'settings.saveKey': 'Save key',
+  'settings.removeKey': 'Remove key',
 };
 
 /** Catálogos por idioma (uma fonte de verdade de texto de UI). */

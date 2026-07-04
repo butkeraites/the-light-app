@@ -743,6 +743,63 @@ async function runImportFresh(ctx) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
+// Fluxo (F6.6): CTA "configurar provedor" → TELA DE AJUSTES (/settings). Abre um painel de IA
+// SEM nenhum provedor configurado (cofre de sessão vazio após o `goto` fresco), clica no CTA do
+// AiProviderNotice e assevera que ATERRISSA em /settings (a tela renderiza + a URL muda), com os
+// 4 provedores listados. Antes da F6.6 o CTA levava a /about (informativo, sem campos) — beco sem
+// saída. NENHUMA chave é inserida aqui (só o ROTEAMENTO + render); se exercitasse o input, seria
+// só com chave DUMMY, JAMAIS real. Status é só-nome (`listProviders`) — nenhum valor é observado.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+async function runSettingsCta(ctx) {
+  const { page } = ctx;
+  // `goto` fresco reinstancia o JS (cofre de sessão in-memory zera) → nenhum provedor configurado.
+  await goto(ctx, '/read/43/3');
+  await waitBodyIncludes(page, KJV_JOHN_3_16);
+  await clickSel(page, q('verse-16'));
+  await waitSel(page, q('verse-ask'));
+  await clickSel(page, q('verse-ask')); // abre o ReaderAskPanel
+
+  // Sem provedor configurado → o aviso "sem provedor de IA" (+ CTA) aparece.
+  try {
+    await waitSel(page, q('ai-provider-notice'), RENDER_TIMEOUT_MS);
+  } catch {
+    const body = (await bodyText(page)).replace(/\s+/g, ' ').slice(0, 400);
+    throw new Error(
+      `settings-cta: o aviso "sem provedor" (ai-provider-notice) NÃO apareceu no painel de IA ` +
+        `sem provedor configurado.\n  body[0..400]="${body}"`,
+    );
+  }
+  await clickSel(page, q('ai-provider-configure')); // CTA → router.push('/settings')
+
+  // Aterrissa em /settings: a tela renderiza (settings-screen) E a URL passa a conter /settings.
+  try {
+    await waitSel(page, q('settings-screen'), RENDER_TIMEOUT_MS);
+  } catch {
+    const body = (await bodyText(page)).replace(/\s+/g, ' ').slice(0, 400);
+    throw new Error(
+      `settings-cta: após o CTA "configurar provedor", a tela /settings NÃO renderizou ` +
+        `(settings-screen ausente) — o CTA não roteou p/ Ajustes.\n  body[0..400]="${body}"`,
+    );
+  }
+  const url = page.url();
+  if (!/\/settings(\b|\/|\?|#|$)/.test(url)) {
+    throw new Error(`settings-cta: CTA não navegou p/ /settings (url atual="${url}").`);
+  }
+
+  // Os 4 provedores BYOK aparecem listados (status só-nome; nunca valores).
+  for (const p of ['anthropic', 'openai', 'gemini', 'ollama']) {
+    try {
+      await waitSel(page, q(`settings-provider-${p}`), ACTION_TIMEOUT_MS);
+    } catch {
+      throw new Error(`settings-cta: a linha do provedor "${p}" (settings-provider-${p}) não renderizou em /settings.`);
+    }
+  }
+  await assertNoForbidden(ctx, 'settings');
+  ctx.log('  [settings] CTA "configurar provedor" aterrissou em /settings; 4 provedores listados (status só-nomes, sem valores)');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
 // Fluxo 6 (F6.2): IA REACHABILITY — Ask c/ chave DUMMY; registra o alcance por provedor.
 //   401 = alcança o provedor (CORS ok) · CORS-wall = barrado (R7, esperado até F6.8).
 //   Falha SÓ se o app TRAVAR / engolir a falha em silêncio.
@@ -977,6 +1034,9 @@ export const flows = [
   // F6.11: import de backup numa OPFS VAZIA (aparelho novo) — o caminho que o round-trip da F6.2
   // não cobria (contexto principal já tinha userdata). Roda após `export-import` (reusa o backup).
   { name: 'import-fresh', run: runImportFresh },
+  // F6.6: CTA "configurar provedor" (AiProviderNotice) → tela de AJUSTES (/settings). Roda com
+  // `goto` fresco (cofre de sessão vazio) ANTES do ai-reachability (que configura chaves dummy).
+  { name: 'settings', run: runSettingsCta },
   { name: 'ai-reachability', run: runAiReachability },
   // F6.3: roda SÓ sob SMOKE_WASM_WRONG_MIME=1 (dist) — o driver filtra os fluxos (ver
   // smoke.browser.mjs). Sob o flag, ESTE é o ÚNICO fluxo; sem o flag, ele é EXCLUÍDO.

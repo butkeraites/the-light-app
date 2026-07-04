@@ -431,6 +431,9 @@ async function main() {
     // F6.3: cromo do gate do wasm da fronteira (WasmGate) — mensagem de erro de init + rótulo
     // do botão de retry. Só CROMO (nenhum texto bíblico).
     'wasm',
+    // F6.6: cromo da tela de AJUSTES / chaves BYOK — título, rótulos por-provedor, salvar/
+    // remover, status (só-nomes) e o aviso web-só-sessão (ADR-0025). Nenhuma chave/valor.
+    'settings',
   ]);
   for (const key of MESSAGE_KEYS) {
     const ns = key.split('.')[0];

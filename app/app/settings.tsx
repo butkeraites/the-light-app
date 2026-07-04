@@ -1,0 +1,294 @@
+// app/app/settings.tsx — F6.6 (ADR-0023/0025 BYOK; molde about.tsx F5.35 + bloco de chave do Ask F2.5)
+//
+// TELA DE AJUSTES / CHAVES BYOK. É o HUB CANÔNICO onde o usuário configura as chaves dos
+// provedores de IA (Claude/GPT/Gemini/Ollama). Antes, a entrada de chave só existia INLINE no
+// painel Perguntar (Ask), e o CTA "configurar provedor" dos 4 painéis de IA (AiProviderNotice)
+// levava à tela SOBRE — que só EXPLICA o BYOK, sem campos (beco sem saída). Agora os 4 CTAs
+// aterrissam AQUI, e Estudo/Comparar/Conversa ganham um lugar para inserir a chave.
+//
+// ANTI-VAZAMENTO (LEI, ADR-0023): o STATUS de cada provedor vem de `listProviders()` — só os
+// NOMES dos provedores COM chave, NUNCA o valor. Os inputs são `secureTextEntry`; nada loga,
+// ecoa ou exibe uma chave. `setKey`/`deleteKey` são as ÚNICAS funções que tocam o valor.
+//
+// REALIDADE DA CHAVE (ADR-0025): no WEB o cofre é só-de-sessão (perdido no reload); no NATIVO,
+// secure-store do device (Keychain/Keystore). Isso fica EXPLÍCITO na UI (`settings.keyStorageNote`)
+// — nenhuma persistência nova de chave web é introduzida aqui.
+//
+// OFFLINE-FIRST / anti-alucinação: 100% CROMO — nenhum texto bíblico, nenhuma rede (o keystore é
+// I/O local: secure-store no device / Map de sessão no web). i18n via `t()` (PT/EN); interativos
+// com role+label+alvo de toque; cores por TOKENS de tema (zero hex). Reusa `SUPPORTED_PROVIDERS`
+// e as funções do keystore compartilhado (mesma superfície nativa/web).
+//
+// NOTA DE DUPLICAÇÃO (deliberada): o bloco de chave do Ask (`ReaderAskPanel.tsx`) usa um SELETOR
+// (chips) + 1 input p/ o provedor ativo; esta tela usa UMA LINHA POR PROVEDOR. As duas UIs são
+// estruturalmente distintas, então a regra "só-nomes / secure-entry / nunca-vazar-valor" é
+// espelhada aqui em vez de extrair um componente que serviria mal os dois formatos.
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+
+import { useI18n, type TranslateFn } from '../lib/i18n';
+import { deleteKey, listProviders, setKey, SUPPORTED_PROVIDERS } from '../lib/keystore';
+import { useTheme, type ThemeColors } from '../lib/theme';
+
+export default function SettingsScreen() {
+  const { t } = useI18n();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // NOMES dos provedores COM chave no cofre (nunca os valores) — só p/ o status por-linha.
+  const [providersWithKey, setProvidersWithKey] = useState<string[]>([]);
+
+  // (Re)descobre quais provedores têm chave. Best-effort, offline-first: falha silenciosa
+  // → tratamos como "nenhum configurado". Chamado no mount e após cada salvar/remover.
+  const refresh = useCallback(async () => {
+    try {
+      const withKey = await listProviders();
+      setProvidersWithKey(withKey);
+    } catch {
+      setProvidersWithKey([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const withKey = await listProviders();
+        if (alive) setProvidersWithKey(withKey);
+      } catch {
+        if (alive) setProvidersWithKey([]);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  return (
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      testID="settings-screen"
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text style={styles.title} accessibilityRole="header">
+        {t('settings.title')}
+      </Text>
+      <Text style={styles.intro}>{t('settings.intro')}</Text>
+
+      {/* Realidade da chave (web só-sessão / nativo cofre) — EXPLÍCITA, via t() (ADR-0025). */}
+      <View style={styles.noteBox}>
+        <Text style={styles.note}>{t('settings.keyStorageNote')}</Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle} accessibilityRole="header">
+          {t('settings.providersTitle')}
+        </Text>
+        {/* Uma linha por provedor BYOK real (anthropic/openai/gemini/ollama). O status vem de
+            `listProviders()` (só NOMES); o input é secure; o valor NUNCA é lido de volta. */}
+        {SUPPORTED_PROVIDERS.map((provider) => (
+          <ProviderRow
+            key={provider}
+            provider={provider}
+            configured={providersWithKey.includes(provider)}
+            onChanged={refresh}
+            styles={styles}
+            colors={colors}
+            t={t}
+          />
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
+
+/**
+ * Linha de um provedor: nome + status (só-nome), input `secureTextEntry` p/ salvar (`setKey`),
+ * e botão remover (`deleteKey`) quando há chave. O rascunho da chave é estado LOCAL, some ao
+ * salvar e NUNCA é logado/exibido em claro (input mascarado). Ao salvar/remover, chama
+ * `onChanged` p/ o pai re-consultar os NOMES com chave (nunca valores).
+ */
+function ProviderRow({
+  provider,
+  configured,
+  onChanged,
+  styles,
+  colors,
+  t,
+}: {
+  provider: string;
+  configured: boolean;
+  onChanged: () => Promise<void>;
+  styles: ReturnType<typeof makeStyles>;
+  colors: ThemeColors;
+  t: TranslateFn;
+}) {
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const saveDisabled = busy || draft.trim().length === 0;
+
+  async function onSave() {
+    if (saveDisabled) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      // ÚNICO ponto que toca o valor da chave: entregue direto a `setKey` (cofre). O rascunho
+      // é limpo em seguida; o valor nunca é relido/exibido/logado.
+      await setKey(provider, draft.trim());
+      setDraft('');
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRemove() {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteKey(provider);
+      setDraft('');
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <View style={styles.row} testID={`settings-provider-${provider}`}>
+      <View style={styles.rowHeader}>
+        {/* Nome do provedor = id técnico (dado), não cromo traduzível. */}
+        <Text style={styles.providerName}>{provider}</Text>
+        <Text
+          style={configured ? styles.statusOn : styles.statusOff}
+          testID={`settings-status-${provider}`}
+        >
+          {configured ? t('settings.statusConfigured') : t('settings.statusNotConfigured')}
+        </Text>
+      </View>
+
+      <TextInput
+        style={styles.keyInput}
+        value={draft}
+        onChangeText={setDraft}
+        placeholder={t('settings.keyPlaceholder', { provider })}
+        placeholderTextColor={colors.muted}
+        secureTextEntry
+        autoCapitalize="none"
+        autoCorrect={false}
+        editable={!busy}
+        testID={`settings-key-input-${provider}`}
+        accessibilityLabel={t('a11y.byokKey', { provider })}
+      />
+
+      <View style={styles.rowActions}>
+        <Pressable
+          style={[styles.btn, saveDisabled ? styles.btnDisabled : styles.btnPrimary]}
+          onPress={onSave}
+          disabled={saveDisabled}
+          testID={`settings-key-save-${provider}`}
+          accessibilityRole="button"
+          accessibilityLabel={t('a11y.settingsSaveKey', { provider })}
+        >
+          {busy ? (
+            <ActivityIndicator color={colors.chipActiveText} />
+          ) : (
+            <Text style={styles.btnText}>{t('settings.saveKey')}</Text>
+          )}
+        </Pressable>
+
+        {configured ? (
+          <Pressable
+            style={styles.btnGhost}
+            onPress={onRemove}
+            disabled={busy}
+            testID={`settings-key-remove-${provider}`}
+            accessibilityRole="button"
+            accessibilityLabel={t('a11y.settingsRemoveKey', { provider })}
+          >
+            <Text style={styles.btnGhostText}>{t('settings.removeKey')}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+    </View>
+  );
+}
+
+// Estilos derivados dos TOKENS de tema (zero hex hardcoded — molde about.tsx / ReaderAskPanel).
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    content: { padding: 20, gap: 14 },
+    title: { fontSize: 24, fontWeight: '700', color: colors.text },
+    intro: { fontSize: 15, color: colors.text, lineHeight: 22 },
+    noteBox: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      padding: 12,
+      backgroundColor: colors.headerBackground,
+    },
+    note: { fontSize: 13, color: colors.muted, lineHeight: 19 },
+    section: {
+      gap: 12,
+      paddingTop: 14,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.divider,
+    },
+    sectionTitle: { fontSize: 17, fontWeight: '700', color: colors.text },
+    row: {
+      gap: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      padding: 14,
+    },
+    rowHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    providerName: { fontSize: 16, fontWeight: '600', color: colors.text },
+    statusOn: { fontSize: 13, fontWeight: '600', color: colors.accent },
+    statusOff: { fontSize: 13, color: colors.muted },
+    keyInput: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 14,
+      color: colors.verseText,
+    },
+    rowActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    btn: {
+      paddingHorizontal: 16,
+      paddingVertical: 11,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    btnPrimary: { backgroundColor: colors.chipActiveBg },
+    btnDisabled: { backgroundColor: colors.divider, opacity: 0.6 },
+    btnText: { fontSize: 15, fontWeight: '700', color: colors.chipActiveText },
+    btnGhost: {
+      paddingHorizontal: 16,
+      paddingVertical: 11,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    btnGhostText: { fontSize: 15, fontWeight: '600', color: colors.error },
+    error: { fontSize: 13, color: colors.error, lineHeight: 18 },
+  });
+}
