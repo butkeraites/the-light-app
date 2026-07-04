@@ -446,3 +446,11 @@ Não fabricar busywork. **Próximo:** aguardar input humano (LICENSE · client-i
 - **Reviewer (independente):** **PASSED**. Reproduziu iOS full-green (TLA_SEARCH ok/TLA_DBUP/bateria); cross-check 69 hits == headless (fix real, não trapaça); só os 3 arquivos de self-test no commit; the-light `225b8c9`. **Android on-device PENDENTE device-gated** (build gradle fresco; APK stale — alheio ao código; reportado, não alegado verde).
 - **Resultado:** aceito/arquivado. **TRILHA 1 (verificação real) COMPLETA:** harness browser real (F6.1) + fluxos críticos dev+dist (F6.2) + gate do wasm endurecido (F6.3) + guard de upgrade do DB nativo (F6.4) + self-test on-device verde/paridade (F6.5). Android-run e F5.27 anotados como device-gated no backlog.
 - **Próximo:** F6.11 (bug de produto achado pelo harness: import em OPFS vazia lança NotFound → guarda gracioso + asserção no smoke). Depois Trilha 2 (IA: Ajustes → Study/Chat reais → CORS). Loop LIVE. Próximo ADR livre = ADR-0058.
+
+## Ciclo — 2026-07-04T07:30Z — F6.11 ACEITA (fix import OPFS-vazia) → TRILHA 2 começa (F6.6 Ajustes)
+
+- **Tarefa:** F6.11 (import de backup em OPFS vazia — bug de produto achado pelo harness da F6.2). Não-gate.
+- **Executor:** `23bdc68` — guarda o `getDirectoryHandle({create:false})` (leitura em OPFS vazia → null, padrão de `readFile`/`deleteFile`); escrita segue criando; nada destrutivo. Novo fluxo `TLA_WEB_import-fresh` (importa em `createBrowserContext()` fresco → aceito + nota visível).
+- **Reviewer (independente):** **PASSED**. tsc 0; notes/snapshot/smoke (dev+dist, todos F6.2 + import-fresh) verdes; guarda não-destrutivo (sem removeEntry/overwrite); **revert-provado** (reverter guard → import-fresh VERMELHO com NotFoundError → restaurar → verde); sem órfãos neste run; the-light `225b8c9`; commit só 2 arquivos.
+- **Resultado:** aceito/arquivado. **TRILHA 1 COMPLETA + 1 bug bônus.** F6.12 (teardown de órfãos do harness) anotado como follow-up baixa-prio.
+- **Próximo (TRILHA 2 — completude de IA):** F6.6 (tela dedicada de Ajustes/Chaves BYOK + reroute dos CTAs "configure um provedor" p/ ela; destrava os 4 painéis; aviso web-só-sessão). Depois F6.7 (des-mockar Study/Chat) e F6.8 (CORS honesto + header Anthropic). Loop LIVE. Próximo ADR livre = ADR-0058.

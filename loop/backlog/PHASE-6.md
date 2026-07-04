@@ -62,3 +62,6 @@ Próximo ADR livre = **ADR-0058**.
   green precisa de um build gradle FRESCO (`cd app && npx expo run:android` ou `gradlew :app:installDebug`)
   — o APK debug reusado tem módulo nativo incompatível com o JS atual. iOS já está full-green.
 - **F5.27** (Drive real, client-id GCP) segue deferida.
+- **F6.12 (harness, baixa prio):** `server.mjs` do smoke pode deixar processos expo dev-server órfãos
+  (reparentados PPID=1) sobreviverem ao teardown em alguns runs. Endurecer o teardown p/ reapear o
+  filho expo reparentado. Achado na F6.11 (não-bloqueante; smoke sai 0).
