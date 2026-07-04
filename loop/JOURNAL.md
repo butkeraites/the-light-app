@@ -394,3 +394,16 @@ Não fabricar busywork. **Próximo:** aguardar input humano (LICENSE · client-i
 - **Lição:** o loop testava só headless (Node) — a leitura no browser nunca fora exercitada; agora há repro em Chrome
   headless (`scratchpad/browser-repro`) p/ validar comportamento real do browser. **Follow-up:** um guard de smoke em
   browser real (puppeteer) evitaria essa classe de bug "passa headless, quebra no browser". Próximo ADR livre = ADR-0058.
+
+## Ciclo — 2026-07-04T00:30Z — FASE 6 iniciada (verificação real + completude) — plano humano aprovado
+
+- **Contexto:** o loop validava só HEADLESS → leitura web quebrada por 3 ciclos (F5.36/38/39) sem gate reprovar.
+  Plano aprovado (`~/.claude/plans/nested-popping-origami.md`): guard de smoke em browser REAL primeiro, depois features de IA.
+- **Decisões humanas (defaults aprovados):** ordem verificação→features; chaves web só-de-sessão (explícito em Ajustes);
+  IA no browser habilitada c/ rótulos honestos + header opt-in Anthropic, sem proxy.
+- **Levantamento (pendências):** A) gate humano F5.27 (Drive), doc-PR the-light, resposta LLM real; B) Study/Chat mock-only,
+  sem tela Ajustes, Compare sem entrada de chave, chave web só-sessão, CORS não testado; C) léxico 3-livros + morph_legend vazio;
+  D) `ensureReadingDb` sem check de versão (stale no upgrade), split só-web, import nativo só-colar; E) SEM guard de browser real,
+  R1 (wasm.web.ts engole erro→spinner infinito, dist não provado), R7 (CORS de IA só mock), Android on-device só `parse_reference`.
+- **Backlog:** `loop/backlog/PHASE-6.md` (F6.1–F6.10, 3 trilhas). **Seedada F6.1** (harness de smoke browser real + auto-prova).
+- **Próximo:** executar F6.1 → reviewer. Loop LIVE. Próximo ADR livre = ADR-0058.
