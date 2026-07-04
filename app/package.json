@@ -41,7 +41,8 @@
     "test:web:perf-budget": "../scripts/check-web-bundle-budget.sh",
     "test:web:smoke-dev": "node web/__browser__/smoke.browser.mjs --target=dev",
     "test:web:smoke-dist": "node web/__browser__/smoke.browser.mjs --target=dist",
-    "test:web:smoke": "npm run test:web:smoke-dev && npm run test:web:smoke-dist"
+    "test:web:smoke-wasm-error": "SMOKE_WASM_WRONG_MIME=1 SMOKE_DIST_REUSE=1 node web/__browser__/smoke.browser.mjs --target=dist",
+    "test:web:smoke": "npm run test:web:smoke-dev && npm run test:web:smoke-dist && npm run test:web:smoke-wasm-error"
   },
   "dependencies": {
     "@expo/metro-runtime": "~56.0.15",

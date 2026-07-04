@@ -776,6 +776,73 @@ async function runAiReachability(ctx) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
+// Fluxo (F6.3): UI de ERRO do wasm da FRONTEIRA — falha de init VISÍVEL + retry, nunca spinner
+// infinito. Roda SÓ sob `SMOKE_WASM_WRONG_MIME=1` no dist (o static-server corrompe o CORPO do
+// `index_bg.wasm` da fronteira → `uniffiInitAsync` rejeita). Prova o endurecimento da F6.3:
+//   (a) a falha de init vira UI de ERRO VISÍVEL (mensagem + botão "Tentar de novo") e o spinner
+//       SOME — antes esse mesmo defeito ficava ENGOLIDO como spinner infinito silencioso;
+//   (b) o RETRY re-tenta DE VERDADE: após "consertar" o wasm (control route do static-server),
+//       clicar em "Tentar de novo" re-instancia com bytes válidos e a leitura RECUPERA.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+async function runWasmErrorUi(ctx) {
+  const { page, baseUrl } = ctx;
+  await goto(ctx, '/read/43/3');
+
+  // (a) A falha de init deve virar UI de ERRO VISÍVEL (wasm-error + wasm-retry) — NUNCA um
+  //     spinner infinito. O estouro do timeout aqui É a regressão "erro engolido parece loading".
+  try {
+    await page.waitForFunction(
+      (errSel, retrySel, spinnerSel) => {
+        const errEl = document.querySelector(errSel);
+        const retryEl = document.querySelector(retrySel);
+        const hasErr = errEl != null && (errEl.textContent || '').trim().length > 0;
+        const hasRetry = retryEl != null && (retryEl.textContent || '').trim().length > 0;
+        const spinning = document.querySelector(spinnerSel) != null;
+        return hasErr && hasRetry && !spinning;
+      },
+      { timeout: RENDER_TIMEOUT_MS, polling: 300 },
+      q('wasm-error'),
+      q('wasm-retry'),
+      SPINNER_SELECTOR,
+    );
+  } catch {
+    const body = (await bodyText(page)).replace(/\s+/g, ' ').slice(0, 400);
+    const spinning = await page.evaluate((s) => document.querySelector(s) != null, SPINNER_SELECTOR);
+    throw new Error(
+      `wasm-error-ui: com o wasm da fronteira corrompido, a UI de erro (wasm-error + wasm-retry) NÃO ` +
+        `apareceu em ${RENDER_TIMEOUT_MS}ms` +
+        (spinning ? ' (SPINNER INFINITO ainda presente — a falha continua ENGOLIDA!)' : '') +
+        `.\n  body[0..400]="${body}"`,
+    );
+  }
+  // O gate deve ter BLOQUEADO os children: o texto de leitura NÃO pode ter vazado.
+  const leaked = await page.evaluate((needle) => (document.body?.innerText || '').includes(needle), KJV_JOHN_3_16);
+  if (leaked) {
+    throw new Error('wasm-error-ui: os children de leitura montaram apesar do erro de init (o gate não bloqueou).');
+  }
+  ctx.log('  [wasm-error-ui] init da fronteira falhou → UI de erro VISÍVEL + retry (spinner ausente)');
+
+  // (b) RETRY RECUPERA: "conserta" o wasm no servidor e clica em "Tentar de novo" → children montam.
+  const fix = await fetch(baseUrl + '/__smoke/fix-frontier-wasm');
+  if (!fix.ok) {
+    throw new Error(`wasm-error-ui: control route de conserto respondeu HTTP ${fix.status} (esperado 200).`);
+  }
+  await clickSel(page, q('wasm-retry'));
+  try {
+    await waitBodyIncludes(page, KJV_JOHN_3_16); // espera o texto VERBATIM (e o spinner sumir)
+  } catch {
+    const body = (await bodyText(page)).replace(/\s+/g, ' ').slice(0, 400);
+    throw new Error(
+      `wasm-error-ui: após consertar o wasm e clicar em "Tentar de novo", a leitura NÃO recuperou ` +
+        `(John 3:16 ausente) — o retry NÃO re-tentou de verdade.\n  body[0..400]="${body}"`,
+    );
+  }
+  await assertNoForbidden(ctx, 'wasm-error-ui');
+  ctx.log('  [wasm-error-ui] retry re-tentou de verdade → leitura recuperou (John 3:16 renderizado)');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
 
 export const flows = [
   {
@@ -792,4 +859,7 @@ export const flows = [
   { name: 'plans-persist', run: runPlansPersist },
   { name: 'export-import', run: runExportImport },
   { name: 'ai-reachability', run: runAiReachability },
+  // F6.3: roda SÓ sob SMOKE_WASM_WRONG_MIME=1 (dist) — o driver filtra os fluxos (ver
+  // smoke.browser.mjs). Sob o flag, ESTE é o ÚNICO fluxo; sem o flag, ele é EXCLUÍDO.
+  { name: 'wasm-error-ui', run: runWasmErrorUi },
 ];

@@ -428,6 +428,9 @@ async function main() {
     // F5.35: cromo da tela SOBRE / créditos / licenças (fontes, princípios, provedores) + os
     // DOIS identificadores de licença CC-BY VERBATIM (idênticos pt/en). Nenhum texto bíblico.
     'about',
+    // F6.3: cromo do gate do wasm da fronteira (WasmGate) — mensagem de erro de init + rótulo
+    // do botão de retry. Só CROMO (nenhum texto bíblico).
+    'wasm',
   ]);
   for (const key of MESSAGE_KEYS) {
     const ns = key.split('.')[0];

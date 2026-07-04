@@ -109,7 +109,10 @@ async function startDev() {
 async function startDist() {
   const port = DIST_PORT;
   if (process.env.SMOKE_DIST_REUSE === '1' && fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
-    log('dist: SMOKE_DIST_REUSE=1 — reusando dist existente (NÃO usado pelo loop)');
+    // F6.3: o passo `test:web:smoke-wasm-error` REUSA o dist recém-exportado por `smoke-dist`
+    // (chamado logo antes no `test:web:smoke`) e apenas o re-serve com a fronteira corrompida —
+    // evita um 2º `expo export` (minutos). Se não houver dist, cai no export normal abaixo.
+    log('dist: SMOKE_DIST_REUSE=1 — reusando dist existente (F6.3 wasm-error após smoke-dist)');
   } else {
     log('dist: rm -rf dist && npx expo export --platform web (offline; só assets locais)');
     fs.rmSync(DIST_DIR, { recursive: true, force: true });

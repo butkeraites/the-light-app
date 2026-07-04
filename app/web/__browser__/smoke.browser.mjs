@@ -157,7 +157,18 @@ async function main() {
       },
     };
 
-    for (const flow of flows) {
+    // F6.3: o fluxo `wasm-error-ui` exige o wasm da fronteira CORROMPIDO (SMOKE_WASM_WRONG_MIME=1,
+    // só afeta o static-server do dist) — que QUEBRARIA todos os outros fluxos. Então sob o flag
+    // rodamos SÓ ele; sem o flag, rodamos todos os DEMAIS (fluxos normais da F6.2 seguem verdes).
+    const wasmErrorMode = process.env.SMOKE_WASM_WRONG_MIME === '1';
+    const selectedFlows = wasmErrorMode
+      ? flows.filter((f) => f.name === 'wasm-error-ui')
+      : flows.filter((f) => f.name !== 'wasm-error-ui');
+    if (wasmErrorMode) {
+      log('    modo SMOKE_WASM_WRONG_MIME=1 → só o fluxo wasm-error-ui (fronteira corrompida de propósito)');
+    }
+
+    for (const flow of selectedFlows) {
       try {
         await flow.run(ctx);
         log(`TLA_WEB_${flow.name} ok`);

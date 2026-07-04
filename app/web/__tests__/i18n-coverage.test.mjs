@@ -266,6 +266,9 @@ async function main() {
     // identificadores de licença CC-BY VERBATIM (about.xrefAttribution/about.stepAttribution,
     // idênticos pt/en, travados contra drift por `test:about-attr`). Nenhum texto bíblico.
     'about',
+    // F6.3: cromo do gate do wasm da fronteira (WasmGate) — mensagem de erro de init +
+    // rótulo do botão de retry. Só CROMO (nenhum texto bíblico).
+    'wasm',
   ]);
   for (const key of MESSAGE_KEYS) {
     assert.ok(

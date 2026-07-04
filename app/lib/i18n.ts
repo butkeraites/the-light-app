@@ -353,7 +353,13 @@ export type MessageKey =
   | 'about.offlineFeatures'
   | 'about.aiFeatures'
   | 'about.backupTitle'
-  | 'about.backupHint';
+  | 'about.backupHint'
+  // ─── CROMO do gate do wasm da fronteira (F6.3) ───────────────────────────────────────
+  // Estado de ERRO do pré-aquecimento do wasm (WasmGate): quando o init da fronteira FALHA,
+  // a tela de leitura mostra esta mensagem + o botão de retry, em vez de um spinner infinito
+  // silencioso. Só CROMO (mensagem de UI + rótulo de botão) — nenhum texto bíblico.
+  | 'wasm.loadError'
+  | 'wasm.retry';
 
 // Catálogo PORTUGUÊS (default do app). "The Light" é o NOME do produto (marca),
 // idêntico nos dois idiomas de propósito.
@@ -625,6 +631,9 @@ const pt: Record<MessageKey, string> = {
   'about.backupTitle': 'Backup e sincronização',
   'about.backupHint':
     'Exporte um backup dos seus dados (notas, marcações, progresso) ou ligue a sincronização opcional. Tudo é opt-in; o app funciona 100% offline sem isto.',
+  'wasm.loadError':
+    'Não foi possível carregar o mecanismo de leitura. Verifique a conexão com o app e tente de novo.',
+  'wasm.retry': 'Tentar de novo',
 };
 
 // Catálogo ENGLISH. As MESMAS chaves de `pt` (paridade forçada pelo tipo).
@@ -896,6 +905,9 @@ const en: Record<MessageKey, string> = {
   'about.backupTitle': 'Backup & sync',
   'about.backupHint':
     'Export a backup of your data (notes, highlights, progress) or turn on optional sync. Everything is opt-in; the app works 100% offline without it.',
+  'wasm.loadError':
+    'The reading engine could not be loaded. Check the app connection and try again.',
+  'wasm.retry': 'Try again',
 };
 
 /** Catálogos por idioma (uma fonte de verdade de texto de UI). */

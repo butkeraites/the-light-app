@@ -10,6 +10,12 @@
 //   2) MIME do `.wasm` = `application/wasm` — sem isso o `WebAssembly.instantiateStreaming`
 //      degrada em silêncio no browser. O switch `SMOKE_WASM_WRONG_MIME=1` serve o wasm com
 //      MIME ERRADO de propósito (usado pela F6.3 p/ provar que a guarda pega esse defeito).
+//      NOTA (F6.3): o loader do wasm-bindgen (`generated/wasm-bindgen/index.js`) TOLERA MIME
+//      errado — cai em `arrayBuffer()`+`instantiate()` — então MIME errado sozinho NÃO faz a
+//      FRONTEIRA (`index_bg.wasm`, que gateia a leitura via `useWasmReady`/`WasmGate`) falhar.
+//      Por isso, sob o flag, ALÉM do MIME errado, CORROMPEMOS o CORPO do wasm da FRONTEIRA
+//      (bytes inválidos → `WebAssembly.instantiate` lança) para que a falha de init seja REAL
+//      e a UI de erro+retry do `WasmGate` apareça (marcador de smoke `wasm-error-ui`).
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -144,19 +150,51 @@ function contentTypeFor(file) {
   return MIME[ext] || 'application/octet-stream';
 }
 
+/**
+ * True se `file` é o wasm da FRONTEIRA (`generated/wasm-bindgen/index_bg.<hash>.wasm`), que
+ * gateia a LEITURA no web (`useWasmReady`/`WasmGate`). O expo-export renomeia com hash, mas o
+ * caminho preserva `.../generated/wasm-bindgen/index_bg`. NÃO casa o wa-sqlite (`vendor/…`).
+ */
+function isFrontierWasm(file) {
+  if (path.extname(file).toLowerCase() !== '.wasm') return false;
+  const norm = file.split(path.sep).join('/');
+  return /generated\/wasm-bindgen\/index_bg\b/.test(norm);
+}
+
+/** Corpo INVÁLIDO servido no lugar do wasm da fronteira sob o flag (F6.3) → init falha REAL. */
+const CORRUPT_FRONTIER_WASM = Buffer.from('TLA_SMOKE_CORRUPT_FRONTIER_WASM__not-a-valid-module');
+
 /** Cria (sem escutar) o servidor estático p/ `distDir`. */
 export function createStaticServer(distDir) {
   const root = path.resolve(distDir);
+  const wrongMime = process.env.SMOKE_WASM_WRONG_MIME === '1';
+  // F6.3: quando o wasm da fronteira está sendo corrompido (flag), o smoke pode "consertá-lo"
+  // em runtime via o control route abaixo para provar que o RETRY do WasmGate RECUPERA (novo
+  // init passa → children montam). Estado por-instância; sem efeito quando o flag não está set.
+  let frontierFixed = false;
   return http.createServer((req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
+      // F6.3 control route (só sob o flag): para de corromper a fronteira a partir daqui, para
+      // que o clique em "Tentar de novo" re-instancie com bytes VÁLIDOS e a leitura recupere.
+      if (wrongMime && url.pathname === '/__smoke/fix-frontier-wasm') {
+        frontierFixed = true;
+        res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
+        res.end('ok');
+        return;
+      }
       const file = resolvePath(root, url.pathname);
       if (!file) {
         res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
         res.end('404 Not Found');
         return;
       }
-      const body = fs.readFileSync(file);
+      // F6.3: sob o flag (e antes do "conserto"), o wasm da FRONTEIRA vai com CORPO INVÁLIDO
+      // (MIME errado sozinho não basta — o wasm-bindgen cai em arrayBuffer()+instantiate()).
+      // Bytes inválidos fazem o `WebAssembly.instantiate` lançar → `uniffiInitAsync` rejeita →
+      // UI de erro+retry do gate. Após o control route, serve os bytes REAIS (retry recupera).
+      const corruptFrontier = wrongMime && !frontierFixed && isFrontierWasm(file);
+      const body = corruptFrontier ? CORRUPT_FRONTIER_WASM : fs.readFileSync(file);
       res.writeHead(200, {
         'content-type': contentTypeFor(file),
         'content-length': body.length,
