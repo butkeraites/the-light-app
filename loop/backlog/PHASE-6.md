@@ -48,3 +48,11 @@ Reverter temporariamente o fix `locateFile` (F5.39) em `sqlite-reading-opfs.web.
 fica VERMELHO enquanto todos os `test:web:*` seguem verdes. Prova que o guard pega o que o headless perde.
 
 Próximo ADR livre = **ADR-0058**.
+
+## Achado pela verificação (F6.2) — bug de produto a corrigir
+- **F6.11 — import de backup em OPFS vazio (fresh install) quebra.** `app/web/userdata-opfs.web.ts`
+  L37-38 chamam `getDirectoryHandle(OPFS_ROOT_DIR/OPFS_USERDATA_DIR, {create:false})` SEM guarda →
+  numa OPFS vazia lança `NotFoundError` em vez de "ausente→null" (o caminho gracioso de readFile/
+  deleteFile via `resolveParent(...,false)`). Quebra "importar backup numa instalação limpa". Fix:
+  guardar L37-38 (try/catch → null/empty) + o smoke passa a exercitar o import em OPFS vazia.
+  Achado pelo harness da F6.2 (round-trip provado no contexto principal; caminho de OPFS-vazia não).

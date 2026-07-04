@@ -415,3 +415,12 @@ Não fabricar busywork. **Próximo:** aguardar input humano (LICENSE · client-i
 - **AUTO-PROVA (executor + reviewer, ambos reproduziram):** reverter `locateFile` (F5.39) → `test:web:smoke` VERMELHO ("Invalid base URL", versículo não renderiza) enquanto `test:web:reading` headless VERDE → restaurar → smoke VERDE. O guard pega o que o headless perde.
 - **Reviewer (independente):** **PASSED**. Re-rodou a auto-prova; gates verdes (tsc 0, reading, smoke-dev, smoke-dist com export fresco); determinístico (sem órfãos); Chrome-ausente→vermelho, sem falso verde; the-light `225b8c9`; `.claude/settings.json` não commitado; commit só os 5 `.mjs`+package.json/lock.
 - **Resultado:** aceito/arquivado. **Próximo:** F6.2 (demais fluxos: paralelo, busca+xref, notas-reload+anônimo, planos, export/import, IA-reachability) em dev E dist. Loop LIVE. Próximo ADR livre = ADR-0058.
+
+## Ciclo — 2026-07-04T02:40Z — F6.2 ACEITA (fluxos críticos no smoke real) → seedar F6.3 + notar F6.11
+
+- **Tarefa:** F6.2 (asserções de fluxos críticos no browser real, dev+dist). Não-gate. Fase 6 / Trilha 1.
+- **Executor:** `16e998f` — 6 fluxos (paralelo, busca+xref, notas-reload+anônimo, planos, export/import, IA-reachability) + o abrir-capítulo da F6.1, todos verdes em dev E dist. Só código de harness.
+- **Achados (valor do guard):** IA no browser — OpenAI/Gemini alcançam, Anthropic = parede CORS (esperado até F6.8, registrado); bug de produto — import em OPFS vazia lança NotFound (→ F6.11). Harness: `page.click` CDP trava em Pressable RNW → `el.click()` sintético.
+- **Reviewer (independente):** **PASSED**. Re-rodou os 7 fluxos dev+dist (SMOKE_EXIT=0, sem órfãos); confirmou substância (paralelo/busca/xref/notas OPFS/planos/round-trip real via CDP), os achados de CORS por provedor, e o bug de OPFS-vazia (produto intocado, workaround só no teste); the-light `225b8c9`; commit só 2 `.mjs`.
+- **Resultado:** aceito/arquivado. **F6.11** (fix do import em OPFS vazia) anotado no backlog. F6.2 provou que o wasm da fronteira carrega OK em dist → R1 vira só endurecimento.
+- **Próximo:** F6.3 (endurecer o gate do wasm: erro visível+retry, nunca spinner infinito; asserção no smoke com MIME errado). Loop LIVE. Próximo ADR livre = ADR-0058.
