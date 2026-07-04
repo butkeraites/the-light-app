@@ -17,6 +17,13 @@
 # Armazenamento (ADR-0014): reading-sample.sqlite é ARTEFATO DE BUILD gerado por
 # este script e IGNORADO no git (.gitignore), como o bible.sqlite (ADR-0013).
 #
+# F6.4 (guard de staleness no upgrade): o app NATIVO copia este asset p/ um caminho
+# gravável e agora invalida a cópia por VERSÃO — a identidade primária é o `Asset.hash`
+# (MD5 do CONTEÚDO deste arquivo, do manifesto do Metro), que muda SOZINHO quando este
+# script regenera o DB. Portanto NÃO é preciso bumpar nada aqui. Só bumpe o `DB_VERSION`
+# em `app/lib/db.ts` (a) se algum alvo não expuser `Asset.hash`, ou (b) p/ forçar uma
+# re-cópia sem mudar o conteúdo. O userdata/notas NUNCA é invalidado por versão.
+#
 # Uso: ./scripts/gen-reading-sample-db.sh
 set -eu
 

@@ -8,6 +8,10 @@
 // (iOS) / `adb logcat`.
 //
 // Marcadores:
+//   TLA_DBUP     (F6.4) — GUARD DE UPGRADE: pré-semeia um DB stale + sidecar de versão
+//                velho (simula um device que atualizou o app mas guardou a cópia ANTIGA)
+//                e prova que `ensureReadingDb` RE-COPIA o asset novo — Mateus (livro 40, o
+//                livro-sintoma "Mateus 404 p/ quem atualiza") passa a ser consultável.
 //   TLA_READ     (F1.3) — 66 livros, João 3:16 KJV verbatim, chapter_count(kjv,43).
 //   TLA_PARALLEL (F1.4) — João 3:16 em DUAS traduções (kjv E alm1911), AMBAS
 //                lidas via `get_chapter` (2 chamadas) — prova a leitura paralela
@@ -16,13 +20,15 @@
 // Resolução por extensão do Metro: este `.ts` vale no NATIVO; no web vale
 // `reading-selftest.web.ts` (stub — leitura web = F1.13), o que mantém o
 // `expo-file-system` e o asset do banco FORA do bundle web.
-import { ensureReadingDb } from '../lib/db';
+import * as FileSystem from 'expo-file-system/legacy';
+import { ensureReadingDb, __resetReadingDbCacheForTest } from '../lib/db';
 import { listBooks, getChapter, chapterCount, type Passage } from './reading';
 
 // Marcadores grep-áveis (prefixo estável "TLA_"). console.error garante nível
 // alto no log; console.log o complementa.
 const MARK = 'TLA_READ';
 const PARALLEL = 'TLA_PARALLEL';
+const DBUP = 'TLA_DBUP';
 
 /** Texto do versículo 16 de um capítulo (do retorno do store; '' se ausente). */
 function verse16Text(passage: Passage): string {
@@ -40,11 +46,59 @@ function emit(line: string): void {
 }
 
 /**
+ * Prova do GUARD DE STALENESS NO UPGRADE (F6.4). Simula o bug real: um device que
+ * ATUALIZOU o app (DB novo, ex.: F5.36 → 66 livros) mas ainda tem a cópia ANTIGA no
+ * documentDirectory. Passos:
+ *   1) reseta a memoização + PRÉ-SEMEIA um DB STALE (bytes inválidos) e um sidecar de
+ *      versão VELHO em `documentDirectory + reading-sample.sqlite(.version)`;
+ *   2) chama `ensureReadingDb()` — o gate deve DETECTAR o mismatch (sidecar != hash do
+ *      asset) e RE-COPIAR o asset empacotado (sobrescrevendo o stale);
+ *   3) consulta Mateus (livro 40 — o "Mateus 404 p/ quem atualiza"): se o gate NÃO
+ *      tivesse re-copiado, o DB stale (SQLite inválido) faria `get_chapter` LANÇAR e
+ *      adopted não seria true. A contagem/tamanho vêm do RETORNO real (anti-alucinação).
+ * Emite: TLA_DBUP adopted=<bool> matt1_verses=<N> matt1_v1_len=<M>.
+ *
+ * DEVE rodar ANTES do teste de leitura normal (o 1º `ensureReadingDb` da sessão), para
+ * que a cópia RE-COPIADA fique memoizada e seja reusada pelas provas seguintes.
+ */
+async function runReadingDbUpgradeSelfTest(): Promise<void> {
+  const docDir = FileSystem.documentDirectory;
+  if (!docDir) {
+    emit(`${DBUP} ERROR no-documentDirectory`);
+    return;
+  }
+  const destUri = docDir + 'reading-sample.sqlite';
+  const sidecarUri = destUri + '.version';
+  try {
+    __resetReadingDbCacheForTest();
+    // Pré-semeia a cópia ANTIGA/inválida + a versão velha (o estado de quem atualizou).
+    await FileSystem.writeAsStringAsync(destUri, 'STALE-READING-DB-FROM-OLD-APP-VERSION');
+    await FileSystem.writeAsStringAsync(sidecarUri, 'tla-stale-version-0');
+
+    // O gate deve RE-COPIAR o asset novo (mismatch de versão), não reusar o stale.
+    const dbPath = await ensureReadingDb();
+
+    // Mateus (livro 40) consultável ⇒ o DB novo foi ADOTADO.
+    const matt1 = await getChapter(dbPath, 'kjv', 40, 1);
+    const adopted = matt1.verses.length > 0;
+    const v1Len = matt1.verses[0]?.text.length ?? 0;
+    emit(`${DBUP} adopted=${adopted} matt1_verses=${matt1.verses.length} matt1_v1_len=${v1Len}`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    emit(`${DBUP} adopted=false ERROR ${msg}`);
+  }
+}
+
+/**
  * Prova de leitura. Emite (ambos do RETORNO de `get_chapter`, não hardcoded):
  *   TLA_READ books=66 john3_v16="For God so loved..." john_chapters=21
  *   TLA_PARALLEL kjv_john3_16="For God so loved..." alm_john3_16="Porque Deus amou..."
  */
 export async function runReadingSelfTest(): Promise<void> {
+  // F6.4: prova do GUARD DE UPGRADE ANTES de tudo (pré-semeia um DB stale e verifica a
+  // re-cópia). Roda 1º para memoizar a cópia atualizada p/ as provas de leitura abaixo.
+  await runReadingDbUpgradeSelfTest();
+
   let dbPath: string;
   try {
     dbPath = await ensureReadingDb();
