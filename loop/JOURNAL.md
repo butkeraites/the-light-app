@@ -431,3 +431,10 @@ Não fabricar busywork. **Próximo:** aguardar input humano (LICENSE · client-i
 - **Executor:** `4316a22` — `useWasmReady`→`{ready,error,retry}`; `WasmGate` mostra erro+retry (não spinner infinito); `retry()` reseta init. Smoke corrompe SÓ o frontier `index_bg.wasm` (MIME não basta → wasm-bindgen cai em arrayBuffer) → `TLA_WEB_wasm-error-ui ok`; rota de fix + retry → João 3:16 renderiza. i18n `wasm.loadError`/`retry`.
 - **Reviewer (independente):** **PASSED**. Reproduziu erro-UI + recuperação; engolimento sumiu; 7 fluxos F6.2 verdes dev+dist (wasm-error só sob flag); tsc 0, i18n(235)/coverage/a11y-scan; generated intocado, nativo `wasm.ts` inalterado; the-light `225b8c9`.
 - **Resultado:** aceito/arquivado. **Próximo:** F6.4 (guard de staleness do DB nativo no upgrade — `ensureReadingDb` versão/hash + sidecar; self-test `TLA_DBUP`; prova on-device iOS = device-gated). Loop LIVE. Próximo ADR livre = ADR-0058.
+
+## Ciclo — 2026-07-04T05:00Z — F6.4 ACEITA (guard de upgrade do DB nativo) → seedar F6.5
+
+- **Tarefa:** F6.4 (staleness do DB nativo no upgrade). Não-gate. Fase 6 / Trilha 1.
+- **Executor:** `bf3d663` — `ensureReadingDb` com gate versão/hash (`Asset.hash` MD5 + sidecar, crash-safe, re-copia no mismatch, userdata nunca apagado). Self-test pré-semeia DB stale → `TLA_DBUP adopted=...` do retorno real. **Prova on-device iOS: `TLA_DBUP adopted=true matt1_verses=25`.** (Corrigiu de passagem um ApiChecksumMismatch UniFFI via gen-bindings-ios.)
+- **Reviewer (independente):** **PASSED**. Gates headless verdes (tsc/reading/smoke); crash-safe confirmado (sidecar após cópia OK); userdata em subdir separado (nunca apagado); self-test não-falsificável (triangulado: Mateus 1:1=81 chars, 25 vv); TLA_SEARCH vermelho é pré-existente (F5.36), não tocou `search-selftest.ts`; the-light `225b8c9`.
+- **Resultado:** aceito/arquivado. **Próximo:** F6.5 (consertar/nivelar o self-test on-device: `search-selftest.ts` PROOF_LIMIT stale → escopar João 3:16 por livro; DEVICE_NAME/AVD default robusto; paridade `TLA_*` do Android com iOS). iOS verde é a prova (DerivedData já buildado na F6.4); Android device-gated. Loop LIVE. Próximo ADR livre = ADR-0058.
