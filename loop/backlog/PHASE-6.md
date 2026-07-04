@@ -65,3 +65,13 @@ Próximo ADR livre = **ADR-0058**.
 - **F6.12 (harness, baixa prio):** `server.mjs` do smoke pode deixar processos expo dev-server órfãos
   (reparentados PPID=1) sobreviverem ao teardown em alguns runs. Endurecer o teardown p/ reapear o
   filho expo reparentado. Achado na F6.11 (não-bloqueante; smoke sai 0).
+
+## F6.9b — popular morph_legend (GATE, deferido: precisa de PR ao the-light)
+- **Bloqueio:** `morph_legend` está VAZIA na PRÓPRIA fonte (`bible.sqlite` = 0 linhas). O importador
+  `import-scholarly` do `the-light` só CRIA a tabela (`store.rs`), nunca a popula; o dataset de legenda
+  de morfologia da STEP (código `V-PAI-3S` → descrição) nunca foi baixado/importado. Provado pela 1ª
+  tentativa da F6.9 (executor recusou fabricar/tocar o the-light — anti-alucinação + regra do core).
+- **Para destravar (humano):** PR ao `the-light` + ADR adicionando um dataset/parser de legenda de
+  morfologia STEP ao `import-scholarly`, + bump do rev pinado. Só então `gen_reading_sample_db.rs` pode
+  copiá-la verbatim. Sem isso, códigos de morfologia mostram mas não resolvem (o resto do interlinear —
+  Strong's/gloss/lemma — funciona).

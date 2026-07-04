@@ -476,3 +476,9 @@ Não fabricar busywork. **Próximo:** aguardar input humano (LICENSE · client-i
 - **Reviewer (independente):** **PASSED**. Flip REAL (não afrouxado — smoke faz request a api.anthropic.com com dummy, 401=CORS liberado; se murado, reprovaria) em dev E dist; header só em arquivos web (grep), core sem ocorrência; sem proxy; ADR coerente; sem chave real; commit 6 arquivos app/ + DECISIONS. Gates verdes.
 - **Resultado:** aceito/arquivado. **TRILHA 2 (completude de IA) COMPLETA:** Ajustes/Chaves (F6.6) + Study/Chat reais (F6.7) + CORS honesto/Anthropic web (F6.8). Os 4 painéis de IA agora usáveis de verdade.
 - **Próximo (TRILHA 3 — dados/perf):** F6.9 (léxico: popular `morph_legend` vazia + expandir `LEXICON_BOOKS` além dos 3 de amostra p/ o NT; re-baseline do asset on-demand; léxico completo 90MB fica deferido). Loop LIVE. Próximo ADR livre = ADR-0059.
+
+## Ciclo — 2026-07-04T12:15Z — F6.9 BLOQUEADA (premissa errada) → RE-ESCOPO (só NT) + F6.9b deferida
+
+- **F6.9 (1ª tentativa) BLOCKED (bem):** o executor provou que `morph_legend` está VAZIA na FONTE (`bible.sqlite`=0 linhas; `import-scholarly` do the-light só CRIA a tabela, nunca popula; dataset STEP de legenda nunca importado). Popular exigiria FABRICAR (viola anti-alucinação) OU PR ao the-light+ADR+re-pin (humano). Executor recusou improvisar — comportamento correto.
+- **Driver — RE-ESCOPO (auto-correção, molde F5.1):** F6.9 vira SÓ a parte 100% viável e verbatim: **expandir `LEXICON_BOOKS` ao NT inteiro (40..66)** — Strong's/gloss/lemma/tokens do NT existem na fonte (`bible.sqlite`: 142.096 tokens NT, 5.580 Strong's). O interlinear passa a funcionar em todo o NT (Romanos etc.), não só João. `morph_legend` (resolução de códigos) → **F6.9b (GATE deferido: PR ao the-light + ADR)**, anotada no backlog.
+- **Próximo:** re-executar F6.9 (expansão NT: trocar LEXICON_BOOKS, regenerar assets, re-baseline só `lexiconDbBytes`, verificar Romanos). Loop LIVE. Próximo ADR livre = ADR-0059.
