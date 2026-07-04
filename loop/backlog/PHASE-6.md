@@ -56,3 +56,9 @@ Próximo ADR livre = **ADR-0058**.
   deleteFile via `resolveParent(...,false)`). Quebra "importar backup numa instalação limpa". Fix:
   guardar L37-38 (try/catch → null/empty) + o smoke passa a exercitar o import em OPFS vazia.
   Achado pelo harness da F6.2 (round-trip provado no contexto principal; caminho de OPFS-vazia não).
+
+## Pendências device-gated (rodar quando conveniente)
+- **F6.5 Android on-device:** o script de paridade `TLA_*` está pronto/validado, mas a corrida
+  green precisa de um build gradle FRESCO (`cd app && npx expo run:android` ou `gradlew :app:installDebug`)
+  — o APK debug reusado tem módulo nativo incompatível com o JS atual. iOS já está full-green.
+- **F5.27** (Drive real, client-id GCP) segue deferida.
