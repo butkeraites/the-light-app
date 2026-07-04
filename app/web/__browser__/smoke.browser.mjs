@@ -129,6 +129,11 @@ async function main() {
 
     const ctx = {
       page,
+      // F6.2: alguns fluxos abrem um BrowserContext ANÔNIMO (OPFS isolado) — expostos aqui
+      // p/ o fluxo criar/instrumentar/fechar seu próprio contexto (teardown no finalize do
+      // fluxo). `installUrlWrap` reaproveita a MESMA instrumentação de URL do page principal.
+      browser,
+      installUrlWrap,
       baseUrl: server.baseUrl,
       target,
       log,
