@@ -482,3 +482,19 @@ Não fabricar busywork. **Próximo:** aguardar input humano (LICENSE · client-i
 - **F6.9 (1ª tentativa) BLOCKED (bem):** o executor provou que `morph_legend` está VAZIA na FONTE (`bible.sqlite`=0 linhas; `import-scholarly` do the-light só CRIA a tabela, nunca popula; dataset STEP de legenda nunca importado). Popular exigiria FABRICAR (viola anti-alucinação) OU PR ao the-light+ADR+re-pin (humano). Executor recusou improvisar — comportamento correto.
 - **Driver — RE-ESCOPO (auto-correção, molde F5.1):** F6.9 vira SÓ a parte 100% viável e verbatim: **expandir `LEXICON_BOOKS` ao NT inteiro (40..66)** — Strong's/gloss/lemma/tokens do NT existem na fonte (`bible.sqlite`: 142.096 tokens NT, 5.580 Strong's). O interlinear passa a funcionar em todo o NT (Romanos etc.), não só João. `morph_legend` (resolução de códigos) → **F6.9b (GATE deferido: PR ao the-light + ADR)**, anotada no backlog.
 - **Próximo:** re-executar F6.9 (expansão NT: trocar LEXICON_BOOKS, regenerar assets, re-baseline só `lexiconDbBytes`, verificar Romanos). Loop LIVE. Próximo ADR livre = ADR-0059.
+
+## Ciclo — 2026-07-04T13:30Z — F6.9 ACEITA (léxico → NT) — FASE 6 SUBSTANCIAL COMPLETA → REPOUSO
+
+- **Tarefa:** F6.9 (expandir léxico interlinear ao NT inteiro; re-escopada após bloqueio do morph_legend). Não-gate. Fase 6 / Trilha 3.
+- **Executor:** `e99434f` — `LEXICON_BOOKS {1,19} ∪ 40..=66` (29 livros); regenerou lexicon-sample (9,5→27,9MB on-demand); reading-lite inalterado; verbatim do bible.sqlite. **BLOCKED na 1ª rodada** por drift de perf pré-existente (eagerBytes de F6.7/F6.8, não F6.9) — provado regenerando o asset velho. **Driver autorizou** o re-baseline de eagerBytes (1.354.253→1.358.977, débito F6.7/F6.8; noteF67F68) + o lexiconDb (F6.9; noteF69); perf-budget LOCKED OK; commit.
+- **Reviewer (independente):** **PASSED**. 29 livros; Romanos 7.261 tokens; **SHA1 dos tokens de Romanos bit-idêntico fonte↔gerado** (anti-alucinação); reading-lite inalterado (66 livros); morph_legend=0 (deferido corretamente); ambos re-baselines legítimos (eagerBytes de F6.7/F6.8 provado independente de F6.9; moduleCount 842); the-light `225b8c9`. Gates verdes (tsc/study/lexicon/reading/perf-budget/smoke). Flake de cache do Metro no 1º perf-budget → `--clear` resolveu (sugestão de follow-up).
+
+### FASE 6 SUBSTANCIAL COMPLETA — loop em REPOUSO (não HALT)
+- **Trilha 1 (verificação real):** F6.1 harness browser real + auto-prova · F6.2 fluxos críticos dev+dist (achou 2 bugs) · F6.3 gate do wasm endurecido · F6.4 guard de upgrade do DB nativo (TLA_DBUP on-device) · F6.5 self-test on-device verde+paridade · F6.11 fix import OPFS-vazia.
+- **Trilha 2 (completude de IA):** F6.6 tela Ajustes/Chaves · F6.7 Study/Chat reais · F6.8 CORS honesto + Anthropic web (âncora do smoke flipada).
+- **Trilha 3 (dados):** F6.9 léxico → NT inteiro.
+- **Disciplina:** o loop BLOQUEOU em vez de fabricar (morph_legend) e re-escopou (F6.9), e barrou/re-baselineou drift de perf real — sem improviso.
+
+### Restam SÓ opcionais/gated (ver PHASE-6.md):
+F6.10 (polish opcional) · F6.12 (teardown harness) · perf --clear · **device:** F6.5 Android (rebuild) · **humano/the-light:** F5.27 (client-id GCP) · F6.9b (morph_legend, PR ao the-light).
+Próximo ADR livre = ADR-0059. Loop LIVE mas sem trabalho autônomo substancial pendente.

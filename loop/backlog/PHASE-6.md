@@ -75,3 +75,13 @@ Próximo ADR livre = **ADR-0058**.
   morfologia STEP ao `import-scholarly`, + bump do rev pinado. Só então `gen_reading_sample_db.rs` pode
   copiá-la verbatim. Sem isso, códigos de morfologia mostram mas não resolvem (o resto do interlinear —
   Strong's/gloss/lemma — funciona).
+
+## Estado após F6.9 — FASE 6 substancial COMPLETA (loop em repouso)
+Trilha 1 (F6.1–F6.5, F6.11) + Trilha 2 (F6.6–F6.8) + Trilha 3 F6.9 ACEITAS. Restam SÓ itens opcionais
+ou gated:
+- **F6.10 (opcional, baixa prio):** AiProviderNotice lazy (perf) · split `passage.web` + correção ADR-0040 ·
+  a11y micro (faint em-dash, hitSlop). Autônomo; rodar se/quando quiser.
+- **F6.12 (harness, baixa prio):** teardown de expo órfão no `server.mjs`.
+- **perf-budget flake:** enforcer poderia usar `expo export --clear` (evita export stale sem o vendor wasm).
+- **Device-gated:** F6.5 Android (rebuild gradle) · F6.4/F6.5 markers on-device iOS já verdes.
+- **Human/the-light gates:** F5.27 (Drive, client-id GCP) · F6.9b (morph_legend, PR ao the-light + ADR).
