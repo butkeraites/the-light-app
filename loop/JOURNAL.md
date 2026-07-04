@@ -454,3 +454,10 @@ Não fabricar busywork. **Próximo:** aguardar input humano (LICENSE · client-i
 - **Reviewer (independente):** **PASSED**. tsc 0; notes/snapshot/smoke (dev+dist, todos F6.2 + import-fresh) verdes; guarda não-destrutivo (sem removeEntry/overwrite); **revert-provado** (reverter guard → import-fresh VERMELHO com NotFoundError → restaurar → verde); sem órfãos neste run; the-light `225b8c9`; commit só 2 arquivos.
 - **Resultado:** aceito/arquivado. **TRILHA 1 COMPLETA + 1 bug bônus.** F6.12 (teardown de órfãos do harness) anotado como follow-up baixa-prio.
 - **Próximo (TRILHA 2 — completude de IA):** F6.6 (tela dedicada de Ajustes/Chaves BYOK + reroute dos CTAs "configure um provedor" p/ ela; destrava os 4 painéis; aviso web-só-sessão). Depois F6.7 (des-mockar Study/Chat) e F6.8 (CORS honesto + header Anthropic). Loop LIVE. Próximo ADR livre = ADR-0058.
+
+## Ciclo — 2026-07-04T09:00Z — F6.6 ACEITA (tela de Ajustes/Chaves) → seedar F6.7 (des-mockar Study/Chat)
+
+- **Tarefa:** F6.6 (tela dedicada de Ajustes/Chaves BYOK + reroute dos 4 CTAs). Não-gate. Fase 6 / Trilha 2.
+- **Executor:** `7a432a6` — `app/app/settings.tsx` (linha por provedor: status só-nomes via `listProviders`, `secureTextEntry`→`setKey`, remover→`deleteKey`; aviso web-só-sessão). Rota+link Home; 4 CTAs → `/settings`; namespace `settings.*` (pt/en); smoke `TLA_WEB_settings ok`. `keystore.web.ts` intocado. Perf re-baseline moduleCount 841→842 (+1 rota eager).
+- **Reviewer (independente):** **PASSED**. 8 gates verdes (tsc/keystore/i18n(-coverage 249)/a11y-scan/contrast/expo web/perf-budget 842/smoke+settings). **Zero vazamento de chave** (só `setKey/deleteKey/listProviders`, sem `getKey`/console/render de valor); CTAs→/settings (zero /about no caminho de config); re-baseline legítimo (só perf-contract); the-light `225b8c9`.
+- **Resultado:** aceito/arquivado. **Próximo:** F6.7 (des-mockar Study & Chat — seletor de provedor real + `getKey` sob demanda; mock = default offline; anti-alucinação intacta; transporte/core inalterados). Loop LIVE. Próximo ADR livre = ADR-0058.
