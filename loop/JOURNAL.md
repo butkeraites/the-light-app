@@ -424,3 +424,10 @@ Não fabricar busywork. **Próximo:** aguardar input humano (LICENSE · client-i
 - **Reviewer (independente):** **PASSED**. Re-rodou os 7 fluxos dev+dist (SMOKE_EXIT=0, sem órfãos); confirmou substância (paralelo/busca/xref/notas OPFS/planos/round-trip real via CDP), os achados de CORS por provedor, e o bug de OPFS-vazia (produto intocado, workaround só no teste); the-light `225b8c9`; commit só 2 `.mjs`.
 - **Resultado:** aceito/arquivado. **F6.11** (fix do import em OPFS vazia) anotado no backlog. F6.2 provou que o wasm da fronteira carrega OK em dist → R1 vira só endurecimento.
 - **Próximo:** F6.3 (endurecer o gate do wasm: erro visível+retry, nunca spinner infinito; asserção no smoke com MIME errado). Loop LIVE. Próximo ADR livre = ADR-0058.
+
+## Ciclo — 2026-07-04T03:30Z — F6.3 ACEITA (endurecer gate do wasm) → seedar F6.4
+
+- **Tarefa:** F6.3 (erro visível + retry no gate do wasm da fronteira). Não-gate. Fase 6 / Trilha 1.
+- **Executor:** `4316a22` — `useWasmReady`→`{ready,error,retry}`; `WasmGate` mostra erro+retry (não spinner infinito); `retry()` reseta init. Smoke corrompe SÓ o frontier `index_bg.wasm` (MIME não basta → wasm-bindgen cai em arrayBuffer) → `TLA_WEB_wasm-error-ui ok`; rota de fix + retry → João 3:16 renderiza. i18n `wasm.loadError`/`retry`.
+- **Reviewer (independente):** **PASSED**. Reproduziu erro-UI + recuperação; engolimento sumiu; 7 fluxos F6.2 verdes dev+dist (wasm-error só sob flag); tsc 0, i18n(235)/coverage/a11y-scan; generated intocado, nativo `wasm.ts` inalterado; the-light `225b8c9`.
+- **Resultado:** aceito/arquivado. **Próximo:** F6.4 (guard de staleness do DB nativo no upgrade — `ensureReadingDb` versão/hash + sidecar; self-test `TLA_DBUP`; prova on-device iOS = device-gated). Loop LIVE. Próximo ADR livre = ADR-0058.
