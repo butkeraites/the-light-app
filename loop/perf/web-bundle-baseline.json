@@ -19,7 +19,7 @@
   "frontierWasmBytesGzip": 440559,
   "frontierWasmBytesBrotli": 319679,
   "readingLiteDbBytes": 40308736,
-  "lexiconDbBytes": 9502720,
+  "lexiconDbBytes": 27869184,
   "waSqliteFts5Bytes": 666267,
   "firstPaintTransferBytes": 342700,
   "firstPaintTransferBytesBrotli": 270266,
@@ -33,7 +33,7 @@
     "glob": "_expo/static/js/web/entry-*.js",
     "moduleCount": 842,
     "eagerBytes": {
-      "nominal": 1354253,
+      "nominal": 1358977,
       "tolerance": 1024
     },
     "eagerGzipBytes": {
@@ -59,10 +59,10 @@
       "brotliBytes": 10443437
     },
     "lexiconDb": {
-      "path": "app/dist/assets/_assets/data/lexicon-sample.ed80b4fb0da94cda4584ab16604f138e.sqlite",
-      "bytes": 9502720,
-      "gzipBytes": 2957473,
-      "brotliBytes": 1841054
+      "path": "app/dist/assets/_assets/data/lexicon-sample.55291c09dadd012af247e178201223bc.sqlite",
+      "bytes": 27869184,
+      "gzipBytes": 8375932,
+      "brotliBytes": 4760340
     },
     "waSqliteFts5": {
       "path": "app/dist/assets/web/vendor/wa-sqlite-fts5/wa-sqlite.6a09cc3e685430e6e8cec82e0e4132fb.wasm",
@@ -72,11 +72,11 @@
     }
   },
   "totals": {
-    "stableAssetsBytes": 51701047,
-    "stableAssetsGzipBytes": 18417164,
-    "stableAssetsBrotliBytes": 12886748,
-    "nominalTotalBytes": 53055300,
-    "nominalTotalGzipBytes": 18759864,
-    "nominalTotalBrotliBytes": 13157014
+    "stableAssetsBytes": 70067511,
+    "stableAssetsGzipBytes": 23835623,
+    "stableAssetsBrotliBytes": 15806034,
+    "nominalTotalBytes": 71426488,
+    "nominalTotalGzipBytes": 24178323,
+    "nominalTotalBrotliBytes": 16076300
   }
 }

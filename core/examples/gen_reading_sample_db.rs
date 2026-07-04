@@ -10,12 +10,14 @@
 //! (`bible.sqlite`). É DADO local, offline-first (download único cacheado em OPFS no web,
 //! asset bundled no nativo) — nenhuma dependência de rede em runtime para ler.
 //!
-//! LÉXICO = ainda AMOSTRADO ({Gn,Sl,Jo}, ver `LEXICON_BOOKS`; ADR-0056): o léxico STEP
-//! completo é ~90 MB e o estudo profundo é on-demand + AI-gated + secundário. Copiamos
-//! `scholarly_sources` inteiro (poucas linhas: atribuição/FK) e `original_tokens`/
-//! `lexicon` SÓ dos livros de `LEXICON_BOOKS` — assim `lexical_entries`/`deep_study`
-//! (F3.2/F3.3) e a UI de estudo (F3.5) seguem com léxico + atribuição STEP no device para
-//! esse subset. Léxico completo = follow-up F5.38 (opcional/nativo, on-demand).
+//! LÉXICO = AT AMOSTRADO ({Gn,Sl}) + NOVO TESTAMENTO INTEIRO (livros 40..=66; ver
+//! `LEXICON_BOOKS`; F6.9, era só {Gn,Sl,Jo} na ADR-0056): o léxico STEP AT+NT completo é
+//! ~90 MB e o estudo profundo é on-demand + AI-gated + secundário, mas o NT inteiro
+//! (~142k tokens, ~5,58k Strong's) cabe VERBATIM. Copiamos `scholarly_sources` inteiro
+//! (poucas linhas: atribuição/FK) e `original_tokens`/`lexicon` dos livros de
+//! `LEXICON_BOOKS` — assim `lexical_entries`/`deep_study` (F3.2/F3.3) e a UI de estudo
+//! (F3.5) seguem com léxico + atribuição STEP no device para TODO o NT (Mateus, Romanos,
+//! …, não só João) + Gn/Sl amostrados do AT. Léxico AT completo = follow-up (on-demand).
 //!
 //! Regra "uma fonte da verdade" + anti-alucinação: o **schema** vem das
 //! **migrações do `the-light-core`** (`Store::open` cria/migra), nunca de SQL de
@@ -39,13 +41,21 @@ fn main() {
     // do `bible.sqlite`, não desta constante (anti-alucinação).
     const JOHN_3_16_KJV: &str = "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.";
 
-    // Léxico AINDA amostrado (ADR-0056, F5.36): Gênesis (1), Salmos (19), João (43).
-    // A LEITURA (books/verses/cross_references/verses_fts) é a Bíblia COMPLETA — SEM
-    // filtro de livro. `LEXICON_BOOKS` limita SÓ `original_tokens`/`lexicon` (o léxico
-    // completo é ~90 MB, on-demand + AI-gated; completo = follow-up F5.38). João é
-    // **obrigatório** aqui (asserções do self-test de estudo). Gênesis/Salmos dão
-    // léxico em AT + NT nas duas traduções.
-    const LEXICON_BOOKS: &[u8] = &[1, 19, 43];
+    // Léxico: AMOSTRA do AT (Gênesis 1, Salmos 19) + NOVO TESTAMENTO INTEIRO (livros
+    // 40..=66, Mateus..Apocalipse; João = 43 já dentro dessa faixa) — F6.9 (era só
+    // {Gn,Sl,Jo} na ADR-0056). A LEITURA (books/verses/cross_references/verses_fts) é a
+    // Bíblia COMPLETA — SEM filtro de livro. `LEXICON_BOOKS` limita SÓ `original_tokens`/
+    // `lexicon` (o léxico AT+NT completo é ~90 MB, on-demand + AI-gated; AT completo =
+    // follow-up). O NT inteiro cabe VERBATIM (~142k tokens, ~5,58k Strong's) → o estudo
+    // interlinear funciona em TODO o NT (Mateus, Romanos, …), não só João. João é
+    // **obrigatório** (asserções do self-test de estudo); Gn/Sl preservam o AT amostrado
+    // nas duas traduções (não regride o estudo do AT). Conjunto exato: {1, 19} ∪ 40..=66
+    // = 29 livros distintos.
+    const LEXICON_BOOKS: &[u8] = &[
+        1, 19, // AT amostrado: Gênesis, Salmos.
+        40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62,
+        63, 64, 65, 66, // NT inteiro (Mateus..Apocalipse; João = 43).
+    ];
 
     let mut args = std::env::args().skip(1);
     let out = args.next().unwrap_or_else(|| {
@@ -165,10 +175,11 @@ fn main() {
         )
         .expect("copiar scholarly_sources (atribuição STEP CC-BY)");
 
-    // (b) `original_tokens` dos versículos dos livros de `LEXICON_BOOKS` {Gn,Sl,Jo} —
-    //     léxico AINDA amostrado (ADR-0056; completo = ~90 MB, F5.38). Chaveados por
-    //     (book_number,chapter,verse) — casam com `verses` (que agora tem a Bíblia
-    //     inteira); é o que o `verified_lexicon` do core lê para agregar por Strong base.
+    // (b) `original_tokens` dos versículos dos livros de `LEXICON_BOOKS` (Gn/Sl + NT
+    //     inteiro 40..=66) — léxico do NT COMPLETO + AT amostrado (F6.9; AT completo =
+    //     ~90 MB, follow-up). Chaveados por (book_number,chapter,verse) — casam com
+    //     `verses` (que tem a Bíblia inteira); é o que o `verified_lexicon` do core lê
+    //     para agregar por Strong base.
     let tokens = conn
         .execute(
             &format!(
@@ -328,6 +339,35 @@ fn main() {
         john_3_16_tokens >= 1,
         "João 3:16 deve ter ≥1 token com Strong (léxico amostrado LEXICON_BOOKS, ADR-0027/0056)"
     );
+    // Sanidade NT-wide (F6.9; dado LIDO do banco): o interlinear agora cobre o NT INTEIRO —
+    // Romanos (livro 45, NOVO no léxico além de João) tem ≥1 token com Strong, VERBATIM do
+    // store. Prova de que `deep_study`/`lexical_entries` retornam léxico p/ QUALQUER livro do
+    // NT (não só João); o bug "interlinear só em João" não pode voltar sem falhar aqui.
+    let romans_tokens: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM original_tokens \
+             WHERE book_number=45 AND strongs IS NOT NULL AND strongs <> ''",
+            [],
+            |r| r.get(0),
+        )
+        .expect("contar tokens Strong de Romanos (NT-wide, F6.9)");
+    assert!(
+        romans_tokens >= 1,
+        "Romanos (livro 45) deve ter ≥1 token com Strong (NT inteiro em LEXICON_BOOKS, F6.9)"
+    );
+    // Cobertura de livros do léxico: os 27 livros do NT (40..=66) + os 2 de amostra do AT
+    // (Gn/Sl) = 29 livros DISTINTOS em `original_tokens`.
+    let lex_books: i64 = conn
+        .query_row(
+            "SELECT count(DISTINCT book_number) FROM original_tokens",
+            [],
+            |r| r.get(0),
+        )
+        .expect("contar livros distintos no léxico (NT inteiro + AT amostrado)");
+    assert_eq!(
+        lex_books, 29,
+        "léxico deve cobrir 29 livros distintos (Gn+Sl + NT 40..=66, F6.9), veio {lex_books}"
+    );
     let step_sources: i64 = conn
         .query_row(
             "SELECT count(*) FROM scholarly_sources WHERE attribution LIKE '%STEP Bible%'",
@@ -345,8 +385,10 @@ fn main() {
          [LEITURA=Bíblia completa 66×2] traduções={translations} versículos={inserted} \
          verses_fts={indexed} cross_references={xrefs} joão_3_16_xrefs={john_3_16_xrefs} \
          joão_capítulos_kjv={john_chapters}\n  \
-         [LÉXICO=amostrado {LEXICON_BOOKS:?}] scholarly_sources={sources} original_tokens={tokens} \
-         lexicon={lexicon} joão_3_16_tokens_strong={john_3_16_tokens} step_sources={step_sources}"
+         [LÉXICO=AT amostrado (Gn/Sl) + NT inteiro 40..=66, F6.9] livros_distintos={lex_books} \
+         scholarly_sources={sources} original_tokens={tokens} lexicon={lexicon} \
+         joão_3_16_tokens_strong={john_3_16_tokens} romanos_tokens_strong={romans_tokens} \
+         step_sources={step_sources}"
     );
 }
 

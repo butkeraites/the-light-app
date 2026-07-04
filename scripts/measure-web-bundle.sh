@@ -115,7 +115,19 @@ const BUDGET = {
     // local (byte-estável, determinístico por gen-reading-sample-db.sh) — offline-first
     // preservado (download único cacheado em OPFS, sem rede em runtime para ler).
     readingLiteDb: { bytes: 40308736, re: /^assets\/_assets\/data\/reading-lite\..*\.sqlite$/ },
-    lexiconDb: { bytes: 9502720, re: /^assets\/_assets\/data\/lexicon-sample\..*\.sqlite$/ },
+    // F6.9 — re-baseline DELIBERADO/justificado: SÓ este asset ON-DEMAND muda 9.502.720 →
+    // 27.869.184 B (+18,37 MB). O léxico interlinear deixou de ser um SAMPLE de 3 livros
+    // ({Gn,Sl,Jo}) e passou a cobrir o NOVO TESTAMENTO INTEIRO (livros 40..=66,
+    // Mateus..Apocalipse) + Gn/Sl do AT amostrado — `LEXICON_BOOKS` em
+    // `core/examples/gen_reading_sample_db.rs`. Dados VERBATIM do `bible.sqlite` (STEP Bible
+    // CC-BY; INSERT..SELECT FROM src): +~126k `original_tokens` do NT (182.288 total) e o
+    // `lexicon` referenciado (4.534 → 9.061 linhas). NÃO é regressão de 1º paint: carregado
+    // ON-DEMAND (fetch → OPFS, chunk async `sqlite-lexicon-opfs`, só ao abrir estudo/léxico),
+    // NUNCA no entry EAGER — moduleCount fica 842 EXATO e os bytes/gzip/brotli do entry NÃO
+    // mudam. `reading-lite.sqlite` (leitura, SEM léxico) INALTERADO (40.308.736 B). Léxico
+    // AT completo (~90 MB AT+NT) segue follow-up (on-demand). Espelhado em
+    // `loop/perf/web-bundle-budget.json` (nota `noteF69`).
+    lexiconDb: { bytes: 27869184, re: /^assets\/_assets\/data\/lexicon-sample\..*\.sqlite$/ },
     waSqliteFts5: { bytes: 666267, re: /^assets\/web\/vendor\/wa-sqlite-fts5\/wa-sqlite\..*\.wasm$/ },
   },
   // F5.12 (ADR-0041) · F5.15 (ADR-0044): assets que DEVEM ter saído do bundle (dead-weight
@@ -240,10 +252,16 @@ const BUDGET = {
   //       Nominais re-centrados no centro do flutter medido em exports (raw 1.354.190-1.354.316; gzip
   //       341.813-343.587; brotli 270.160-270.371); tolerancias INALTERADAS. Espelhado em
   //       `loop/perf/web-bundle-budget.json` (nota `noteF66`).
+  // NOTA F6.7+F6.8 — re-baseline SO de BYTES do entry (moduleCount INALTERADO 842): a F6.7 (seletor
+  //   de provedor real em Study/Chat) + F6.8 (rotulos de capacidade + chaves settings.cap*) cresceram
+  //   ~4,8 KB raw de CROMO eager sem rodar perf-budget (specs sem o gate; mesmo padrao do noteF537).
+  //   eagerBytes re-centrado 1.354.253 -> 1.358.977 (centro do flutter: 1.358.914/1.359.039);
+  //   gzip/brotli seguem na banda antiga (nominais inalterados). Detectado na F6.9 (lexicon on-demand,
+  //   nao-eager: asset velho de 3 livros da o MESMO eager -> drift anterior a F6.9). Driver autorizado.
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
     moduleCount: 842,
-    eagerBytes: { nominal: 1354253, tolerance: 1024 },
+    eagerBytes: { nominal: 1358977, tolerance: 1024 },
     eagerGzipBytes: { nominal: 342700, tolerance: 2048 },
     eagerBrotliBytes: { nominal: 270266, tolerance: 1024 },
   },
