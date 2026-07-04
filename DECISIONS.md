@@ -3542,3 +3542,44 @@ some o problema de invalidação de cache/auto-reseed (sempre lê o asset atual)
 local (38MB) a cada sessão para a memória — aceitável (leitura local, sem rede; `MemoryVFS` provado
 com 38MB). Teste: `reading.web.test.mjs` passa a asserir Mateus 1 (KJV) verbatim além de João.
 Relacionado: ADR-0044 (split léxico), ADR-0056 (Bíblia completa). Ver F5.38.
+
+## ADR-0058 — F6.8: habilitar IA de nuvem no WEB (Anthropic via header opt-in de browser; Ollama = config local; nativo = todos) SEM proxy — CORS honesto por provedor
+
+- **Data:** 2026-07-04 · **Status:** aceito · **Tarefa:** F6.8 (`gate: false`, ÚLTIMA da trilha de IA) · **Depende:** **F6.2** (smoke em browser real que ANCOROU a realidade de CORS por provedor), **F6.6/ADR-0023/0025** (tela de Ajustes = hub BYOK, onde o rótulo de capacidade honesto entra), **F6.7** (Study/Chat des-mockados), **F4.2/ADR-0034** (transporte web multi-provedor `ai-anchored.web.ts`). **NÃO** toca o `the-light` (@ `225b8c9`) nem `core/**` — 100% app-side (transporte web + cromo).
+
+**Contexto.** O smoke da F6.2 (`ai-reachability`) mediu, no BROWSER REAL, o estado de CORS por
+provedor: **Gemini** e **OpenAI** alcançam o provedor (200/401 = CORS liberado); **Anthropic** batia
+parede de CORS (`net::ERR_FAILED`); **Ollama-web** (local, `http://localhost:11434`) exige liberação
+de origem do próprio lado. No NATIVO (core/reqwest) não há CORS — todos funcionam. A Anthropic
+LIBERA a origem do browser SE a requisição enviar `anthropic-dangerous-direct-browser-access: true`
+— a via OFICIAL e OPT-IN dela para uso client-side com a chave do PRÓPRIO usuário (BYOK). A tentação
+"fácil" (um proxy/servidor) violaria a lei offline-first/no-server.
+
+**Decisão.** (1) O transporte WEB (`ai-anchored.web.ts`, `anthropicHeaders`) passa a enviar
+`anthropic-dangerous-direct-browser-access: true` junto de `x-api-key`/`anthropic-version`/
+`content-type`. Só o alvo WEB; o NATIVO (reqwest, sem CORS) fica INALTERADO. (2) A UI fica HONESTA
+por provedor: na tela de Ajustes (F6.6), cada linha mostra a capacidade REAL no alvo corrente — no
+WEB, anthropic/openai/gemini = "funciona no navegador", **Ollama = "requer config local
+(`OLLAMA_ORIGINS`)"**; no NATIVO, todos "funcionam neste aparelho". Não prometemos o que o browser
+não entrega (Ollama-web NÃO é rotulado como pronto). (3) **SEM proxy/servidor** — a chave segue
+LOCAL, do usuário, nunca logada; um proxy quebraria offline-first/no-server e não é adotado.
+
+**Reconciliação com as leis.** *Offline-first/no-server:* nada de proxy — o app continua chamando o
+provedor DIRETO do cliente, e todos os recursos essenciais (leitura/busca/notas/planos) seguem sem
+rede/conta. *BYOK:* a chave é do PRÓPRIO usuário; o header "dangerous" é o nome que a Anthropic dá ao
+opt-in de uso client-side — nele o "perigo" é expor a chave no cliente, que aqui é EXATAMENTE o
+modelo BYOK (a chave já é do usuário, no aparelho dele), não um segredo de servidor nosso. *Anti-
+alucinação:* inalterada — o texto bíblico vem do store local (verbatim); o LLM só interpreta.
+
+**Prova (smoke em browser real).** A âncora da F6.2 (`ai-reachability`) FLIPA: com o header, a
+Anthropic passa de CORS-wall a ALCANÇADA (401 com a chave DUMMY = CORS liberado, chegou ao provedor);
+gemini/openai seguem alcançados. O smoke agora ASSEVERA (dev+dist) que os 3 provedores de nuvem estão
+alcançados — CORS-wall para qualquer um deles vira vermelho. A resposta REAL da Anthropic (chave real
++ CORS real) só é confirmável com chave BYOK → gate humano; o smoke prova a ALCANÇABILIDADE, jamais
+usando chave real. O shape do header é travado por mock-fetch (`multiProvider.web.test.mjs`).
+
+**Consequências.** (+) IA de nuvem funciona no navegador (BYOK), sem servidor; a UI é honesta sobre
+o que cada provedor entrega em cada alvo. (−) A chave BYOK trafega no cliente (inerente ao BYOK web /
+ADR-0025: cofre só-de-sessão) — mitigado por ser a chave do usuário e nunca ser logada/exibida.
+Ollama-web depende de o usuário configurar `OLLAMA_ORIGINS` (a UI informa; não fazemos por ele).
+Relacionado: ADR-0034 (transporte web multi-provedor), ADR-0023/0025 (BYOK / cofre de sessão web).

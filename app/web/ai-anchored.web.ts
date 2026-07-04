@@ -302,12 +302,22 @@ async function geminiCompleteStream(
 // header `x-api-key` (+`anthropic-version`) — NUNCA na URL/log.
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
-/** Headers do request Anthropic — a chave BYOK vai SÓ em `x-api-key` (nunca na URL/log). */
+/**
+ * Headers do request Anthropic — a chave BYOK vai SÓ em `x-api-key` (nunca na URL/log).
+ *
+ * F6.8 (ADR-0058): SÓ no transporte WEB, envia `anthropic-dangerous-direct-browser-access: true`
+ * — a via OFICIAL e OPT-IN da Anthropic p/ requisições client-side com a chave do PRÓPRIO usuário
+ * (BYOK). Sem esse header o browser bate parede de CORS (`net::ERR_FAILED`); COM ele, a origem do
+ * browser é liberada e a request alcança o provedor. NÃO é proxy/servidor (offline-first/no-server
+ * preservado) — a chave segue local, do usuário, nunca logada. O transporte NATIVO (core/reqwest)
+ * não sofre CORS e NÃO usa este header (permanece inalterado).
+ */
 function anthropicHeaders(key: string): Record<string, string> {
   return {
     'x-api-key': key,
     'anthropic-version': '2023-06-01',
     'content-type': 'application/json',
+    'anthropic-dangerous-direct-browser-access': 'true',
   };
 }
 

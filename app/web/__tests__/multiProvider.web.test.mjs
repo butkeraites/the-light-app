@@ -190,6 +190,13 @@ const SPECS = [
       assert.equal(headers['x-api-key'], DUMMY_KEY, 'anthropic: chave SÓ no header x-api-key');
       assert.equal(headers['anthropic-version'], '2023-06-01', 'anthropic: header anthropic-version');
       assert.equal(headers.authorization, undefined, 'anthropic: sem header authorization');
+      // F6.8 (ADR-0058): header opt-in de browser da Anthropic — libera a origem do browser (CORS)
+      // p/ uso client-side com a chave BYOK do PRÓPRIO usuário. Presente no transporte WEB.
+      assert.equal(
+        headers['anthropic-dangerous-direct-browser-access'],
+        'true',
+        'anthropic: header opt-in de browser (F6.8) presente',
+      );
     },
     assertBody(body, { stream }) {
       assert.equal(body.model, 'claude-opus-4-8', 'anthropic: model default (ai_web_prepare)');

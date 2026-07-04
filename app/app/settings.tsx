@@ -24,11 +24,23 @@
 // estruturalmente distintas, então a regra "só-nomes / secure-entry / nunca-vazar-valor" é
 // espelhada aqui em vez de extrair um componente que serviria mal os dois formatos.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { useI18n, type TranslateFn } from '../lib/i18n';
+import { useI18n, type MessageKey, type TranslateFn } from '../lib/i18n';
 import { deleteKey, listProviders, setKey, SUPPORTED_PROVIDERS } from '../lib/keystore';
 import { useTheme, type ThemeColors } from '../lib/theme';
+
+// F6.8 (ADR-0058): rótulo HONESTO da capacidade de cada provedor no alvo CORRENTE. No WEB, os
+// provedores de nuvem (anthropic/openai/gemini) alcançam o navegador — a Anthropic via o header
+// opt-in `anthropic-dangerous-direct-browser-access` (transporte web); o Ollama, por ser LOCAL,
+// só é alcançável se o usuário liberar `OLLAMA_ORIGINS` do próprio lado (sem proxy — não prometemos
+// o que o browser não entrega). No NATIVO (reqwest, sem CORS) TODOS funcionam. Só CROMO via `t()`.
+function capabilityKey(provider: string): MessageKey {
+  if (Platform.OS === 'web') {
+    return provider === 'ollama' ? 'settings.capOllamaWeb' : 'settings.capBrowserOk';
+  }
+  return 'settings.capNative';
+}
 
 export default function SettingsScreen() {
   const { t } = useI18n();
@@ -179,6 +191,12 @@ function ProviderRow({
         </Text>
       </View>
 
+      {/* F6.8 (ADR-0058): capacidade HONESTA por provedor no alvo corrente (web = Ollama exige
+          config local; nuvem funciona no navegador; nativo = todos). Só informa — não promete. */}
+      <Text style={styles.capability} testID={`settings-capability-${provider}`}>
+        {t(capabilityKey(provider))}
+      </Text>
+
       <TextInput
         style={styles.keyInput}
         value={draft}
@@ -261,6 +279,7 @@ function makeStyles(colors: ThemeColors) {
     providerName: { fontSize: 16, fontWeight: '600', color: colors.text },
     statusOn: { fontSize: 13, fontWeight: '600', color: colors.accent },
     statusOff: { fontSize: 13, color: colors.muted },
+    capability: { fontSize: 12, color: colors.muted, lineHeight: 17 },
     keyInput: {
       borderWidth: 1,
       borderColor: colors.border,

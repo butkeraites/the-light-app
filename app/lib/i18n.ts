@@ -381,7 +381,14 @@ export type MessageKey =
   | 'settings.statusNotConfigured'
   | 'settings.keyPlaceholder'
   | 'settings.saveKey'
-  | 'settings.removeKey';
+  | 'settings.removeKey'
+  // F6.8 (ADR-0058): rótulo HONESTO da capacidade por provedor no alvo corrente. No WEB, Anthropic/
+  // OpenAI/Gemini funcionam no navegador (Anthropic via header opt-in de browser); Ollama exige que o
+  // usuário libere `OLLAMA_ORIGINS` do próprio lado (sem proxy — não prometemos o que o browser não
+  // entrega). No NATIVO todos funcionam. Só CROMO — nenhum segredo/valor de chave.
+  | 'settings.capBrowserOk'
+  | 'settings.capOllamaWeb'
+  | 'settings.capNative';
 
 // Catálogo PORTUGUÊS (default do app). "The Light" é o NOME do produto (marca),
 // idêntico nos dois idiomas de propósito.
@@ -673,6 +680,9 @@ const pt: Record<MessageKey, string> = {
   'settings.keyPlaceholder': 'Chave do provedor "{provider}"',
   'settings.saveKey': 'Salvar chave',
   'settings.removeKey': 'Remover chave',
+  'settings.capBrowserOk': 'Funciona no navegador',
+  'settings.capOllamaWeb': 'Requer configuração local (OLLAMA_ORIGINS) — o navegador não alcança o Ollama sem isso',
+  'settings.capNative': 'Funciona neste aparelho',
 };
 
 // Catálogo ENGLISH. As MESMAS chaves de `pt` (paridade forçada pelo tipo).
@@ -964,6 +974,9 @@ const en: Record<MessageKey, string> = {
   'settings.keyPlaceholder': 'Key for provider "{provider}"',
   'settings.saveKey': 'Save key',
   'settings.removeKey': 'Remove key',
+  'settings.capBrowserOk': 'Works in the browser',
+  'settings.capOllamaWeb': 'Requires local config (OLLAMA_ORIGINS) — the browser cannot reach Ollama without it',
+  'settings.capNative': 'Works on this device',
 };
 
 /** Catálogos por idioma (uma fonte de verdade de texto de UI). */

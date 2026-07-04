@@ -14,7 +14,9 @@
 //                               (Page.setDownloadBehavior) e re-injetado no <input> oculto
 //                               (pickJsonFileWeb) via fileChooser — contagens fazem round-trip.
 //   6. IA reachability        — Ask com chave DUMMY (JAMAIS real); intercepta a request de saída
-//                               p/ o provedor e REGISTRA o estado (401=CORS ok · CORS-wall=R7).
+//                               p/ o provedor e ASSEVERA o alcance (401=CORS ok). F6.8/ADR-0058:
+//                               a âncora FLIPOU — Anthropic passou de CORS-wall a ALCANÇADA (header
+//                               opt-in de browser); anthropic/openai/gemini devem estar alcançados.
 //
 // Cada fluxo recebe um `ctx` (ver smoke.browser.mjs) e LANÇA em falha. O driver imprime
 // `TLA_WEB_<name> ok|FAIL` por fluxo e sai != 0 se qualquer um lançar.
@@ -23,9 +25,10 @@
 // de DOM via `page.waitForFunction` — texto/elemento PRESENTE **e** spinner AUSENTE. O estouro
 // do timeout É, ele próprio, a falha "spinner infinito / travou em silêncio".
 //
-// REGRA DURA: só código de teste/harness aqui. Se um fluxo revela um estado REAL de produto
-// (ex.: IA CORS-wall p/ Anthropic, ESPERADO até a F6.8), ele REGISTRA o estado e passa — só um
-// TRAVAMENTO SILENCIOSO (spinner infinito / falha engolida) vira vermelho.
+// REGRA DURA: só código de teste/harness aqui. Um fluxo revela o estado REAL de produto: a partir
+// da F6.8/ADR-0058 a IA de nuvem (anthropic/openai/gemini) DEVE alcançar o provedor no browser (401
+// com chave dummy = CORS ok) — a Anthropic via o header opt-in de browser. CORS-wall p/ esses três
+// vira vermelho (regressão); e um TRAVAMENTO SILENCIOSO (spinner infinito / falha engolida) também.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -836,9 +839,11 @@ async function runStudyChatSelector(ctx) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
-// Fluxo 6 (F6.2): IA REACHABILITY — Ask c/ chave DUMMY; registra o alcance por provedor.
-//   401 = alcança o provedor (CORS ok) · CORS-wall = barrado (R7, esperado até F6.8).
-//   Falha SÓ se o app TRAVAR / engolir a falha em silêncio.
+// Fluxo 6 (F6.2 → FLIPADO na F6.8/ADR-0058): IA REACHABILITY — Ask c/ chave DUMMY; assevera o
+// alcance por provedor. 401 = alcança o provedor (CORS ok). A partir da F6.8, os 3 provedores de
+// nuvem (anthropic/openai/gemini) DEVEM alcançar o provedor — a Anthropic via o header opt-in de
+// browser (`anthropic-dangerous-direct-browser-access`). CORS-wall p/ esses três = regressão
+// (vermelho); TRAVAMENTO SILENCIOSO (spinner infinito / falha engolida) idem.
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
 function hostOf(url) {
@@ -957,8 +962,14 @@ async function runAiReachability(ctx) {
       await clickSel(page, q('ask-submit'));
       const term = await waitAiTerminal(page, provider, net, AI_TIMEOUT_MS);
       const visible = await aiOutcomeVisible(page);
-      const reach = classifyReach(net[provider].responses, net[provider].failures);
-      results[provider] = { ...term, visible, reach };
+      const responses = [...net[provider].responses];
+      const failures = [...net[provider].failures];
+      const reach = classifyReach(responses, failures);
+      // "Alcançou o provedor" = houve resposta HTTP E nenhuma falha de rede/CORS (net::ERR_FAILED).
+      // Com a chave DUMMY isso é um 401 do provedor — prova que o CORS foi liberado e a request
+      // chegou ao endpoint (o mesmo estado "CORS ok" de `classifyReach`).
+      const reached = responses.length > 0 && failures.length === 0;
+      results[provider] = { ...term, visible, reach, responses, failures, reached };
       ctx.log(`  [ai] ${provider}: ${reach}` + (term.hung ? ' — HANG (busy nunca resolveu)' : '') + (visible ? ' · desfecho visível' : ''));
       // Falha SÓ em travamento silencioso: hang, OU resolveu sem rede E sem desfecho visível (swallow).
       if (term.hung) {
@@ -972,16 +983,29 @@ async function runAiReachability(ctx) {
     page.off('requestfailed', onFail);
   }
 
-  // Marcador de regressão p/ a F6.8 (âncora do estado observado por provedor).
+  // Marcador de regressão da F6.8 (âncora FLIPADA): o estado observado por provedor no browser real.
   const summary = Object.entries(results)
     .map(([p, r]) => `${p}=[${r.reach}]`)
     .join(' · ');
-  ctx.log(`  [ai] REACHABILITY (âncora F6.8): ${summary}`);
+  ctx.log(`  [ai] REACHABILITY (âncora F6.8 FLIPADA): ${summary}`);
+
+  // F6.8 (ADR-0058): com o header opt-in `anthropic-dangerous-direct-browser-access`, a Anthropic
+  // deixa de bater parede de CORS e passa a ALCANÇAR o provedor no browser real (401 com a chave
+  // dummy). A âncora da F6.2 (Anthropic=CORS-wall) FLIPA: agora TODOS os 3 provedores de nuvem
+  // (anthropic/openai/gemini) devem estar ALCANÇADOS. Se algum voltar a CORS-wall, é regressão.
+  for (const provider of ['anthropic', 'openai', 'gemini']) {
+    const r = results[provider];
+    if (!r || !r.reached) {
+      problems.push(
+        `${provider}: NÃO alcançou o provedor no browser (esperado 401/CORS ok; observado "${r ? r.reach : 'sem resultado'}") — ` +
+          `a âncora F6.8 deveria estar FLIPADA (Anthropic com o header opt-in de browser).`,
+      );
+    }
+  }
 
   if (problems.length) {
-    throw new Error(`ai-reachability: travamento silencioso detectado:\n  ${problems.join('\n  ')}`);
+    throw new Error(`ai-reachability: ${problems.join('\n  ')}`);
   }
-  // CORS-wall (ex.: Anthropic) é ESPERADO até a F6.8 → registrado, NÃO falha o fluxo.
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
