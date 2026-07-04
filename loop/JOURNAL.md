@@ -407,3 +407,11 @@ Não fabricar busywork. **Próximo:** aguardar input humano (LICENSE · client-i
   R1 (wasm.web.ts engole erro→spinner infinito, dist não provado), R7 (CORS de IA só mock), Android on-device só `parse_reference`.
 - **Backlog:** `loop/backlog/PHASE-6.md` (F6.1–F6.10, 3 trilhas). **Seedada F6.1** (harness de smoke browser real + auto-prova).
 - **Próximo:** executar F6.1 → reviewer. Loop LIVE. Próximo ADR livre = ADR-0058.
+
+## Ciclo — 2026-07-04T01:15Z — F6.1 ACEITA (harness de smoke em browser real) → seedar F6.2
+
+- **Tarefa:** F6.1 (harness de smoke em browser REAL + auto-prova). Não-gate. Fundação da Fase 6.
+- **Executor:** `ab523d6` — `app/web/__browser__/{chrome,server,static-server,smoke.browser,assertions}.mjs` + scripts `test:web:smoke-dev/dist/smoke` + `puppeteer-core` (sem download). Fluxo abrir-capítulo (Mateus 40/1 + João 43/3) em dev E dist.
+- **AUTO-PROVA (executor + reviewer, ambos reproduziram):** reverter `locateFile` (F5.39) → `test:web:smoke` VERMELHO ("Invalid base URL", versículo não renderiza) enquanto `test:web:reading` headless VERDE → restaurar → smoke VERDE. O guard pega o que o headless perde.
+- **Reviewer (independente):** **PASSED**. Re-rodou a auto-prova; gates verdes (tsc 0, reading, smoke-dev, smoke-dist com export fresco); determinístico (sem órfãos); Chrome-ausente→vermelho, sem falso verde; the-light `225b8c9`; `.claude/settings.json` não commitado; commit só os 5 `.mjs`+package.json/lock.
+- **Resultado:** aceito/arquivado. **Próximo:** F6.2 (demais fluxos: paralelo, busca+xref, notas-reload+anônimo, planos, export/import, IA-reachability) em dev E dist. Loop LIVE. Próximo ADR livre = ADR-0058.
