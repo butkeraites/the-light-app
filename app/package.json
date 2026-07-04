@@ -38,7 +38,10 @@
     "test:web:compare": "node web/__tests__/compare.web.test.mjs",
     "test:web:firstpaint": "node web/__tests__/firstpaint.web.test.mjs",
     "test:web:reminders": "node web/__tests__/planReminders.web.test.mjs",
-    "test:web:perf-budget": "../scripts/check-web-bundle-budget.sh"
+    "test:web:perf-budget": "../scripts/check-web-bundle-budget.sh",
+    "test:web:smoke-dev": "node web/__browser__/smoke.browser.mjs --target=dev",
+    "test:web:smoke-dist": "node web/__browser__/smoke.browser.mjs --target=dist",
+    "test:web:smoke": "npm run test:web:smoke-dev && npm run test:web:smoke-dist"
   },
   "dependencies": {
     "@expo/metro-runtime": "~56.0.15",
@@ -64,6 +67,7 @@
   "devDependencies": {
     "@types/react": "^19.2.17",
     "esbuild": "^0.25.12",
+    "puppeteer-core": "^23.11.1",
     "react-test-renderer": "19.2.3",
     "typescript": "^6.0.3"
   }
