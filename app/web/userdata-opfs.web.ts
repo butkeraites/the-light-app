@@ -34,8 +34,24 @@ async function resolveParent(
   create: boolean,
 ): Promise<{ parent: FileSystemDirectoryHandle; fileName: string } | null> {
   const root = await navigator.storage.getDirectory();
-  let dir = await root.getDirectoryHandle(OPFS_ROOT_DIR, { create });
-  dir = await dir.getDirectoryHandle(OPFS_USERDATA_DIR, { create });
+  // Os dirs raiz/`userdata` (`the-light/userdata/`) também podem estar AUSENTES numa OPFS
+  // VAZIA (instalação limpa, antes de qualquer ESCRITA de userdata) — ex.: importar um backup
+  // num aparelho novo, cujo passo 3 (`exportSnapshot`) LÊ o estado antes de gravar. Com
+  // `create=false` (LEITURA), um dir ausente devolve `null` gracioso (dir/arquivo tratado como
+  // vazio), IGUAL ao guard dos segmentos abaixo — nunca propaga `NotFoundError`. Com
+  // `create=true` (ESCRITA), os dirs são CRIADOS sob demanda como antes (nunca lança aqui).
+  let dir: FileSystemDirectoryHandle;
+  try {
+    dir = await root.getDirectoryHandle(OPFS_ROOT_DIR, { create });
+    dir = await dir.getDirectoryHandle(OPFS_USERDATA_DIR, { create });
+  } catch {
+    if (!create) {
+      return null; // raiz/userdata ausente em OPFS vazia (leitura) → tratado como vazio/ausente
+    }
+    throw new Error(
+      `Falha ao criar diretório OPFS de userdata: ${OPFS_ROOT_DIR}/${OPFS_USERDATA_DIR}`,
+    );
+  }
   const segments = relPath.split('/');
   const fileName = segments.pop() as string;
   for (const segment of segments) {

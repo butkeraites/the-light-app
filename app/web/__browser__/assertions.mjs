@@ -627,6 +627,122 @@ async function runExportImport(ctx) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
+// Fluxo 5b (F6.11): IMPORT em OPFS VAZIA — importar um backup num APARELHO NOVO (fresh install).
+//
+// O round-trip da F6.2 (`export-import`) só provou o import no contexto PRINCIPAL, que JÁ tinha
+// userdata escrito. O caminho que quebrava — e que o smoke em browser REAL pegou — é importar
+// num aparelho NOVO cuja OPFS está VAZIA (nenhum userdata gravado ainda): o passo de LEITURA-
+// antes-de-escrita do import (`importSnapshotIntoStore` → `exportSnapshot` → `listNotes`/
+// `listHighlights`/`readingPlanProgress`) resolvia `the-light/userdata/` com `{create:false}`
+// numa OPFS vazia e lançava `NotFoundError` ("A requested file or directory could not be found")
+// em vez do caminho gracioso "ausente→vazio". A F6.11 guarda essa leitura em `userdata-opfs.web.ts`
+// (a ESCRITA segue criando os dirs com `{create:true}`). Este fluxo usa um `BrowserContext` FRESCO
+// (OPFS isolada e limpa por contexto) → reproduz o bug se o guard for revertido e passa com o fix.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+async function runImportFresh(ctx) {
+  const { page, baseUrl } = ctx;
+  ctx.resetDiagnostics();
+
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tla-smoke-fresh-'));
+  const NAME = 'the-light-app-backup.json';
+  let fresh; // BrowserContext isolado (OPFS VAZIA) — teardown garantido no finally
+  try {
+    // (1) Exporta um backup do contexto PRINCIPAL (já tem a nota+marcação de João 3:16 dos
+    //     fluxos anteriores) — é exatamente o snapshot que um aparelho NOVO importaria.
+    await openSyncPanel(page, baseUrl);
+    const client = await page.target().createCDPSession();
+    try {
+      await client.send('Browser.setDownloadBehavior', {
+        behavior: 'allow',
+        downloadPath: downloadDir,
+        eventsEnabled: true,
+      });
+    } catch {
+      await client.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: downloadDir });
+    }
+    const srcFile = await exportAndDownload(page, ctx, downloadDir, NAME);
+    const snap = JSON.parse(fs.readFileSync(srcFile, 'utf8'));
+    const nNotes = Array.isArray(snap.notes) ? snap.notes.length : 0;
+    const nHls = Array.isArray(snap.highlights) ? snap.highlights.length : 0;
+    if (nNotes < 1) {
+      throw new Error(
+        `import-fresh: backup de origem sem notas (notes=${nNotes}); esperado ≥1 p/ provar o import em OPFS vazia.`,
+      );
+    }
+    // Estabiliza o caminho de re-injeção (libera o nome que o <input>/fileChooser consumiria).
+    const importSrc = path.join(downloadDir, 'fresh-import-src.json');
+    fs.copyFileSync(srcFile, importSrc);
+    ctx.log(`  [import-fresh] backup de origem: notes=${nNotes}, highlights=${nHls}`);
+
+    // (2) Contexto FRESCO = OPFS ISOLADA e VAZIA (aparelho novo; nenhum userdata escrito ainda).
+    fresh = await ctx.browser.createBrowserContext();
+    const fpage = await fresh.newPage();
+    await fpage.evaluateOnNewDocument(ctx.installUrlWrap);
+
+    // Abre o painel de sync na OPFS vazia e IMPORTA via <input> oculto (pickJsonFileWeb). ANTES do
+    // fix, a leitura-antes-de-escrita lançaria `NotFoundError` na OPFS vazia → import com erro.
+    await openSyncPanel(fpage, baseUrl);
+    const [chooser] = await Promise.all([
+      fpage.waitForFileChooser({ timeout: ACTION_TIMEOUT_MS }),
+      clickSel(fpage, q('sync-import-file')),
+    ]);
+    await chooser.accept([importSrc]);
+    try {
+      await fpage.waitForFunction(
+        () => {
+          const el = document.querySelector('[data-testid="sync-status"]');
+          if (el == null) return false;
+          const txt = el.textContent || '';
+          return /import(ed|ado)/i.test(txt) && !/Could not|Não foi possível/i.test(txt);
+        },
+        { timeout: ACTION_TIMEOUT_MS, polling: 300 },
+      );
+    } catch {
+      const st = await fpage.evaluate(() => {
+        const el = document.querySelector('[data-testid="sync-status"]');
+        return el ? el.textContent || '' : '(sem sync-status)';
+      });
+      throw new Error(
+        `import-fresh: import em OPFS VAZIA (aparelho novo) NÃO foi aceito — provável NotFoundError na ` +
+          `leitura-antes-de-escrita (bug F6.11 revertido?). sync-status="${st}"`,
+      );
+    }
+    const importStatus = await fpage.evaluate(() => {
+      const el = document.querySelector('[data-testid="sync-status"]');
+      return el ? el.textContent || '' : '';
+    });
+    ctx.log(`  [import-fresh] backup importado numa OPFS VAZIA e ACEITO: "${importStatus.trim()}"`);
+
+    // (3) As notas do backup APARECEM na OPFS antes vazia: João 3:16 volta com o marcador ✎
+    //     (o import EFETIVAMENTE gravou no aparelho novo — a ESCRITA cria os dirs `{create:true}`).
+    await fpage.goto(baseUrl + '/read/43/3', { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
+    await waitBodyIncludes(fpage, KJV_JOHN_3_16);
+    try {
+      await fpage.waitForFunction(
+        () => {
+          const v = document.querySelector('[data-testid="verse-16"]');
+          return v != null && (v.textContent || '').includes('✎');
+        },
+        { timeout: RENDER_TIMEOUT_MS, polling: 300 },
+      );
+    } catch {
+      const body = (await bodyText(fpage)).replace(/\s+/g, ' ').slice(0, 400);
+      throw new Error(
+        `import-fresh: após importar na OPFS vazia, a nota de João 3:16 NÃO apareceu (marcador ✎ ausente) — ` +
+          `o import não gravou no aparelho novo.\n  body[0..400]="${body}"`,
+      );
+    }
+    ctx.log('  [import-fresh] nota importada visível em João 3:16 (✎) na OPFS antes vazia — import em aparelho novo OK');
+  } finally {
+    if (fresh) {
+      await fresh.close();
+    }
+    fs.rmSync(downloadDir, { recursive: true, force: true });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
 // Fluxo 6 (F6.2): IA REACHABILITY — Ask c/ chave DUMMY; registra o alcance por provedor.
 //   401 = alcança o provedor (CORS ok) · CORS-wall = barrado (R7, esperado até F6.8).
 //   Falha SÓ se o app TRAVAR / engolir a falha em silêncio.
@@ -858,6 +974,9 @@ export const flows = [
   { name: 'notes-persist', run: runNotesPersist },
   { name: 'plans-persist', run: runPlansPersist },
   { name: 'export-import', run: runExportImport },
+  // F6.11: import de backup numa OPFS VAZIA (aparelho novo) — o caminho que o round-trip da F6.2
+  // não cobria (contexto principal já tinha userdata). Roda após `export-import` (reusa o backup).
+  { name: 'import-fresh', run: runImportFresh },
   { name: 'ai-reachability', run: runAiReachability },
   // F6.3: roda SÓ sob SMOKE_WASM_WRONG_MIME=1 (dist) — o driver filtra os fluxos (ver
   // smoke.browser.mjs). Sob o flag, ESTE é o ÚNICO fluxo; sem o flag, ele é EXCLUÍDO.
