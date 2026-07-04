@@ -16,12 +16,15 @@
 //                      de controle HL_START/HL_END — esses só existem em
 //                      `hit.highlighted` e viram estilo na UI, nunca no marcador).
 //
-// LIMITE da prova: a busca "God" na KJV tem centenas de hits e o BM25 do core
-// ranqueia Salmos acima de João 3:16 (uma única ocorrência de "God" num versículo
-// longo). O default do core (top-20) NÃO surge João 3:16. A fronteira `search`
-// (F1.5) expõe `limit` opcional justamente p/ completude — passamos um limite
-// generoso p/ que o versículo CONHECIDO (João 3:16) esteja no conjunto retornado,
-// tornando a prova determinística SEM hardcodear nem reimplementar busca/ranking.
+// DETERMINISMO da prova (F6.5): a busca "God" na KJV da Bíblia COMPLETA (F5.36) tem
+// ~3892 hits e o BM25 do core ranqueia João 3:16 em ~1980º (uma única ocorrência de
+// "God" num versículo longo) — FORA de qualquer top-N ou limite estável (o antigo
+// PROOF_LIMIT=1000 achava João 3:16 só no subset de 3 livros). Em vez de aumentar
+// cegamente o limite, ESCOPAMOS a busca ao LIVRO 43 (João) pela fronteira `search`
+// (parâmetro `book`, F1.5): assim o versículo CONHECIDO (João 3:16) está SEMPRE no
+// conjunto retornado — determinístico e independente do ranking global —, provando a
+// MESMA busca/texto que o headless `search.web.test.mjs` (search(...,"kjv",43,1000))
+// e a F6.2, SEM hardcodear nem reimplementar busca/ranking. `limit` segue generoso.
 //
 // Resolução por extensão do Metro: este `.ts` vale no NATIVO; no web vale
 // `search-selftest.web.ts` (SKIP — busca web = F1.14), mantendo `expo-file-system`
@@ -33,8 +36,12 @@ import { search, listBooks } from './reading';
 // Marcador grep-ável (prefixo estável "TLA_").
 const MARK = 'TLA_SEARCH';
 
-// Limite generoso (> total de hits de "God" na KJV do subset) p/ garantir que o
-// versículo-alvo conhecido (João 3:16) esteja no conjunto retornado pela fronteira.
+// Livro-alvo da prova: 43 = João. ESCOPAR a busca a João (F6.5) torna João 3:16
+// determinístico no retorno na Bíblia completa, sem depender do ranking BM25 global.
+const SEARCH_BOOK = 43;
+
+// Limite generoso (>> total de hits de "God" em João) p/ garantir que o versículo-alvo
+// conhecido (João 3:16) esteja no conjunto retornado pela fronteira mesmo com o escopo.
 const PROOF_LIMIT = 1000;
 
 /** Emite uma linha nos dois canais (log + error) p/ robustez de captura. */
@@ -58,9 +65,10 @@ export async function runSearchSelfTest(): Promise<void> {
   }
 
   try {
-    // Busca REAL pela fronteira (FTS5/BM25 no core). `book`=undefined (KJV inteira),
-    // `limit`=PROOF_LIMIT (completude — ver nota no topo).
-    const result = await search(dbPath, 'God', 'kjv', undefined, PROOF_LIMIT);
+    // Busca REAL pela fronteira (FTS5/BM25 no core). `book`=SEARCH_BOOK (João, 43 —
+    // escopo determinístico p/ João 3:16 na Bíblia completa; ver nota no topo),
+    // `limit`=PROOF_LIMIT (completude).
+    const result = await search(dbPath, 'God', 'kjv', SEARCH_BOOK, PROOF_LIMIT);
 
     // Localiza o hit de João 3:16 (livro 43, cap. 3, versículo único 16) NO RETORNO.
     const hit = result.find((h) => {

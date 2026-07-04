@@ -22,7 +22,9 @@
 #        TLA_SELFTEST EN book=43 chapter=3 verse=16
 #        TLA_READ books=66 john3_v16="For God so loved the world..." john_chapters=21
 #        TLA_PARALLEL kjv_john3_16="For God so loved the world..." alm_john3_16="Porque Deus amou o mundo de tal maneira..."
-#        TLA_SEARCH query="God" hits=<N>=1 first_ref="John 3:16" first_text="For God so loved..."
+#        TLA_SEARCH query="God" hits=<N>>=1 first_ref="John 3:16" first_text="For God so loved..."
+#          (F6.5: a busca é ESCOPADA ao livro 43/João — João 3:16 achado de forma
+#           determinística na Bíblia completa, sem depender do ranking BM25 global.)
 #        TLA_XREF verse="John 3:16" count=<N>=1 first_ref="John 3:15" first_votes=439
 #      (os textos de João 3:16 vêm do RETORNO de get_chapter — store local, KJV e
 #       Almeida 1911 verbatim — não hardcoded; o lado a lado lê AS DUAS traduções
@@ -35,7 +37,8 @@
 # o runtime do self-test é offline (o app resolve a referência localmente, no Rust).
 #
 # Variáveis (opcionais):
-#   DEVICE_NAME   (default "iPhone 17")
+#   DEVICE_NAME   (default: 1º iPhone DISPONÍVEL — booted preferido — resolvido em [1/5];
+#                  o antigo fixo "iPhone 17" saiu do catálogo: só "iPhone 17 Pro/Pro Max/17e")
 #   BUNDLE_ID     (default "com.thelight.app")
 #   SKIP_BUILD=1  reusa um build existente (re-runs rápidos)
 #   LAUNCH_WAIT   segundos aguardando os marcadores após o launch (default 240)
@@ -45,7 +48,9 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 APP_DIR="$ROOT/app"
 IOS_DIR="$APP_DIR/ios"
-DEVICE_NAME="${DEVICE_NAME:-iPhone 17}"
+# DEVICE_NAME opcional: se vazio, o passo [1/5] escolhe o 1º iPhone DISPONÍVEL
+# (o antigo default fixo "iPhone 17" não existe mais — só "iPhone 17 Pro/Pro Max/17e").
+DEVICE_NAME="${DEVICE_NAME:-}"
 BUNDLE_ID="${BUNDLE_ID:-com.thelight.app}"
 LAUNCH_WAIT="${LAUNCH_WAIT:-240}"
 # DerivedData FORA do diretório do repositório: este repo está sob ~/Documents,
@@ -208,8 +213,21 @@ echo "$A11Y_OUT" | grep -E 'TLA_A11Y modal=true .*scale=ok .*focus=ok' \
   || { echo "ERRO: marcador TLA_A11Y (modal=true scale=ok focus=ok) ausente." >&2; echo "$A11Y_OUT" >&2; exit 1; }
 
 # ── [1/5] Device ─────────────────────────────────────────────────────────────
-UDID="$(xcrun simctl list devices available | grep "$DEVICE_NAME (" | head -1 | grep -oE '[0-9A-Fa-f-]{36}' | head -1)"
-[ -n "$UDID" ] || { echo "ERRO: device '$DEVICE_NAME' não encontrado." >&2; exit 1; }
+# Resolve o simulador de forma RESILIENTE (F6.5): com DEVICE_NAME (env) explícito, exige
+# aquele device; senão escolhe o 1º iPhone DISPONÍVEL (booted preferido). Isso evita o
+# acoplamento a um modelo fixo — o antigo default "iPhone 17" saiu do catálogo do Xcode
+# (só "iPhone 17 Pro/Pro Max/17e" existem), e o script quebrava sem override.
+if [ -n "$DEVICE_NAME" ]; then
+  UDID="$(xcrun simctl list devices available | grep -F "$DEVICE_NAME (" | grep -oE '[0-9A-Fa-f-]{36}' | head -1)"
+  [ -n "$UDID" ] || { echo "ERRO: device '$DEVICE_NAME' não encontrado (xcrun simctl list devices available)." >&2; exit 1; }
+else
+  DEV_LINE="$(xcrun simctl list devices available | grep -E 'iPhone .*\([0-9A-Fa-f-]{36}\).*\(Booted\)' | head -1)"
+  [ -n "$DEV_LINE" ] || DEV_LINE="$(xcrun simctl list devices available | grep -E 'iPhone .*\([0-9A-Fa-f-]{36}\)' | head -1)"
+  [ -n "$DEV_LINE" ] || { echo "ERRO: nenhum simulador iPhone disponível (xcrun simctl list devices available)." >&2; exit 1; }
+  UDID="$(printf '%s' "$DEV_LINE" | grep -oE '[0-9A-Fa-f-]{36}' | head -1)"
+  DEVICE_NAME="$(printf '%s' "$DEV_LINE" | sed -E 's/^[[:space:]]*//; s/ \([0-9A-Fa-f-]{36}\).*//')"
+  [ -n "$UDID" ] || { echo "ERRO: não consegui resolver um simulador iPhone disponível." >&2; exit 1; }
+fi
 echo "==> [1/5] Device $DEVICE_NAME = $UDID — bootando"
 xcrun simctl boot "$UDID" 2>/dev/null || true
 xcrun simctl bootstatus "$UDID" >/dev/null 2>&1 || true
