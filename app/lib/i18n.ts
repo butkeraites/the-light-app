@@ -49,6 +49,8 @@ export type MessageKey =
   | 'home.title'
   | 'home.resultPlaceholder'
   | 'home.inputPlaceholder'
+  | 'home.passageNotFound'
+  | 'home.passageTruncated'
   | 'home.hint'
   | 'home.readBible'
   | 'home.searchBible'
@@ -401,7 +403,9 @@ export type MessageKey =
 const pt: Record<MessageKey, string> = {
   'home.title': 'The Light',
   'home.resultPlaceholder': 'O resultado aparecerá aqui.',
-  'home.inputPlaceholder': 'Digite uma passagem (ex.: João 3:16)',
+  'home.inputPlaceholder': 'Passagem, intervalo ou lista (ex.: João 3:16-18; Salmos 23)',
+  'home.passageNotFound': 'Nada encontrado para “{input}”.',
+  'home.passageTruncated': 'Seleção grande — mostrando os primeiros {count} versículos.',
   'home.hint': 'Pressione Enter para interpretar (via Rust/wasm).',
   'home.readBible': 'Ler a Bíblia',
   'home.searchBible': 'Buscar na Bíblia',
@@ -701,7 +705,9 @@ const pt: Record<MessageKey, string> = {
 const en: Record<MessageKey, string> = {
   'home.title': 'The Light',
   'home.resultPlaceholder': 'The result will appear here.',
-  'home.inputPlaceholder': 'Enter a passage (e.g., John 3:16)',
+  'home.inputPlaceholder': 'Passage, range or list (e.g., John 3:16-18; Psalm 23)',
+  'home.passageNotFound': 'Nothing found for “{input}”.',
+  'home.passageTruncated': 'Large selection — showing the first {count} verses.',
   'home.hint': 'Press Enter to interpret (via Rust/wasm).',
   'home.readBible': 'Read the Bible',
   'home.searchBible': 'Search the Bible',

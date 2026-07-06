@@ -1,87 +1,52 @@
-import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { router } from 'expo-router';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { parseReference, type Reference } from '../web/reference';
-// F5.12 (ADR-0041): `getPassage` (store web) só roda no submit (NUNCA no mount) —
-// importado SOB DEMANDA via `import()` p/ sair do chunk EAGER de 1º paint (molde
-// `reading.web.ts` / F5.9). O tipo `Passage` é `import type` (apagado na compilação
-// → não puxa o glue p/ o entry).
-import type { Passage } from '../web/passage';
+import { PassageResultView } from '../components/PassageResultView';
+import { ReaderVersionPicker } from '../components/ReaderVersionPicker';
+import { resolvePassageQuery, type PassageResult } from '../lib/passageResolve';
 import { runReferenceSelfTest } from '../web/selftest';
-import { useI18n, type TranslateFn } from '../lib/i18n';
+import { useI18n } from '../lib/i18n';
 import { useTheme, type ThemeContextValue } from '../lib/theme';
+import { parseReference } from '../web/reference';
+// PERF (F5.12): a leitura de store (`reading`/`db`) é a parte PESADA (glue + sqlite-mirror). É
+// importada SOB DEMANDA (chunk async, FORA do 1º paint eager) — `Translation` é `import type`
+// (apagado). `parseReference` (leve, wasm) e a lógica pura (`resolvePassageQuery`) seguem eager.
+import type { Translation } from '../web/reading';
 
-// F0.6b/F0.10 — tela ligada à fronteira Rust. A referência é SEMPRE resolvida
-// PELO RUST (the-light-core via UniFFI), não por eco/parsing em TS.
-//   - WEB (F0.10): `getPassage` resolve a referência (wasm) E lê o TEXTO do
-//     versículo do store local (`wa-sqlite`/OPFS) — anti-alucinação: verbatim do
-//     store, nunca hardcoded.
-//   - NATIVO (F0.7/F0.8): `parseReference` via Turbo Module; a leitura de store
-//     nativa (F0.9) não está ligada nesta tela.
+// F0.6b/F0.10 · ADR-0063 (Vigil) · ADR-0065 (lookup de passagem: seletor de versão + ranges/listas)
 //
-// F5.2 (ADR-0038) — tela MIGRADA ponta a ponta: strings de UI via `t()` (i18n
-// PT/EN), elementos interativos com a11y, e cores via TOKENS de tema (zero hex). O
-// resultado é guardado como DADO estruturado (`Outcome`) e formatado no RENDER, de
-// modo que trocar o idioma re-renderiza as strings de CROMO na hora — enquanto o
-// TEXTO do versículo (`v.text`) permanece VERBATIM do store, nunca traduzido.
-//
-// ADR-0063 ("Vigil"): a apresentação foi retrabalhada sobre os TOKENS (tipografia serifa,
-// escala de espaço/raio, superfícies) — título em serifa, campo de busca em pílula, uma AÇÃO
-// PRIMÁRIA "Ler a Bíblia" em ouro e a navegação secundária agrupada num cartão. A LÓGICA
-// (busca, self-test, sync, i18n, testIDs, a11y) é idêntica — só o CROMO/estrutura mudou.
+// A referência é SEMPRE resolvida PELO RUST (`parseReference`, the-light-core via UniFFI) e o
+// TEXTO vem VERBATIM do store via `getChapter` na TRADUÇÃO escolhida (anti-alucinação) — nas DUAS
+// plataformas (antes: web só KJV via `getPassage`; nativo não lia texto). ADR-0065 aceita RANGES
+// (hífen: versos→capítulos→livros) e LISTAS (`;`/`,`) — expandidos APP-SIDE em leituras atômicas de
+// capítulo (`resolvePassageQuery`), SEM tocar o core. Seletor de versão reusa o padrão da busca
+// (pt→Almeida / en→KJV, reativo). Cromo via `t()`; texto do verso nunca traduzido.
 
-// Estado do resultado como DADO (não string pronta): assim o CROMO (placeholder,
-// rótulos de referência, erro) é traduzido no render, e o texto bíblico segue verbatim.
-type Outcome =
-  | { kind: 'idle' }
-  | { kind: 'passage'; passage: Passage }
-  | { kind: 'reference'; reference: Reference }
-  | { kind: 'error'; message: string };
-
-// Apresentação (NÃO parsing): formata o intervalo de versículos resolvido pelo Rust.
-// Só rótulos de CROMO (`v.`/`vv.`/'capítulo inteiro') são traduzidos; os NÚMEROS são dados.
-function formatVerses(verses: Reference['verses'], t: TranslateFn): string {
-  switch (verses.tag) {
-    case 'Single':
-      return `${t('ref.verseSingle')} ${verses.inner.verse}`;
-    case 'Range':
-      return `${t('ref.verseRange')} ${verses.inner.start}-${verses.inner.end}`;
-    case 'WholeChapter':
-      return t('ref.wholeChapter');
-    default:
-      return '';
-  }
-}
-
-// Rótulos de referência (CROMO) traduzidos; livro/capítulo são DADOS (números).
-function formatReference(ref: Reference, t: TranslateFn): string {
-  return `${t('ref.book')} ${ref.book} · ${t('ref.chapter')} ${ref.chapter} · ${formatVerses(ref.verses, t)}`;
-}
-
-// Apresentação: mostra o TEXTO verbatim lido do store local (NUNCA traduzido). Só o
-// cabeçalho de referência e o aviso de "não encontrado" são CROMO traduzível.
-function formatPassage(passage: Passage, t: TranslateFn): string {
-  if (passage.verses.length === 0) {
-    return t('home.verseNotFound');
-  }
-  const header = formatReference(passage.reference, t);
-  const body = passage.verses.map((v) => v.text).join('\n');
-  return `${header}\n\n${body}`;
+// Tradução default do lookup por idioma da UI (o texto casa o idioma do usuário). Cai no KJV.
+function defaultTranslationFor(locale: 'pt' | 'en'): string {
+  return locale === 'pt' ? 'alm1911' : 'kjv';
 }
 
 export default function HomeScreen() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const theme = useTheme();
   const { colors } = theme;
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const [query, setQuery] = useState('');
-  const [outcome, setOutcome] = useState<Outcome>({ kind: 'idle' });
+  const [submittedQuery, setSubmittedQuery] = useState('');
+  const [passageResult, setPassageResult] = useState<PassageResult | null>(null);
+  const [resolving, setResolving] = useState(false);
+  const [resolveError, setResolveError] = useState<string | null>(null);
 
-  // F5.26: SEÇÃO de SINCRONIZAÇÃO OPT-IN + backup. Carregada SOB DEMANDA (`import()`) —
-  // o painel e seus motores (snapshot/driveAuth/driveSync) ficam num chunk ASYNC, FORA do
-  // entry eager do 1º paint (perf-budget travado). Opt-in é OFF por padrão (`syncPrefs`).
+  // ADR-0065: seletor de versão (mesmo padrão da busca) — escolha do usuário, senão o default do
+  // idioma, validado contra o store. Reativo ao idioma até o usuário escolher.
+  const [translations, setTranslations] = useState<Translation[]>([]);
+  const [pickedTranslation, setPickedTranslation] = useState<string | null>(null);
+
+  // F5.26: SEÇÃO de SINCRONIZAÇÃO OPT-IN + backup. Carregada SOB DEMANDA (chunk async), fora do
+  // entry eager do 1º paint. Opt-in é OFF por padrão (`syncPrefs`).
   const [syncOpen, setSyncOpen] = useState(false);
   const [SyncPanel, setSyncPanel] = useState<ComponentType<{ onClose?: () => void }> | null>(null);
   const openSync = useCallback(async () => {
@@ -92,56 +57,101 @@ export default function HomeScreen() {
     setSyncOpen(true);
   }, [SyncPanel]);
 
-  // F0.7 — prova HEADLESS: sob EXPO_PUBLIC_TLA_SELFTEST=1, resolve "Jo 3.16" e
-  // "John 3:16" pelo Turbo Module nativo e loga marcadores estáveis (capturados
-  // pelo simulador). Não muda a UI normal (só dispara sob o env de teste).
+  // F0.7 — prova HEADLESS nativa sob EXPO_PUBLIC_TLA_SELFTEST=1 (não muda a UI normal).
   useEffect(() => {
     if (process.env.EXPO_PUBLIC_TLA_SELFTEST === '1') {
       void runReferenceSelfTest();
     }
   }, []);
 
-  async function handleSubmit() {
-    const input = query.trim();
+  // Carrega as traduções presentes no store (seletor de versão). Some se o store não expõe.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const [{ ensureReadingDb }, { listTranslations }] = await Promise.all([
+          import('../lib/db'),
+          import('../web/reading'),
+        ]);
+        const dbPath = await ensureReadingDb();
+        const ts = await listTranslations(dbPath);
+        if (alive) setTranslations(ts);
+      } catch {
+        /* sem traduções → seletor some; usa a default do idioma */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const effectiveTranslation = useMemo(() => {
+    if (pickedTranslation && translations.some((x) => x.id === pickedTranslation)) {
+      return pickedTranslation;
+    }
+    const byLocale = defaultTranslationFor(locale);
+    if (translations.length === 0 || translations.some((x) => x.id === byLocale)) {
+      return byLocale;
+    }
+    return translations.find((x) => x.language === locale)?.id ?? translations[0]?.id ?? byLocale;
+  }, [pickedTranslation, translations, locale]);
+
+  // Resolve a consulta (ranges + listas) na tradução escolhida. Re-resolve ao trocar a versão ou o
+  // idioma. `seq` descarta respostas obsoletas. Anti-alucinação: o texto vem de `getChapter`.
+  const seqRef = useRef(0);
+  useEffect(() => {
+    const input = submittedQuery.trim();
     if (input.length === 0) {
-      setOutcome({ kind: 'idle' });
+      setPassageResult(null);
+      setResolveError(null);
+      setResolving(false);
       return;
     }
-    try {
-      if (Platform.OS === 'web') {
-        // WEB: resolve (Rust/wasm) + lê o texto do store local (wa-sqlite/OPFS).
-        // O glue do store carrega SOB DEMANDA (F5.12) — chunk async, fora do 1º paint.
-        const { getPassage } = await import('../web/passage');
-        const passage = await getPassage(input);
-        setOutcome({ kind: 'passage', passage });
-      } else {
-        // NATIVO: resolve a referência pelo Turbo Module (store nativo = F0.9).
-        const ref = await parseReference(input);
-        setOutcome({ kind: 'reference', reference: ref });
+    let alive = true;
+    const mySeq = ++seqRef.current;
+    setResolving(true);
+    setResolveError(null);
+    (async () => {
+      try {
+        const [{ ensureReadingDb }, { getChapter, listBooks }] = await Promise.all([
+          import('../lib/db'),
+          import('../web/reading'),
+        ]);
+        const dbPath = await ensureReadingDb();
+        const books = listBooks(); // cânon (síncrono, exige wasm — já aquecido no boot)
+        const result = await resolvePassageQuery(input, {
+          parseReference,
+          getChapter: (b, c) => getChapter(dbPath, effectiveTranslation, b, c),
+          chapterCountOf: (b) => books.find((x) => x.number === b)?.chapterCount ?? 1,
+          bookLabel: (b) => {
+            const bk = books.find((x) => x.number === b);
+            return bk ? (locale === 'en' ? bk.nameEn : bk.namePt) : t('read.bookFallback', { number: b });
+          },
+        });
+        if (!alive || mySeq !== seqRef.current) return;
+        setResolving(false);
+        if (result.segments.length === 0) {
+          setPassageResult(null);
+          setResolveError(t('home.passageNotFound', { input }));
+        } else {
+          setPassageResult(result);
+          setResolveError(null);
+        }
+      } catch (err) {
+        if (!alive || mySeq !== seqRef.current) return;
+        setResolving(false);
+        setPassageResult(null);
+        setResolveError(t('home.resolveError', { message: err instanceof Error ? err.message : String(err) }));
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setOutcome({ kind: 'error', message });
-    }
-  }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [submittedQuery, effectiveTranslation, locale]);
 
-  // Formata o resultado NO RENDER (reativo ao idioma): cromo via `t()`; texto do
-  // versículo verbatim do store (dentro de `formatPassage`).
-  let resultText: string;
-  switch (outcome.kind) {
-    case 'passage':
-      resultText = formatPassage(outcome.passage, t);
-      break;
-    case 'reference':
-      resultText = formatReference(outcome.reference, t);
-      break;
-    case 'error':
-      resultText = t('home.resolveError', { message: outcome.message });
-      break;
-    default:
-      resultText = t('home.resultPlaceholder');
+  function handleSubmit() {
+    setSubmittedQuery(query.trim());
   }
-  const hasResult = outcome.kind !== 'idle';
 
   // Painel de sync aberto → substitui a home (com voltar). O painel vive num chunk async.
   if (syncOpen && SyncPanel) {
@@ -158,7 +168,7 @@ export default function HomeScreen() {
         <View style={styles.rule} />
       </View>
 
-      {/* BUSCA — campo em pílula (mesma lógica de resolução da referência). */}
+      {/* LOOKUP — passagem, intervalo ou lista (ex.: "João 3:16-18; Salmos 23"). */}
       <TextInput
         style={styles.input}
         value={query}
@@ -174,20 +184,38 @@ export default function HomeScreen() {
       />
       {Platform.OS === 'web' ? <Text style={styles.hint}>{t('home.hint')}</Text> : null}
 
-      {/* F5.29: SEM accessibilityLabel — role="text" deixa o leitor anunciar os FILHOS
-          (`resultText`): a passagem resolvida OU a mensagem de erro. Sem resultado, é um
-          placeholder atenuado; com resultado, um cartão com o texto VERBATIM do store. */}
-      <Text
-        testID="result"
-        style={[styles.result, hasResult ? styles.resultCard : styles.resultIdle]}
-        accessibilityRole="text"
-      >
-        {resultText}
-      </Text>
+      {/* ADR-0065: seletor de VERSÃO (KJV / Almeida 1911). Trocar re-resolve a mesma consulta. */}
+      {translations.length > 0 ? (
+        <View style={styles.pickerRow}>
+          <Text style={styles.pickerLabel}>{t('search.translationLabel')}</Text>
+          <ReaderVersionPicker
+            translations={translations}
+            current={effectiveTranslation}
+            onChange={setPickedTranslation}
+            testIDPrefix="home-version"
+          />
+        </View>
+      ) : null}
 
-      {/* AÇÃO PRIMÁRIA — Ler a Bíblia (ouro). F5.30: paridade web concluída (as duas
-          plataformas). F1.3: fluxo de leitura (livro → capítulo → texto). UM só elemento
-          interativo (Pressable + router) com role/label/alvo ≥44 — a11y-scan verde. */}
+      {/* RESULTADO — spinner / erro / trechos (cartão rolável) / placeholder. testID="result"
+          está SEMPRE no elemento mostrado (menos durante o carregamento), p/ testes/a11y. */}
+      {resolving ? (
+        <View style={styles.resultLoading}>
+          <ActivityIndicator color={colors.text} />
+        </View>
+      ) : resolveError ? (
+        <Text testID="result" style={[styles.result, styles.resultError]} accessibilityRole="text">
+          {resolveError}
+        </Text>
+      ) : passageResult ? (
+        <PassageResultView result={passageResult} />
+      ) : (
+        <Text testID="result" style={[styles.result, styles.resultIdle]} accessibilityRole="text">
+          {t('home.resultPlaceholder')}
+        </Text>
+      )}
+
+      {/* AÇÃO PRIMÁRIA — Ler a Bíblia (ouro). UM só elemento interativo (role/label/alvo ≥44). */}
       <Pressable
         onPress={() => router.push('/read')}
         style={styles.cta}
@@ -199,9 +227,7 @@ export default function HomeScreen() {
         <Text style={styles.ctaChevron}>›</Text>
       </Pressable>
 
-      {/* NAVEGAÇÃO SECUNDÁRIA — agrupada num cartão com divisórias (busca/planos/backup/
-          sobre/ajustes). Cada linha é um Pressable único (role/label/alvo ≥44) — preserva o
-          testID e a a11y do link original, sem aninhar Link+Pressable (a11y-scan). */}
+      {/* NAVEGAÇÃO SECUNDÁRIA — cartão com divisórias; cada linha é um Pressable único. */}
       <View style={styles.rowsCard}>
         <Pressable
           onPress={() => router.push('/search')}
@@ -265,29 +291,11 @@ export default function HomeScreen() {
 // Estilos derivados dos TOKENS (cor + tipografia + espaço + raio) — zero magic number.
 function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
   return StyleSheet.create({
-    screen: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    container: {
-      padding: space.xl,
-      paddingTop: space.xxl,
-      gap: space.lg,
-    },
-    brand: {
-      gap: space.sm,
-      marginBottom: space.xs,
-    },
-    title: {
-      ...type.display,
-      color: colors.text,
-    },
-    rule: {
-      width: 44,
-      height: 3,
-      borderRadius: 3,
-      backgroundColor: colors.accent,
-    },
+    screen: { flex: 1, backgroundColor: colors.background },
+    container: { padding: space.xl, paddingTop: space.xxl, gap: space.lg },
+    brand: { gap: space.sm, marginBottom: space.xs },
+    title: { ...type.display, color: colors.text },
+    rule: { width: 44, height: 3, borderRadius: 3, backgroundColor: colors.accent },
     input: {
       ...type.body,
       color: colors.text,
@@ -298,29 +306,13 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
       paddingHorizontal: space.lg,
       paddingVertical: space.md,
     },
-    hint: {
-      ...type.caption,
-      color: colors.muted,
-      marginLeft: space.sm,
-      marginTop: -space.sm,
-    },
-    result: {
-      ...type.body,
-      color: colors.text,
-    },
-    // Sem resultado: placeholder atenuado, sem cartão.
-    resultIdle: {
-      color: colors.muted,
-    },
-    // Com resultado: cartão de superfície (o texto do versículo é verbatim do store).
-    resultCard: {
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radius.lg,
-      padding: space.lg,
-      lineHeight: 24,
-    },
+    hint: { ...type.caption, color: colors.muted, marginLeft: space.sm, marginTop: -space.sm },
+    pickerRow: { gap: space.xs },
+    pickerLabel: { ...type.label, color: colors.muted },
+    result: { ...type.body },
+    resultIdle: { color: colors.muted },
+    resultError: { color: colors.error },
+    resultLoading: { paddingVertical: space.lg, alignItems: 'flex-start' },
     cta: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -328,18 +320,10 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
       borderRadius: radius.lg,
       paddingHorizontal: space.lg,
       paddingVertical: space.lg,
-      // F5.20: alvo de toque confortável (≥44).
       minHeight: 56,
     },
-    ctaTitle: {
-      ...type.heading,
-      color: colors.onAccent,
-      flex: 1,
-    },
-    ctaChevron: {
-      fontSize: 24,
-      color: colors.onAccent,
-    },
+    ctaTitle: { ...type.heading, color: colors.onAccent, flex: 1 },
+    ctaChevron: { fontSize: 24, color: colors.onAccent },
     rowsCard: {
       backgroundColor: colors.surface,
       borderWidth: 1,
@@ -351,23 +335,11 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: space.lg,
-      // F5.20: alvo de toque ≥44.
       minHeight: 52,
       paddingVertical: space.md,
     },
-    rowLabel: {
-      ...type.body,
-      color: colors.text,
-      flex: 1,
-    },
-    chevron: {
-      fontSize: 20,
-      color: colors.muted,
-    },
-    rowDivider: {
-      height: StyleSheet.hairlineWidth,
-      backgroundColor: colors.divider,
-      marginLeft: space.lg,
-    },
+    rowLabel: { ...type.body, color: colors.text, flex: 1 },
+    chevron: { fontSize: 20, color: colors.muted },
+    rowDivider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.divider, marginLeft: space.lg },
   });
 }
