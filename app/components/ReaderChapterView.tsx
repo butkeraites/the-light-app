@@ -5,10 +5,10 @@
 // Rust, nunca gerado/hardcodado na UI). Cores via TOKENS de tema (`useTheme`),
 // não mais hex hardcoded. Não faz I/O nem lógica de domínio.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, type LayoutChangeEvent } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 
 import { useI18n } from '../lib/i18n';
-import { useTheme, type ThemeColors } from '../lib/theme';
+import { useTheme, type ThemeContextValue } from '../lib/theme';
 import type { Passage } from '../web/reading';
 
 /** Número do versículo a partir do `VerseRange` (sempre `Single` num capítulo). */
@@ -24,6 +24,7 @@ const ANCHOR_SCROLL_OFFSET = 12;
 
 export function ReaderChapterView({
   passage,
+  heading,
   onVersePress,
   selectedVerse,
   highlightedVerses,
@@ -31,6 +32,11 @@ export function ReaderChapterView({
   anchorVerse,
 }: {
   passage: Passage;
+  /**
+   * ADR-0063 ("Vigil"): título de abertura do capítulo (ex.: "João 3"), em serifa, como a
+   * âncora de leitura no topo do texto (molde do livro impresso). OPCIONAL (retrocompat).
+   */
+  heading?: string;
   /**
    * F1.9: torna os versículos SELECIONÁVEIS (Pressable) p/ abrir o painel de
    * referências cruzadas. OPCIONAL — sem o prop, o comportamento é o de F1.3 (texto
@@ -59,12 +65,13 @@ export function ReaderChapterView({
    */
   anchorVerse?: number | null;
 }) {
-  const { colors } = useTheme();
+  const theme = useTheme();
+  const { colors } = theme;
   // F5.8: só o CROMO (estado-vazio + hint do gesto no versículo) passa por `t()`. O TEXTO do
   // versículo é VERBATIM do store — permanece como conteúdo do <Text> (rótulo lido pelo
   // leitor de tela), nunca substituído por `t()`. O hint só descreve a AÇÃO (abrir opções).
   const { t } = useI18n();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   // F5.32: ancoragem no versículo-alvo (busca/xref). `scrollRef` p/ comandar a rolagem;
   // `offsetsRef` acumula o Y de cada linha via `onLayout`; `pendingRef` guarda o alvo até
@@ -119,6 +126,14 @@ export function ReaderChapterView({
   }
   return (
     <ScrollView ref={scrollRef} contentContainerStyle={styles.content}>
+      {heading ? (
+        <View style={styles.headingBlock}>
+          <Text style={styles.chapTitle} accessibilityRole="header">
+            {heading}
+          </Text>
+          <View style={styles.chapRule} />
+        </View>
+      ) : null}
       {passage.verses.map((v, i) => {
         const n = verseNumber(v.reference.verses);
         const selectable = onVersePress != null && n != null;
@@ -154,14 +169,39 @@ export function ReaderChapterView({
   );
 }
 
-function makeStyles(colors: ThemeColors) {
+function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
   return StyleSheet.create({
-    content: { padding: 20, gap: 10 },
-    verse: { fontSize: 17, lineHeight: 26 },
-    verseSelected: { backgroundColor: colors.chipActiveBg, color: colors.chipActiveText },
-    verseNumber: { fontSize: 12, color: colors.accent, fontWeight: '700' },
-    noteMark: { fontSize: 12, color: colors.accent, fontWeight: '700' },
+    content: {
+      paddingHorizontal: space.xl,
+      paddingVertical: space.lg,
+      gap: space.md,
+    },
+    // Abertura do capítulo em serifa (type.title) + régua dourada — âncora de leitura.
+    headingBlock: { marginBottom: space.xs },
+    chapTitle: { ...type.title, color: colors.text },
+    chapRule: {
+      width: 44,
+      height: 3,
+      borderRadius: 3,
+      backgroundColor: colors.accent,
+      marginTop: space.sm,
+    },
+    // Corpo do versículo em SERIFA de leitura (type.verse) — verbatim do store.
+    verse: { ...type.verse },
+    // Seleção/âncora: banho de ouro sutil + régua dourada à esquerda (não invertido — o
+    // texto segue legível em `verseText`, par auditado AA sobre `selectionBg`).
+    verseSelected: {
+      backgroundColor: colors.selectionBg,
+      borderLeftWidth: 3,
+      borderLeftColor: colors.accent,
+      paddingLeft: space.sm,
+      marginLeft: -space.sm,
+      borderTopRightRadius: radius.sm,
+      borderBottomRightRadius: radius.sm,
+    },
+    verseNumber: { ...type.verseNumber, color: colors.accent },
+    noteMark: { ...type.verseNumber, color: colors.accent },
     verseText: { color: colors.verseText },
-    empty: { fontSize: 14, color: colors.muted },
+    empty: { ...type.body, color: colors.muted },
   });
 }

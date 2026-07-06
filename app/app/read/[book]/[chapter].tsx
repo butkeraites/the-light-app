@@ -233,6 +233,7 @@ function ChapterContent() {
       ) : (
         <ReaderChapterView
           passage={passage}
+          heading={`${bookLabel(bookNumber)} ${chapterNumber}`}
           onVersePress={setSelectedVerse}
           selectedVerse={selectedVerse}
           highlightedVerses={highlightedVerses}
