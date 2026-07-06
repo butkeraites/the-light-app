@@ -3734,3 +3734,15 @@ Fim-de-jogo: UMA fonte da verdade (SQL, corpo de request, constantes, ranking/cl
 **Restrições preservadas.** Só apresentação (nenhuma lógica de domínio/rede/store); tokens Vigil; a11y; core/mirror intocados. Verde: `tsc` + 31 testes web + `a11y-scan`/`a11y-modals` (estendida) + `i18n`/`-coverage`; home verificada no browser (linhas com ícone, sem erro).
 
 **Consequências.** (+) Base única para toda a UI; a de-duplicação começa (nav da home). (−) Parte do kit (`BottomSheet`/`Cited`/`Interp`) só é consumida a partir da Fase 2 — construída agora porque as próximas fases dependem dela; os glifos do `Icon` são temporários (ícones reais na Fase 5).
+
+## ADR-0067 — Folha de AJUSTES DE LEITURA (tamanho / entrelinha / TEMA-sépia / família / justificação)
+
+- **Data:** 2026-07-06 · **Status:** ACEITO (Fase 2 do programa Vigil) · **Depende:** ADR-0063 (tokens + `readingPrefs.ts` puro + paleta `SEPIA`/`READING_PALETTES`), ADR-0066 (kit: `BottomSheet`/`Chip`/`IconButton`/`SectionLabel`).
+
+**Contexto.** O leitor não tinha NENHUMA customização (mesa-posta de um leitor de Bíblia); a lógica pura `readingPrefs.ts` (tipos/guardas/escala, já testada) e a paleta **SÉPIA** existiam mas estavam OCIOSAS.
+
+**Decisão.** `useReadingPrefs` (hook que lê/persiste no KV de prefs offline, reusando a lógica pura) + `ReadingSettingsSheet` (sobre o `<BottomSheet>` do kit: stepper de TAMANHO via `IconButton`, chips segmentados de ENTRELINHA/TEMA/FONTE via `Chip`, `Switch` de JUSTIFICAR). Aplicado no `ReaderChapterView`: escala `type.verse` (tamanho×entrelinha), **TEMA DE LEITURA via `READING_PALETTES`** — a SUPERFÍCIE do versículo re-tematiza claro/sépia/escuro (distinto do modo do app; só o chrome header/picker fica no modo do app), família serifa/sem-serifa e justificação. Botão **"Aa"** no header do leitor (headerRight local via `setOptions`) abre a folha. i18n `reading.*` (namespace de cromo adicionado às guardas `i18n`/`i18n-coverage`).
+
+**Restrições preservadas.** Só apresentação/prefs; offline (mesmo KV da F5.2); anti-alucinação (texto VERBATIM do store — só re-estiliza, nunca toca o conteúdo); a11y embutida (kit). Core/mirror intocados. Verde: `tsc` + 31 testes web + `a11y-scan`/`a11y-modals` + `i18n`/`-coverage` + `readingprefs`; verificado no browser (SÉPIA + tamanho aplicados ao vivo).
+
+**Consequências.** (+) Leitura CUSTOMIZÁVEL (lacuna table-stakes fechada); a paleta sépia/`READING_PALETTES` sai da ociosidade; 1º consumo REAL do kit (`BottomSheet`/`Chip`/`IconButton`). (−) O chrome do leitor (header/picker) permanece no modo do app enquanto a superfície usa o tema de leitura — split INTENCIONAL (canvas temado sob nav do app); uma polonização futura pode unificar.

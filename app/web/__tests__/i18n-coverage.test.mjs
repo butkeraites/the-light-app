@@ -255,7 +255,7 @@ async function main() {
     );
   }
   const CHROME_NAMESPACES = new Set([
-    'home', 'search', 'nav', 'read', 'plans', 'ref', 'a11y', 'language', 'theme',
+    'home', 'search', 'nav', 'read', 'reading', 'plans', 'ref', 'a11y', 'language', 'theme',
     'ai', 'ask', 'chat', 'compare', 'study', 'common', 'versePanel', 'xref',
     // F5.28: nomes de EXIBIÇÃO das cores da paleta de marcação (highlight.*) — cromo puro.
     'highlight',

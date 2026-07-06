@@ -405,6 +405,7 @@ async function main() {
     'search',
     'nav',
     'read',
+    'reading',
     'plans',
     'ref',
     'a11y',

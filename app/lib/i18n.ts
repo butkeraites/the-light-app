@@ -116,6 +116,22 @@ export type MessageKey =
   // (namePt/nameEn), NUNCA de `t()` (anti-alucinação).
   | 'read.parallel'
   | 'read.bookFallback'
+  | 'reading.title'
+  | 'reading.size'
+  | 'reading.smaller'
+  | 'reading.larger'
+  | 'reading.spacing'
+  | 'reading.spacing.compact'
+  | 'reading.spacing.comfortable'
+  | 'reading.spacing.relaxed'
+  | 'reading.theme'
+  | 'reading.theme.light'
+  | 'reading.theme.sepia'
+  | 'reading.theme.dark'
+  | 'reading.font'
+  | 'reading.font.serif'
+  | 'reading.font.sans'
+  | 'reading.justify'
   // Estados-VAZIO das telas/componentes de navegação (F5.8) — CROMO puro (sem texto
   // bíblico): grade de capítulos sem itens e capítulo ausente do banco de leitura.
   | 'read.emptyChapters'
@@ -133,6 +149,7 @@ export type MessageKey =
   | 'a11y.openBook'
   | 'a11y.openChapter'
   | 'a11y.verseOptions'
+  | 'a11y.readingSettings'
   | 'language.switchToOther'
   // Rótulos de acessibilidade do SELETOR TRI-ESTADO de tema (F5.33): claro / escuro / seguir o sistema.
   | 'theme.light'
@@ -448,6 +465,22 @@ const pt: Record<MessageKey, string> = {
   'plans.reminderPermissionHint':
     'Permita notificações no aparelho para receber o lembrete diário (o lembrete é local, sem conta nem internet).',
   'read.parallel': 'Lado a lado',
+  'reading.title': 'Leitura',
+  'reading.size': 'Tamanho do texto',
+  'reading.smaller': 'Diminuir o texto',
+  'reading.larger': 'Aumentar o texto',
+  'reading.spacing': 'Espaçamento',
+  'reading.spacing.compact': 'Compacto',
+  'reading.spacing.comfortable': 'Confortável',
+  'reading.spacing.relaxed': 'Amplo',
+  'reading.theme': 'Tema de leitura',
+  'reading.theme.light': 'Claro',
+  'reading.theme.sepia': 'Sépia',
+  'reading.theme.dark': 'Escuro',
+  'reading.font': 'Fonte',
+  'reading.font.serif': 'Serifa',
+  'reading.font.sans': 'Sem serifa',
+  'reading.justify': 'Justificar texto',
   'read.bookFallback': 'Livro {number}',
   'read.emptyChapters': 'Nenhum capítulo disponível nesta versão do banco de leitura.',
   'read.chapterNotFound': 'Capítulo não encontrado no banco de leitura.',
@@ -461,6 +494,7 @@ const pt: Record<MessageKey, string> = {
   'a11y.openBook': 'Abrir o livro {name}',
   'a11y.openChapter': 'Abrir o capítulo {chapter}',
   'a11y.verseOptions': 'Abrir opções do versículo',
+  'a11y.readingSettings': 'Ajustes de leitura',
   'a11y.startPlan': 'Começar o plano {name}',
   'a11y.openDay': 'Abrir a leitura do dia {day}: {label}',
   'a11y.markDone': 'Marcar o dia de hoje como lido',
@@ -750,6 +784,22 @@ const en: Record<MessageKey, string> = {
   'plans.reminderPermissionHint':
     'Allow notifications on your device to receive the daily reminder (the reminder is local, no account or internet).',
   'read.parallel': 'Side by side',
+  'reading.title': 'Reading',
+  'reading.size': 'Text size',
+  'reading.smaller': 'Smaller text',
+  'reading.larger': 'Larger text',
+  'reading.spacing': 'Line spacing',
+  'reading.spacing.compact': 'Compact',
+  'reading.spacing.comfortable': 'Comfortable',
+  'reading.spacing.relaxed': 'Relaxed',
+  'reading.theme': 'Reading theme',
+  'reading.theme.light': 'Light',
+  'reading.theme.sepia': 'Sepia',
+  'reading.theme.dark': 'Dark',
+  'reading.font': 'Font',
+  'reading.font.serif': 'Serif',
+  'reading.font.sans': 'Sans-serif',
+  'reading.justify': 'Justify text',
   'read.bookFallback': 'Book {number}',
   'read.emptyChapters': 'No chapters available in this version of the reading database.',
   'read.chapterNotFound': 'Chapter not found in the reading database.',
@@ -763,6 +813,7 @@ const en: Record<MessageKey, string> = {
   'a11y.openBook': 'Open the {name} book',
   'a11y.openChapter': 'Open chapter {chapter}',
   'a11y.verseOptions': 'Open verse options',
+  'a11y.readingSettings': 'Reading settings',
   'a11y.startPlan': 'Start the {name} plan',
   'a11y.openDay': 'Open the reading for day {day}: {label}',
   'a11y.markDone': "Mark today's day as read",

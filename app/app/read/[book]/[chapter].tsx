@@ -26,9 +26,14 @@ import { ReaderAskPanel } from '../../../components/ReaderAskPanel';
 import { ReaderStudyPanel } from '../../../components/ReaderStudyPanel';
 import { ReaderChatPanel } from '../../../components/ReaderChatPanel';
 import { ReaderComparePanel } from '../../../components/ReaderComparePanel';
+import { ReadingSettingsSheet } from '../../../components/ReadingSettingsSheet';
+import { LanguageToggleButton } from '../../../components/LanguageToggleButton';
+import { ThemeModeSelector } from '../../../components/ThemeModeSelector';
+import { IconButton } from '../../../components/ui';
 import { resolveHighlightColor } from '../../../lib/highlightColors';
 import { useI18n } from '../../../lib/i18n';
 import { useChapterReader } from '../../../lib/useChapterReader';
+import { useReadingPrefs } from '../../../lib/useReadingPrefs';
 import { useTheme, type ThemeColors } from '../../../lib/theme';
 import { listBooks, type CrossRef } from '../../../web/reading';
 
@@ -64,6 +69,9 @@ function ChapterContent() {
   // É também o `lang` repassado aos painéis de IA (a resposta segue o idioma da UI).
   const { locale, t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // ADR-0067: preferências de leitura (tamanho/entrelinha/tema/família/just) + folha de ajustes.
+  const readingPrefs = useReadingPrefs();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const { book, chapter, verse } = useLocalSearchParams<{
     book: string;
     chapter: string;
@@ -144,7 +152,23 @@ function ChapterContent() {
         ? b.nameEn
         : b.namePt
       : t('read.bookFallback', { number: bookNumber });
-    navigation.setOptions({ title: `${name} ${chapterNumber}` });
+    // ADR-0067: o header do leitor ganha o botão "Aa" (ajustes de leitura), ao lado do idioma
+    // e do tema. Substitui o headerRight global (idioma+tema) SÓ nesta tela.
+    navigation.setOptions({
+      title: `${name} ${chapterNumber}`,
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <IconButton
+            label="Aa"
+            onPress={() => setSettingsOpen(true)}
+            accessibilityLabel={t('a11y.readingSettings')}
+            testID="reading-settings-open"
+          />
+          <LanguageToggleButton />
+          <ThemeModeSelector />
+        </View>
+      ),
+    });
   }, [navigation, bookNumber, chapterNumber, locale, t]);
 
   // Resolve os nomes de cor (dado do usuário) p/ a amostra de fundo do tema corrente.
@@ -239,6 +263,11 @@ function ChapterContent() {
           highlightedVerses={highlightedVerses}
           notedVerses={notedVerses}
           anchorVerse={anchorVerse}
+          fontStep={readingPrefs.fontStep}
+          lineSpacing={readingPrefs.lineSpacing}
+          readingTheme={readingPrefs.readingTheme}
+          readingFont={readingPrefs.readingFont}
+          justify={readingPrefs.justify}
         />
       )}
 
@@ -382,6 +411,14 @@ function ChapterContent() {
         translation={translation}
         lang={locale}
         onClose={() => setActivePanel(null)}
+      />
+
+      {/* ADR-0067: folha de AJUSTES DE LEITURA (tamanho/entrelinha/tema/família/just), aberta
+          pelo botão "Aa" do header. Aplica no ReaderChapterView via `readingPrefs`. */}
+      <ReadingSettingsSheet
+        visible={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        prefs={readingPrefs}
       />
     </View>
   );

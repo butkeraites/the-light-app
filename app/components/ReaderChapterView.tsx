@@ -8,8 +8,21 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 
 import { useI18n } from '../lib/i18n';
-import { useTheme, type ThemeContextValue } from '../lib/theme';
+import {
+  DEFAULT_FONT_STEP,
+  DEFAULT_LINE_SPACING,
+  DEFAULT_READING_FONT,
+  fontScaleForStep,
+  LINE_HEIGHT_FACTOR,
+  type LineSpacing,
+  type ReadingFont,
+  type ReadingTheme,
+} from '../lib/readingPrefs';
+import { READING_PALETTES, useTheme, type ThemeColors, type ThemeContextValue } from '../lib/theme';
 import type { Passage } from '../web/reading';
+
+/** Estilo de verso resolvido a partir das preferências de leitura (tamanho/entrelinha/família/just). */
+type VerseStyle = { fontSize: number; lineHeight: number; fontFamily?: string; textAlign: 'left' | 'justify' };
 
 /** Número do versículo a partir do `VerseRange` (sempre `Single` num capítulo). */
 function verseNumber(passageVerseRange: Passage['verses'][number]['reference']['verses']): number | null {
@@ -30,6 +43,11 @@ export function ReaderChapterView({
   highlightedVerses,
   notedVerses,
   anchorVerse,
+  fontStep = DEFAULT_FONT_STEP,
+  lineSpacing = DEFAULT_LINE_SPACING,
+  readingTheme = null,
+  readingFont = DEFAULT_READING_FONT,
+  justify = false,
 }: {
   passage: Passage;
   /**
@@ -64,14 +82,36 @@ export function ReaderChapterView({
    * faixa → no-op seguro (nenhuma linha casa o alvo; sem rolagem, sem crash).
    */
   anchorVerse?: number | null;
+  /** ADR-0067: preferências de leitura (tamanho/entrelinha/tema/família/justificação). */
+  fontStep?: number;
+  lineSpacing?: LineSpacing;
+  /** Tema de leitura da SUPERFÍCIE (claro/sépia/escuro); `null` = seguir o modo do app. */
+  readingTheme?: ReadingTheme | null;
+  readingFont?: ReadingFont;
+  justify?: boolean;
 }) {
   const theme = useTheme();
-  const { colors } = theme;
+  // ADR-0067: a SUPERFÍCIE de leitura usa a paleta de LEITURA escolhida (claro/sépia/escuro),
+  // distinta da paleta do app; `null` segue o modo do app. O cromo do reader (header/picker) fica
+  // na paleta do app — só o texto do versículo é re-tematizado.
+  const colors: ThemeColors = readingTheme ? READING_PALETTES[readingTheme] : theme.colors;
+  // Verso escalado pelas prefs: tamanho (passo), entrelinha (densidade), família (serifa/sem) e just.
+  const verseFontSize = Math.round(theme.type.verse.fontSize * fontScaleForStep(fontStep));
+  const verse: VerseStyle = {
+    fontSize: verseFontSize,
+    lineHeight: Math.round(verseFontSize * LINE_HEIGHT_FACTOR[lineSpacing]),
+    fontFamily: readingFont === 'sans' ? undefined : theme.type.verse.fontFamily,
+    textAlign: justify ? 'justify' : 'left',
+  };
   // F5.8: só o CROMO (estado-vazio + hint do gesto no versículo) passa por `t()`. O TEXTO do
   // versículo é VERBATIM do store — permanece como conteúdo do <Text> (rótulo lido pelo
   // leitor de tela), nunca substituído por `t()`. O hint só descreve a AÇÃO (abrir opções).
   const { t } = useI18n();
-  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const styles = useMemo(
+    () => makeStyles(theme, colors, verse),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [theme, colors, verse.fontSize, verse.lineHeight, verse.fontFamily, verse.textAlign],
+  );
 
   // F5.32: ancoragem no versículo-alvo (busca/xref). `scrollRef` p/ comandar a rolagem;
   // `offsetsRef` acumula o Y de cada linha via `onLayout`; `pendingRef` guarda o alvo até
@@ -119,13 +159,13 @@ export function ReaderChapterView({
 
   if (passage.verses.length === 0) {
     return (
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <Text style={styles.empty}>{t('read.chapterNotFound')}</Text>
       </ScrollView>
     );
   }
   return (
-    <ScrollView ref={scrollRef} contentContainerStyle={styles.content}>
+    <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content}>
       {heading ? (
         <View style={styles.headingBlock}>
           <Text style={styles.chapTitle} accessibilityRole="header">
@@ -169,12 +209,14 @@ export function ReaderChapterView({
   );
 }
 
-function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
+function makeStyles({ type, space, radius }: ThemeContextValue, colors: ThemeColors, verse: VerseStyle) {
   return StyleSheet.create({
+    scroll: { backgroundColor: colors.background },
     content: {
       paddingHorizontal: space.xl,
       paddingVertical: space.lg,
       gap: space.md,
+      backgroundColor: colors.background,
     },
     // Abertura do capítulo em serifa (type.title) + régua dourada — âncora de leitura.
     headingBlock: { marginBottom: space.xs },
@@ -186,8 +228,15 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
       backgroundColor: colors.accent,
       marginTop: space.sm,
     },
-    // Corpo do versículo em SERIFA de leitura (type.verse) — verbatim do store.
-    verse: { ...type.verse },
+    // Corpo do versículo em SERIFA de leitura (type.verse), ESCALADO pelas prefs (tamanho/
+    // entrelinha/família/justificação) — verbatim do store.
+    verse: {
+      ...type.verse,
+      fontSize: verse.fontSize,
+      lineHeight: verse.lineHeight,
+      fontFamily: verse.fontFamily,
+      textAlign: verse.textAlign,
+    },
     // Seleção/âncora: banho de ouro sutil + régua dourada à esquerda (não invertido — o
     // texto segue legível em `verseText`, par auditado AA sobre `selectionBg`).
     verseSelected: {
