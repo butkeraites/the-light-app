@@ -37,6 +37,14 @@ export function useReaderModalA11y(visible: boolean) {
     if (!visible) {
       return;
     }
+    // WEB: `findNodeHandle` NÃO é suportado no react-native-web (LANÇA "findNodeHandle is not
+    // supported on web"). O foco programático do modal é um gesto NATIVO (VoiceOver/TalkBack);
+    // no web o RNW já expõe a semântica de dialog via ARIA (o `<Modal>`/`accessibilityViewIsModal`
+    // viram role/aria-modal). Então este efeito é NO-OP no web — o `headerRef` segue sendo
+    // retornado e fixado no título (sem efeito colateral), e o crash ao abrir o painel some.
+    if (Platform.OS === 'web') {
+      return;
+    }
     // Atraso curto: o <Modal> precisa terminar de montar/animar antes de o foco poder
     // pousar no título (Android costuma precisar de um pouco mais que iOS).
     const delay = Platform.OS === 'android' ? 350 : 150;
