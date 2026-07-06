@@ -4,6 +4,7 @@ import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, T
 
 import { PassageResultView } from '../components/PassageResultView';
 import { ReaderVersionPicker } from '../components/ReaderVersionPicker';
+import { ListRow } from '../components/ui/ListRow';
 import { resolvePassageQuery, type PassageResult } from '../lib/passageResolve';
 import { runReferenceSelfTest } from '../web/selftest';
 import { useI18n } from '../lib/i18n';
@@ -227,62 +228,50 @@ export default function HomeScreen() {
         <Text style={styles.ctaChevron}>›</Text>
       </Pressable>
 
-      {/* NAVEGAÇÃO SECUNDÁRIA — cartão com divisórias; cada linha é um Pressable único. */}
+      {/* NAVEGAÇÃO SECUNDÁRIA — cartão com divisórias, cada linha via o kit <ListRow>. */}
       <View style={styles.rowsCard}>
-        <Pressable
+        <ListRow
+          label={t('home.searchBible')}
+          leading="search"
           onPress={() => router.push('/search')}
-          style={styles.row}
           testID="open-search"
           accessibilityRole="link"
-          accessibilityLabel={t('home.searchBible')}
-        >
-          <Text style={styles.rowLabel}>{t('home.searchBible')}</Text>
-          <Text style={styles.chevron}>›</Text>
-        </Pressable>
+        />
         <View style={styles.rowDivider} />
-        <Pressable
+        <ListRow
+          label={t('home.readingPlans')}
+          leading="plans"
           onPress={() => router.push('/plans')}
-          style={styles.row}
           testID="open-plans"
           accessibilityRole="link"
-          accessibilityLabel={t('home.readingPlans')}
-        >
-          <Text style={styles.rowLabel}>{t('home.readingPlans')}</Text>
-          <Text style={styles.chevron}>›</Text>
-        </Pressable>
+        />
         <View style={styles.rowDivider} />
-        <Pressable
+        <ListRow
+          label={t('home.syncBackup')}
+          leading="cloud"
           onPress={openSync}
-          style={styles.row}
           testID="open-sync"
           accessibilityRole="button"
           accessibilityLabel={t('a11y.openSync')}
-        >
-          <Text style={styles.rowLabel}>{t('home.syncBackup')}</Text>
-          <Text style={styles.chevron}>›</Text>
-        </Pressable>
+        />
         <View style={styles.rowDivider} />
-        <Pressable
+        <ListRow
+          label={t('home.about')}
+          leading="info"
           onPress={() => router.push('/about')}
-          style={styles.row}
           testID="open-about"
           accessibilityRole="link"
           accessibilityLabel={t('a11y.openAbout')}
-        >
-          <Text style={styles.rowLabel}>{t('home.about')}</Text>
-          <Text style={styles.chevron}>›</Text>
-        </Pressable>
+        />
         <View style={styles.rowDivider} />
-        <Pressable
+        <ListRow
+          label={t('home.settings')}
+          leading="settings"
           onPress={() => router.push('/settings')}
-          style={styles.row}
           testID="open-settings"
           accessibilityRole="link"
           accessibilityLabel={t('a11y.openSettings')}
-        >
-          <Text style={styles.rowLabel}>{t('home.settings')}</Text>
-          <Text style={styles.chevron}>›</Text>
-        </Pressable>
+        />
       </View>
     </ScrollView>
   );
@@ -331,15 +320,6 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
       borderRadius: radius.lg,
       overflow: 'hidden',
     },
-    row: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: space.lg,
-      minHeight: 52,
-      paddingVertical: space.md,
-    },
-    rowLabel: { ...type.body, color: colors.text, flex: 1 },
-    chevron: { fontSize: 20, color: colors.muted },
     rowDivider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.divider, marginLeft: space.lg },
   });
 }

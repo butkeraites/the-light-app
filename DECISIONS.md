@@ -3722,3 +3722,15 @@ Fim-de-jogo: UMA fonte da verdade (SQL, corpo de request, constantes, ranking/cl
 **Verificação.** Prova headless `passage-query` (classificador + resolvedor com fakes: single/range/cross/lista/teto/inválido/memoização). Browser rodando: lista "John 3:16; Psalm 23" → 2 trechos; range "João 3-4" → 2 capítulos; trocar a versão → Almeida RE-RESOLVE em português. tsc + 31 testes web + a11y + i18n + budget verdes.
 
 **Consequências.** (+) O lookup aceita **passagem / intervalo / lista** em **qualquer versão**, nas 2 plataformas; o **nativo passa a mostrar texto**. (−) O display inline é **capado** (~200 versos) — livros inteiros truncam com aviso; a alternativa "tela de leitura dedicada" fica para uma iteração futura se necessário.
+
+## ADR-0066 — Kit de componentes Vigil (`app/components/ui/`): primitivas tokenizadas + `BottomSheet` compartilhado + primitivas anti-alucinação
+
+- **Data:** 2026-07-06 · **Status:** ACEITO (Fase 1 do programa "terminar o Vigil") · **Depende:** ADR-0063 (tokens Vigil), ADR-0049 (guarda `reader-modal-a11y`).
+
+**Contexto.** Botões/cartões/linhas/folhas eram COPIADOS por ~25 arquivos — 6 `<Modal>`+backdrop+sheet quase idênticos nos painéis, `btnPrimary`/`btnGhost` repetidos, chips/labels ad-hoc. Sem primitivas reutilizáveis, o resto do redesign (ajustes de leitura, IA, telas) repetiria o padrão.
+
+**Decisão.** Novo `app/components/ui/*`, a11y EMBUTIDA (role/label/alvo ≥44), tokens (zero magic number): `Button` (primary/secondary/ghost/danger), `Chip`, `Surface`, `SectionLabel`, `ListRow`, `IconButton`, `Icon` (abstração por NOME — glifo Unicode agora, trocado por `@expo/vector-icons` na Fase 5 SEM mudar call sites), **`BottomSheet`** (consolida os 6 Modals: grabber + cabeçalho + corpo rolável + a11y de modal embutida — `accessibilityViewIsModal` + `useReaderModalA11y` + título `role="header"`), e **`CitedText`**/**`InterpretationBlock`** (o contrato anti-alucinação "Escritura verbatim atrás da régua dourada" vs. "interpretação do modelo" como primitiva reutilizável). A guarda `reader-modal-a11y` foi ESTENDIDA: reconhece `<BottomSheet>` como wrapper de modal (painel que o usa delega a a11y) e verifica o contrato no próprio `BottomSheet.tsx`. Prova de runtime: a navegação da home migrou para `<ListRow>` (com ícone). `BottomSheet`/`Chip`/`Button`/`IconButton` ganham consumo REAL já na Fase 2 (folha de ajustes de leitura) e `CitedText`/`InterpretationBlock` na Fase 3 (painéis de IA).
+
+**Restrições preservadas.** Só apresentação (nenhuma lógica de domínio/rede/store); tokens Vigil; a11y; core/mirror intocados. Verde: `tsc` + 31 testes web + `a11y-scan`/`a11y-modals` (estendida) + `i18n`/`-coverage`; home verificada no browser (linhas com ícone, sem erro).
+
+**Consequências.** (+) Base única para toda a UI; a de-duplicação começa (nav da home). (−) Parte do kit (`BottomSheet`/`Cited`/`Interp`) só é consumida a partir da Fase 2 — construída agora porque as próximas fases dependem dela; os glifos do `Icon` são temporários (ícones reais na Fase 5).

@@ -108,7 +108,10 @@ function lineTextAt(code, idx) {
 }
 
 // ── Detectores (sobre o fonte JÁ sem comentários) ─────────────────────────────────────────
-const rendersModal = (code) => /<Modal\b/.test(code);
+const usesBottomSheet = (code) => /<BottomSheet\b/.test(code);
+// ADR-0066: o <BottomSheet> compartilhado É o wrapper de modal (traz Modal + accessibilityViewIsModal
+// + useReaderModalA11y + header). Um painel que o usa conta como painel de modal.
+const rendersModal = (code) => /<Modal\b/.test(code) || usesBottomSheet(code);
 const hasViewIsModal = (code) => /\baccessibilityViewIsModal\b/.test(code);
 const usesModalHook = (code) => /\buseReaderModalA11y\s*\(/.test(code);
 const hasHeaderRole = (code) => /\baccessibilityRole\s*=\s*["']header["']/.test(code);
@@ -134,6 +137,9 @@ function fontScaleLocks(codeStripped, rawSrc) {
 
 /** Violações de modal-a11y de UM painel (fonte já sem comentários). `kind` ∈ {modal,focus,label}. */
 function scanPanel(code) {
+  // ADR-0066: painel que usa o <BottomSheet> compartilhado DELEGA a a11y de modal a ele (verificado
+  // à parte, §1b). Os checks por-prop valem só para painéis que ainda montam <Modal> diretamente.
+  if (usesBottomSheet(code)) return [];
   const v = [];
   if (!hasViewIsModal(code)) v.push({ kind: 'modal', detail: 'View-folha do painel sem accessibilityViewIsModal (foco não fica preso ao modal)' });
   if (!usesModalHook(code)) v.push({ kind: 'focus', detail: 'painel não usa useReaderModalA11y (sem foco inicial/anúncio de abertura)' });
@@ -179,6 +185,11 @@ async function main() {
     ['focus'],
     'SELF-TEST: título SEM accessibilityRole="header" é REPROVADO (focus)',
   );
+  assert.deepEqual(
+    scanPanel(S(`<BottomSheet visible={v} onClose={c} title={t('x')}><Text>{y}</Text></BottomSheet>`)),
+    [],
+    'SELF-TEST: painel que usa <BottomSheet> delega a a11y de modal (sem violação)',
+  );
 
   // Dynamic type: lock de escala de fonte.
   const lockNoMarker = 'const T = () => <Text allowFontScaling={false}>{verse.text}</Text>;';
@@ -205,6 +216,15 @@ async function main() {
     0,
     'SELF-TEST: SEM allowFontScaling (escala default = respeitada) NÃO é reprovado',
   );
+
+  // ══ (1b) O <BottomSheet> compartilhado satisfaz o contrato de modal (ADR-0066) ═══════════
+  // Painéis que usam <BottomSheet> delegam a a11y a ELE; então ele DEVE trazer Modal + viewIsModal
+  // + o hook de foco + título com role="header". Assim a delegação em `scanPanel` é honesta.
+  const bsSrc = stripComments(await readFile(join(COMPONENTS_DIR, 'ui', 'BottomSheet.tsx'), 'utf8'));
+  assert.ok(/<Modal\b/.test(bsSrc), 'BottomSheet monta <Modal>');
+  assert.ok(hasViewIsModal(bsSrc), 'BottomSheet: accessibilityViewIsModal na folha');
+  assert.ok(usesModalHook(bsSrc), 'BottomSheet: usa useReaderModalA11y');
+  assert.ok(hasHeaderRole(bsSrc), 'BottomSheet: título com accessibilityRole="header"');
 
   // ══ (2) VARREDURA REAL ═════════════════════════════════════════════════════════════════
   const componentFiles = await listTsx(COMPONENTS_DIR);
