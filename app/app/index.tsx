@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
-import { Link } from 'expo-router';
+import { router } from 'expo-router';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { parseReference, type Reference } from '../web/reference';
@@ -186,35 +186,44 @@ export default function HomeScreen() {
       </Text>
 
       {/* AÇÃO PRIMÁRIA — Ler a Bíblia (ouro). F5.30: paridade web concluída (as duas
-          plataformas). F1.3: fluxo de leitura (livro → capítulo → texto). */}
-      <Link
-        href="/read"
-        asChild
+          plataformas). F1.3: fluxo de leitura (livro → capítulo → texto). UM só elemento
+          interativo (Pressable + router) com role/label/alvo ≥44 — a11y-scan verde. */}
+      <Pressable
+        onPress={() => router.push('/read')}
+        style={styles.cta}
+        testID="open-reader"
         accessibilityRole="link"
         accessibilityLabel={t('home.readBible')}
       >
-        <Pressable style={styles.cta} testID="open-reader">
-          <Text style={styles.ctaTitle}>{t('home.readBible')}</Text>
-          <Text style={styles.ctaChevron}>›</Text>
-        </Pressable>
-      </Link>
+        <Text style={styles.ctaTitle}>{t('home.readBible')}</Text>
+        <Text style={styles.ctaChevron}>›</Text>
+      </Pressable>
 
       {/* NAVEGAÇÃO SECUNDÁRIA — agrupada num cartão com divisórias (busca/planos/backup/
-          sobre/ajustes). Cada linha preserva o testID e a a11y do link/ação original. */}
+          sobre/ajustes). Cada linha é um Pressable único (role/label/alvo ≥44) — preserva o
+          testID e a a11y do link original, sem aninhar Link+Pressable (a11y-scan). */}
       <View style={styles.rowsCard}>
-        <Link href="/search" asChild accessibilityRole="link" accessibilityLabel={t('home.searchBible')}>
-          <Pressable style={styles.row} testID="open-search">
-            <Text style={styles.rowLabel}>{t('home.searchBible')}</Text>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-        </Link>
+        <Pressable
+          onPress={() => router.push('/search')}
+          style={styles.row}
+          testID="open-search"
+          accessibilityRole="link"
+          accessibilityLabel={t('home.searchBible')}
+        >
+          <Text style={styles.rowLabel}>{t('home.searchBible')}</Text>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
         <View style={styles.rowDivider} />
-        <Link href="/plans" asChild accessibilityRole="link" accessibilityLabel={t('home.readingPlans')}>
-          <Pressable style={styles.row} testID="open-plans">
-            <Text style={styles.rowLabel}>{t('home.readingPlans')}</Text>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-        </Link>
+        <Pressable
+          onPress={() => router.push('/plans')}
+          style={styles.row}
+          testID="open-plans"
+          accessibilityRole="link"
+          accessibilityLabel={t('home.readingPlans')}
+        >
+          <Text style={styles.rowLabel}>{t('home.readingPlans')}</Text>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
         <View style={styles.rowDivider} />
         <Pressable
           onPress={openSync}
@@ -227,19 +236,27 @@ export default function HomeScreen() {
           <Text style={styles.chevron}>›</Text>
         </Pressable>
         <View style={styles.rowDivider} />
-        <Link href="/about" asChild accessibilityRole="link" accessibilityLabel={t('a11y.openAbout')}>
-          <Pressable style={styles.row} testID="open-about">
-            <Text style={styles.rowLabel}>{t('home.about')}</Text>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-        </Link>
+        <Pressable
+          onPress={() => router.push('/about')}
+          style={styles.row}
+          testID="open-about"
+          accessibilityRole="link"
+          accessibilityLabel={t('a11y.openAbout')}
+        >
+          <Text style={styles.rowLabel}>{t('home.about')}</Text>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
         <View style={styles.rowDivider} />
-        <Link href="/settings" asChild accessibilityRole="link" accessibilityLabel={t('a11y.openSettings')}>
-          <Pressable style={styles.row} testID="open-settings">
-            <Text style={styles.rowLabel}>{t('home.settings')}</Text>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-        </Link>
+        <Pressable
+          onPress={() => router.push('/settings')}
+          style={styles.row}
+          testID="open-settings"
+          accessibilityRole="link"
+          accessibilityLabel={t('a11y.openSettings')}
+        >
+          <Text style={styles.rowLabel}>{t('home.settings')}</Text>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
       </View>
     </ScrollView>
   );
