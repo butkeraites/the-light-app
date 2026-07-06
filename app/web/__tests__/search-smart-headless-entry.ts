@@ -10,6 +10,7 @@ import { significantTerms, isStopword, STOPWORDS } from '../../lib/searchStopwor
 import { synonymsFor, conceptExpansions } from '../../lib/searchSynonyms';
 import { buildDidYouMean } from '../../lib/searchSuggest';
 import { suggestBooks } from '../../lib/searchReferenceSuggest';
+import { makeWordlist, prefixMatches } from '../../lib/searchWordlistIndex';
 import {
   getRecentSearches,
   pushRecentSearch,
@@ -28,6 +29,8 @@ export {
   conceptExpansions,
   buildDidYouMean,
   suggestBooks,
+  makeWordlist,
+  prefixMatches,
   getRecentSearches,
   pushRecentSearch,
   clearRecentSearches,

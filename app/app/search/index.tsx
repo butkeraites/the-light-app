@@ -22,6 +22,8 @@ import { useI18n } from '../../lib/i18n';
 import { buildDidYouMean, type DidYouMean } from '../../lib/searchSuggest';
 import { suggestBooks, type BookSuggestion } from '../../lib/searchReferenceSuggest';
 import { getRecentSearches, pushRecentSearch } from '../../lib/recentSearches';
+import { suggestWords } from '../../lib/searchWordlist';
+import { fold } from '../../lib/searchNormalize';
 import { useTheme, type ThemeContextValue } from '../../lib/theme';
 import { parseReference, type Reference } from '../../web/reference';
 import {
@@ -83,6 +85,7 @@ function SearchContent() {
   const [suggestions, setSuggestions] = useState<DidYouMean[]>([]);
   const [recent, setRecent] = useState<string[]>([]);
   const [parsedRef, setParsedRef] = useState<Reference | null>(null);
+  const [wordSuggestions, setWordSuggestions] = useState<string[]>([]);
 
   useEffect(() => {
     try {
@@ -136,7 +139,33 @@ function SearchContent() {
     return translations.find((x) => x.language === locale)?.id ?? translations[0]?.id ?? byLocale;
   }, [pickedTranslation, translations, locale]);
 
+  // ADR-0064 Fase B: idioma do dicionário de autocomplete = idioma da tradução buscada.
+  const searchLang: 'pt' | 'en' = useMemo(() => {
+    const lang = translations.find((x) => x.id === effectiveTranslation)?.language;
+    return lang === 'en' || lang === 'pt' ? lang : locale === 'en' ? 'en' : 'pt';
+  }, [translations, effectiveTranslation, locale]);
+
   const term = query.trim();
+
+  // ADR-0064 Fase B: AUTOCOMPLETE de TERMO por prefixo do corpus ("eter" → eternamente,
+  // eternidade…). Só para um token (sem espaço); as palavras vêm do texto da tradução buscada,
+  // então tocar numa SEMPRE retorna resultados. Debounce curto (asset local, em memória).
+  useEffect(() => {
+    if (term.length < 2 || /\s/.test(term)) {
+      setWordSuggestions([]);
+      return;
+    }
+    let alive = true;
+    const h = setTimeout(async () => {
+      const ws = await suggestWords(term, searchLang, 6);
+      // Não sugere a própria palavra já digitada por inteiro (redundante).
+      if (alive) setWordSuggestions(ws.filter((w) => fold(w) !== fold(term)));
+    }, 120);
+    return () => {
+      alive = false;
+      clearTimeout(h);
+    };
+  }, [term, searchLang]);
 
   // ADR-0064: sugestões de LIVRO (síncrono, do cânon) — só para um token que prefixa um livro.
   const bookSuggestions: BookSuggestion[] = useMemo(
@@ -273,8 +302,8 @@ function SearchContent() {
         </View>
       ) : null}
 
-      {/* ADR-0064: REFERÊNCIA — abrir capítulo/livro direto (autocomplete de referência). */}
-      {term.length > 0 && (parsedRef || bookSuggestions.length > 0) ? (
+      {/* ADR-0064: AUTOCOMPLETE — referência (abrir livro/capítulo) + palavras do corpus. */}
+      {term.length > 0 && (parsedRef || bookSuggestions.length > 0 || wordSuggestions.length > 0) ? (
         <View style={styles.suggestBlock}>
           {parsedRef ? (
             <Pressable
@@ -301,6 +330,22 @@ function SearchContent() {
               <Text style={styles.chevron}>›</Text>
             </Pressable>
           ))}
+          {wordSuggestions.length > 0 ? (
+            <View style={styles.wordChips}>
+              {wordSuggestions.map((w) => (
+                <Pressable
+                  key={w}
+                  style={styles.wordChip}
+                  onPress={() => runTerm(w)}
+                  testID={`search-word-${w}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('search.didYouMeanItem', { term: w })}
+                >
+                  <Text style={styles.wordChipText}>{w}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -446,5 +491,27 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
       backgroundColor: colors.selectionBg,
     },
     dymChipText: { ...type.button, color: colors.accent },
+
+    // Autocomplete de TERMO do corpus (Fase B) — chips discretos abaixo das referências.
+    wordChips: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: space.sm,
+      paddingHorizontal: space.lg,
+      paddingVertical: space.md,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.divider,
+    },
+    wordChip: {
+      minHeight: 44,
+      justifyContent: 'center',
+      paddingHorizontal: space.md,
+      paddingVertical: space.xs,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceElevated,
+    },
+    wordChipText: { ...type.body, color: colors.text },
   });
 }

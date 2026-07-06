@@ -70,6 +70,8 @@ async function main() {
     conceptExpansions,
     buildDidYouMean,
     suggestBooks,
+    makeWordlist,
+    prefixMatches,
     getRecentSearches,
     pushRecentSearch,
     clearRecentSearches,
@@ -168,8 +170,51 @@ async function main() {
   await pushRecentSearch('   ', backend);
   assert.deepEqual(await getRecentSearches(backend), [], 'termo vazio é ignorado');
 
-  // ══ (7) HIGIENE — sem console.* nos módulos ════════════════════════════════════════════
-  for (const f of ['searchNormalize', 'searchStopwords', 'searchSynonyms', 'searchSuggest', 'searchReferenceSuggest', 'recentSearches']) {
+  // ══ (7) DICIONÁRIO DE PALAVRAS (autocomplete de PREFIXO, Fase B) ═══════════════════════
+  // Fixture ORDENADO pela forma dobrada (como o gerador emite): armadura < eterna < eternamente
+  // < eternidade < espirito? — cuidado: fold('espírito')='espirito' vem depois de 'eternidade'.
+  const wlFixture = makeWordlist([
+    ['armadura', 7],
+    ['eterna', 69],
+    ['eternamente', 52],
+    ['eternidade', 21],
+    ['espírito', 40],
+  ].sort((a, b) => (fold(a[0]) < fold(b[0]) ? -1 : 1)));
+  assert.deepEqual(
+    prefixMatches(wlFixture, 'eter', 6),
+    ['eterna', 'eternamente', 'eternidade'],
+    'prefixo "eter" → eterna/eternamente/eternidade (ordenado por frequência)',
+  );
+  assert.deepEqual(prefixMatches(wlFixture, 'eterni', 6), ['eternidade'], 'prefixo "eterni" → eternidade');
+  assert.deepEqual(prefixMatches(wlFixture, 'ESP', 6), ['espírito'], 'prefixo acento-insensível "ESP" → espírito');
+  assert.deepEqual(prefixMatches(wlFixture, 'a', 6), [], 'prefixo <2 letras → []');
+  assert.equal(prefixMatches(wlFixture, 'eter', 2).length, 2, 'respeita o cap `max`');
+  assert.deepEqual(prefixMatches(wlFixture, 'zzz', 6), [], 'prefixo sem casamento → []');
+
+  // Integração com o ASSET REAL gerado (se presente): prova a paridade fold gerador↔runtime.
+  const ptAsset = join(__dirname, '..', '..', 'assets', 'data', 'wordlist.pt.json');
+  let realWords = null;
+  try {
+    realWords = JSON.parse(await readFile(ptAsset, 'utf8')).words;
+  } catch {
+    /* asset ausente (checkout sem build) → pula a integração; a unidade acima já cobre a lógica */
+  }
+  if (realWords) {
+    const wl = makeWordlist(realWords);
+    const eter = prefixMatches(wl, 'eter', 8);
+    assert.ok(eter.includes('eternidade') && eter.includes('eternamente'), 'asset PT real: "eter" inclui eternidade/eternamente');
+    assert.ok(prefixMatches(wl, 'eterni', 8).includes('eternidade'), 'asset PT real: "eterni" inclui eternidade');
+    assert.ok(
+      prefixMatches(wl, 'eter', 8).every((w) => fold(w).startsWith('eter')),
+      'asset PT real: todo resultado começa com o prefixo (fold gerador↔runtime em paridade)',
+    );
+    console.log(`  dicionário: asset PT real OK (${realWords.length} palavras; "eter" → ${eter.slice(0, 5).join(', ')}…)`);
+  } else {
+    console.log('  dicionário: asset PT ausente (build não rodou) — só a prova de UNIDADE rodou');
+  }
+
+  // ══ (8) HIGIENE — sem console.* nos módulos ════════════════════════════════════════════
+  for (const f of ['searchNormalize', 'searchStopwords', 'searchSynonyms', 'searchSuggest', 'searchReferenceSuggest', 'recentSearches', 'searchWordlistIndex', 'searchWordlist']) {
     const src = await readFile(join(LIB, `${f}.ts`), 'utf8');
     assert.ok(!/console\./.test(src), `${f}.ts sem console.*`);
   }

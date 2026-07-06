@@ -98,3 +98,7 @@ sqlite3 "$LEX" \
 
 echo "OK: $LITE ($(wc -c < "$LITE" | tr -d ' ') bytes) — leitura/busca/xref, SEM léxico"
 echo "OK: $LEX ($(wc -c < "$LEX" | tr -d ' ') bytes) — léxico STEP CC-BY, on-demand"
+
+# Dicionário de AUTOCOMPLETE de termo por idioma (ADR-0064 Fase B) — derivado do texto do store
+# (verses.text) do reading-lite; determinístico. Regenera junto com os subsets → wordlist.{pt,en}.json.
+node "$(dirname "$0")/gen-search-wordlist.mjs" "$LITE"
