@@ -3,8 +3,12 @@
 // Apresentacional: botão de alternância de IDIOMA da UI (PT⇄EN) p/ o header, ao lado
 // do `ThemeModeSelector`. Lê/escreve o idioma via `useI18n()` (a escolha PERSISTE
 // offline via prefs) e usa os TOKENS de tema (`useTheme`) para a cor — zero hex.
-// Mostra o CÓDIGO do idioma-ALVO (para onde vai ao tocar). Acessível: `accessibilityRole='switch'`,
-// `accessibilityState.checked` = idioma inglês ativo, `accessibilityLabel` via `t()`.
+//
+// Mostra o CÓDIGO do idioma ATUAL (o que o usuário está LENDO): lendo em português → "PT".
+// Um código de 2 letras é ambíguo demais para exibir o ALVO (ao contrário do sol/lua do tema):
+// "EN" enquanto se lê em português parece dizer "está em inglês". O rótulo de a11y descreve a
+// AÇÃO ("Mudar para Inglês"/"Switch to Portuguese"), então o leitor de tela anuncia p/ onde vai.
+// Acessível: `accessibilityRole='switch'`, `accessibilityState.checked` = inglês ativo.
 // Não faz I/O de domínio nem toca texto bíblico.
 import { Pressable, StyleSheet, Text } from 'react-native';
 
@@ -14,9 +18,9 @@ import { useTheme } from '../lib/theme';
 export function LanguageToggleButton() {
   const { locale, setLocale, t } = useI18n();
   const { colors } = useTheme();
-  // Idioma-ALVO ao tocar (mostra p/ onde vai, como o toggle de tema mostra o modo-alvo).
+  // Idioma-ALVO ao tocar (p/ `setLocale`); o VISÍVEL é o idioma ATUAL (o que se lê agora).
   const target = locale === 'pt' ? 'en' : 'pt';
-  const targetCode = target.toUpperCase(); // 'EN' | 'PT'
+  const currentCode = locale.toUpperCase(); // 'PT' | 'EN' — idioma atual da UI
   return (
     <Pressable
       onPress={() => setLocale(target)}
@@ -27,7 +31,7 @@ export function LanguageToggleButton() {
       accessibilityLabel={t('language.switchToOther')}
       style={styles.button}
     >
-      <Text style={[styles.code, { color: colors.text }]}>{targetCode}</Text>
+      <Text style={[styles.code, { color: colors.text }]}>{currentCode}</Text>
     </Pressable>
   );
 }
