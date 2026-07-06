@@ -1,34 +1,22 @@
-// app/lib/themePalettes.ts — F1.4 (ADR-0015) · contraste WCAG AA F5.18 (ADR-0046)
+// app/lib/themePalettes.ts — F1.4 (ADR-0015) · contraste WCAG AA F5.18 (ADR-0046) · Vigil ADR-0063
 //
-// TOKENS de cor PUROS das paletas de leitura (claro/escuro). Extraídos de `theme.ts`
-// para um módulo SEM `react-native` — exatamente como `themePrefs.ts` isolou a lógica de
-// persistência — de modo que a AUDITORIA de contraste (`contrast.ts` + `contrast.test.mjs`)
-// possa bundlar as paletas HEADLESS (node, sem device). `theme.ts` re-exporta `ThemeColors`
-// e `PALETTES`, então os componentes seguem importando de `lib/theme` sem mudança.
+// TOKENS de cor PUROS das paletas de leitura. Módulo SEM `react-native` — exatamente como
+// `themePrefs.ts` isolou a persistência — de modo que a AUDITORIA de contraste (`contrast.ts` +
+// `contrast.test.mjs`) bundle as paletas HEADLESS (node, sem device). `theme.ts` re-exporta
+// `ThemeColors`, `PALETTES` e `SEPIA`, então os componentes seguem importando de `lib/theme`.
 //
-// CONTRASTE (F5.18/ADR-0046): a guarda WCAG AA (`contrast.test.mjs`) computa a razão de
-// contraste de cada par texto/fundo significativo e FALHA se algum reprovar (4.5:1 texto
-// normal / 3:1 grande+UI). As razões finais (sobre `background`, salvo indicado) são:
+// ADR-0063 ("Vigil"): a identidade passa a ser ESCURA-primeiro — ouro de vela sobre tinta
+// profunda, texto pergaminho; "a Luz nas trevas". O modo CLARO ("papel quente") é o companheiro
+// refinado; a paleta SÉPIA é um TEMA DE LEITURA (aplicado no leitor numa etapa seguinte, distinto
+// do `ThemeMode` claro/escuro do app). Como todo componente lê `colors` por TOKEN (zero hex
+// literal), trocar estes valores re-tematiza o app inteiro; a guarda de contraste protege o AA.
 //
-//   LIGHT (fundo #ffffff)                     DARK (fundo #101012)
-//   ─ text        #111111  18.88:1  ✓         ─ text        #f2f2f2  16.98:1  ✓
-//   ─ verseText   #1a1a1a  17.40:1  ✓         ─ verseText   #e6e6e6  15.23:1  ✓
-//   ─ muted       #6b6b6b   5.33:1  ✓ (era    ─ muted       #9a9a9a   6.75:1  ✓
-//                          #888888 3.54 ✗)
-//   ─ accent      #916c00   4.83:1  ✓ (era    ─ accent      #e0b84d  10.08:1  ✓
-//                          #b08400 3.42 ✗)
-//   ─ error       #b00020   7.33:1  ✓         ─ error       #ff6b6b   6.85:1  ✓
-//   ─ chipText    #333333  12.63:1  ✓         ─ chipText    #cfcfcf  12.20:1  ✓
-//   ─ chipLang    #737373   4.74:1  ✓ (era    ─ chipLang    #8a8a8a   5.51:1  ✓
-//                          #999999 2.85 ✗)
-//   ─ chipActiveText/chipActiveBg 18.88:1 ✓   ─ chipActiveText/chipActiveBg 16.87:1 ✓
-//   ─ text/headerBackground       18.88:1 ✓   ─ text/headerBackground       16.12:1 ✓
-//
-// SÓ os 3 tokens LIGHT que reprovavam (muted/accent/chipLang) foram ajustados, minimamente
-// e mantendo o MATIZ (cinza neutro escurecido; ouro `accent` escurecido no mesmo hue),
-// preservando a identidade visual. DARK já passava — inalterado. `faint`/`divider`/`border`
-// são hairlines/afordâncias DECORATIVAS (WCAG 1.4.11 decorativo) — reportados, não bloqueiam.
-// Nenhum hex de conteúdo bíblico aqui: isto é CROMO de UI (o versículo usa `verseText`).
+// CONTRASTE (F5.18/ADR-0046 estendido no ADR-0063): a guarda computa a razão de cada par
+// texto/UI significativo e FALHA abaixo de AA (4.5:1 normal / 3:1 grande+UI). Todos os pares
+// bloqueantes passam nas TRÊS paletas (claro/escuro/sépia) com folga — inclusive os tokens
+// novos (`surface`/`selectionBg`/`onAccent`/`success`). `faint`/`divider`/`border` são
+// hairlines DECORATIVAS (WCAG 1.4.11) — reportadas, não bloqueiam. Nenhum hex de conteúdo
+// bíblico aqui: isto é CROMO de UI (o versículo usa `verseText`).
 
 /** Tokens de cor consumidos pela UI de leitura (uma fonte de verdade visual). */
 export type ThemeColors = {
@@ -36,6 +24,10 @@ export type ThemeColors = {
   background: string;
   /** Fundo do header de navegação. */
   headerBackground: string;
+  /** Fundo de superfícies elevadas: folhas, cartões. */
+  surface: string;
+  /** Superfície mais elevada ainda (cartão sobre folha, chip preenchido). */
+  surfaceElevated: string;
   /** Texto primário (nomes de livro, números de capítulo, títulos). */
   text: string;
   /** Texto do versículo (corpo da leitura). */
@@ -48,9 +40,13 @@ export type ThemeColors = {
   divider: string;
   /** Bordas de chips/células. */
   border: string;
-  /** Destaque do número do versículo. */
+  /** Destaque (número do versículo, régua da Escritura, ações). Ouro de vela. */
   accent: string;
-  /** Chip/seleção ativa: fundo. */
+  /** Texto/ícone sobre `accent` quando o ouro é usado como FUNDO. */
+  onAccent: string;
+  /** Fundo de seleção do versículo — banho de ouro pré-mesclado (sólido, sobre o fundo). */
+  selectionBg: string;
+  /** Chip/seleção ativa: fundo (alto contraste neutro). */
   chipActiveBg: string;
   /** Chip/seleção ativa: texto. */
   chipActiveText: string;
@@ -58,46 +54,93 @@ export type ThemeColors = {
   chipText: string;
   /** Chip: rótulo de idioma. */
   chipLang: string;
-  /** Mensagens de erro. */
+  /** Erro/estado destrutivo. */
   error: string;
+  /** Sucesso (ex.: badge "provedor com chave"). */
+  success: string;
 };
 
+// ── VIGIL · CLARO (companheiro refinado — "papel quente") ────────────────────────────────
 export const LIGHT: ThemeColors = {
-  background: '#ffffff',
-  headerBackground: '#ffffff',
-  text: '#111111',
-  verseText: '#1a1a1a',
-  // F5.18: #888888 (3.54:1) → #6b6b6b (5.33:1) — cinza neutro, escurecido p/ atingir AA.
-  muted: '#6b6b6b',
-  faint: '#cccccc',
-  divider: '#e2e2e2',
-  border: '#dddddd',
-  // F5.18: #b08400 (3.42:1) → #916c00 (4.83:1) — MESMO ouro, escurecido no mesmo hue.
-  accent: '#916c00',
-  chipActiveBg: '#111111',
-  chipActiveText: '#ffffff',
-  chipText: '#333333',
-  // F5.18: #999999 (2.85:1) → #737373 (4.74:1) — cinza neutro; segue mais claro que `muted`.
-  chipLang: '#737373',
+  background: '#faf6ec',
+  headerBackground: '#faf6ec',
+  surface: '#ffffff',
+  surfaceElevated: '#f3eddf',
+  text: '#1a160f',
+  verseText: '#221d14',
+  muted: '#6e675a',
+  faint: '#c9bfa8',
+  divider: '#eae1cd',
+  border: '#e0d6c0',
+  accent: '#8a6a12', // ouro profundo (mesmo matiz do escuro, escurecido p/ AA sobre papel)
+  onAccent: '#faf6ec',
+  selectionBg: '#f1e6c8',
+  chipActiveBg: '#1a160f',
+  chipActiveText: '#faf6ec',
+  chipText: '#4a4436',
+  chipLang: '#6e675a',
   error: '#b00020',
+  success: '#2e7d52',
 };
 
+// ── VIGIL · ESCURO (o herói — ouro de vela sobre tinta profunda) ─────────────────────────
 export const DARK: ThemeColors = {
-  background: '#101012',
-  headerBackground: '#16161a',
-  text: '#f2f2f2',
-  verseText: '#e6e6e6',
-  muted: '#9a9a9a',
-  faint: '#555555',
-  divider: '#2a2a2e',
-  border: '#3a3a40',
-  accent: '#e0b84d',
-  chipActiveBg: '#f2f2f2',
-  chipActiveText: '#111111',
-  chipText: '#cfcfcf',
-  chipLang: '#8a8a8a',
-  error: '#ff6b6b',
+  background: '#0b0b0f',
+  headerBackground: '#0e0e13',
+  surface: '#15151b',
+  surfaceElevated: '#1d1d25',
+  text: '#ece4d3', // pergaminho
+  verseText: '#f3ede0', // corpo de leitura com leve "brilho"
+  muted: '#9a9384',
+  faint: '#57534a',
+  divider: '#23232a',
+  border: '#34343d',
+  accent: '#e7c24c', // ouro de vela (estende o `#e0b84d` histórico)
+  onAccent: '#12100b',
+  selectionBg: '#1e1b12', // ouro ~13% pré-mesclado sobre a tinta (sólido)
+  chipActiveBg: '#ece4d3',
+  chipActiveText: '#12100b',
+  chipText: '#c9c2b4',
+  chipLang: '#8a8474',
+  error: '#ff7a6b',
+  success: '#7fcf9a',
 };
 
-/** Paletas por modo — exportadas para auditoria de contraste (F5.18) e uso pelo Provider. */
+// ── VIGIL · SÉPIA (tema de LEITURA — conforto; distinto do ThemeMode do app) ──────────────
+export const SEPIA: ThemeColors = {
+  background: '#efe4ce',
+  headerBackground: '#ebdfc7',
+  surface: '#f6eedc',
+  surfaceElevated: '#eadcc0',
+  text: '#33291a',
+  verseText: '#2a2113',
+  muted: '#726346',
+  faint: '#c2b189',
+  divider: '#e0d2b4',
+  border: '#d8c7a2',
+  accent: '#6e520c',
+  onAccent: '#efe4ce',
+  selectionBg: '#e4d2a8',
+  chipActiveBg: '#33291a',
+  chipActiveText: '#efe4ce',
+  chipText: '#544733',
+  chipLang: '#726346',
+  error: '#9e1b14',
+  success: '#2e7d52',
+};
+
+/** Paletas por MODO do app (claro/escuro) — auditadas e usadas pelo `ThemeProvider`. */
 export const PALETTES: Record<'light' | 'dark', ThemeColors> = { light: LIGHT, dark: DARK };
+
+/** Nome de uma paleta de LEITURA (superset do ThemeMode: inclui sépia). */
+export type ReadingPaletteName = 'light' | 'sepia' | 'dark';
+
+/**
+ * Paletas de LEITURA (claro/sépia/escuro) — para a seleção de TEMA DE LEITURA no leitor (etapa
+ * seguinte). Também auditadas pela guarda de contraste. Sépia NÃO é um `ThemeMode` do app.
+ */
+export const READING_PALETTES: Record<ReadingPaletteName, ThemeColors> = {
+  light: LIGHT,
+  sepia: SEPIA,
+  dark: DARK,
+};

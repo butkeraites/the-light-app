@@ -19,6 +19,12 @@ export const AA_LARGE_OR_UI = 3;
 
 export type ContrastLevel = 'normal' | 'large';
 
+/**
+ * Nome de uma paleta auditada. Superset do `ThemeMode` do app (claro/escuro) que inclui a
+ * paleta de LEITURA `sepia` (ADR-0063) — auditada, mas não é um modo do app.
+ */
+export type PaletteName = ThemeMode | 'sepia';
+
 /** Alvo numérico para um nível de contraste. */
 export function targetFor(level: ContrastLevel): number {
   return level === 'normal' ? AA_NORMAL_TEXT : AA_LARGE_OR_UI;
@@ -84,6 +90,12 @@ export const AUDITED_PAIRS: readonly AuditedPair[] = [
   { fg: 'chipActiveText', bg: 'chipActiveBg', level: 'normal', role: 'rótulo do chip ativo' },
   { fg: 'chipText', bg: 'background', level: 'normal', role: 'rótulo do chip inativo' },
   { fg: 'chipLang', bg: 'background', level: 'normal', role: 'rótulo de idioma do chip' },
+  // ── Tokens do ADR-0063 (Vigil): superfícies, seleção, ouro-como-fundo, sucesso ──
+  { fg: 'text', bg: 'surface', level: 'normal', role: 'texto primário sobre superfície (folha/cartão)' },
+  { fg: 'verseText', bg: 'surface', level: 'normal', role: 'corpo do versículo sobre superfície' },
+  { fg: 'verseText', bg: 'selectionBg', level: 'normal', role: 'versículo selecionado (banho de ouro)' },
+  { fg: 'onAccent', bg: 'accent', level: 'normal', role: 'texto/ícone sobre o ouro (ação/badge)' },
+  { fg: 'success', bg: 'background', level: 'large', role: 'indicador de sucesso (provedor com chave)' },
 ];
 
 // ── Pares DECORATIVOS ────────────────────────────────────────────────────────────────────
@@ -96,9 +108,9 @@ export const DECORATIVE_PAIRS: readonly AuditedPair[] = [
   { fg: 'border', bg: 'background', level: 'large', role: 'borda de chip/célula' },
 ];
 
-/** Resultado da auditoria de UM par num modo. */
+/** Resultado da auditoria de UM par numa paleta. */
 export type PairResult = {
-  readonly mode: ThemeMode;
+  readonly mode: PaletteName;
   readonly fg: keyof ThemeColors;
   readonly bg: keyof ThemeColors;
   readonly level: ContrastLevel;
@@ -109,7 +121,7 @@ export type PairResult = {
 };
 
 /** Audita um par sobre uma paleta concreta. */
-export function auditPair(mode: ThemeMode, colors: ThemeColors, pair: AuditedPair): PairResult {
+export function auditPair(mode: PaletteName, colors: ThemeColors, pair: AuditedPair): PairResult {
   const ratio = contrastRatio(colors[pair.fg], colors[pair.bg]);
   const target = targetFor(pair.level);
   return {
@@ -126,15 +138,18 @@ export function auditPair(mode: ThemeMode, colors: ThemeColors, pair: AuditedPai
   };
 }
 
-/** Audita `pairs` sobre TODOS os modos das `palettes` (default = as paletas do tema). */
+/**
+ * Audita `pairs` sobre TODAS as paletas do mapa (default = as paletas do tema claro/escuro).
+ * Aceita qualquer mapa `nome → ThemeColors` — inclui a paleta de leitura `sepia` (ADR-0063).
+ */
 export function auditPalettes(
   pairs: readonly AuditedPair[],
-  palettes: Record<ThemeMode, ThemeColors> = PALETTES,
+  palettes: Record<string, ThemeColors> = PALETTES,
 ): PairResult[] {
   const out: PairResult[] = [];
-  for (const mode of Object.keys(palettes) as ThemeMode[]) {
+  for (const name of Object.keys(palettes)) {
     for (const pair of pairs) {
-      out.push(auditPair(mode, palettes[mode], pair));
+      out.push(auditPair(name as PaletteName, palettes[name], pair));
     }
   }
   return out;

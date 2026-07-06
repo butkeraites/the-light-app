@@ -46,6 +46,7 @@ const fmt = (r) => `${r.toFixed(2)}:1`;
 async function main() {
   const {
     PALETTES,
+    SEPIA,
     AUDITED_PAIRS,
     DECORATIVE_PAIRS,
     auditPair,
@@ -97,9 +98,20 @@ async function main() {
   );
   // Sanidade: os pares AJUSTADOS na F5.18 (LIGHT muted/accent/chipLang) agora passam com margem.
   const byId = (mode, fg, bg) => results.find((r) => r.mode === mode && r.fg === fg && r.bg === bg);
-  assert.ok(byId('light', 'muted', 'background').ratio >= 4.5, 'LIGHT muted/bg ≥ 4.5 (ajustado)');
-  assert.ok(byId('light', 'accent', 'background').ratio >= 4.5, 'LIGHT accent/bg ≥ 4.5 (ajustado)');
-  assert.ok(byId('light', 'chipLang', 'background').ratio >= 4.5, 'LIGHT chipLang/bg ≥ 4.5 (ajustado)');
+  assert.ok(byId('light', 'muted', 'background').ratio >= 4.5, 'LIGHT muted/bg ≥ 4.5');
+  assert.ok(byId('light', 'accent', 'background').ratio >= 4.5, 'LIGHT accent/bg ≥ 4.5');
+  assert.ok(byId('light', 'chipLang', 'background').ratio >= 4.5, 'LIGHT chipLang/bg ≥ 4.5');
+
+  // ══ (2b) GUARDA — a paleta de LEITURA SÉPIA (ADR-0063) também passa AA ══════════════════
+  // Sépia é um TEMA DE LEITURA (não um ThemeMode do app), auditado com o MESMO rigor.
+  const sepiaResults = auditPalettes(AUDITED_PAIRS, { sepia: SEPIA });
+  assert.equal(sepiaResults.length, AUDITED_PAIRS.length, 'auditou cada par na paleta sépia');
+  const sepiaFailures = sepiaResults.filter((r) => !r.pass);
+  assert.equal(
+    sepiaFailures.length,
+    0,
+    `SÉPIA (tema de leitura) deve atingir AA em todo par significativo. Reprovaram:\n${report(sepiaFailures)}`,
+  );
 
   // ══ (3) A GUARDA PEGA UMA REGRESSÃO — não é vacuosa ════════════════════════════════════
   // Injeta um token de texto que REPROVA numa CÓPIA da paleta (não muta a real) e exige que
@@ -139,7 +151,7 @@ async function main() {
   const contrastSrc = await readFile(CONTRAST_TS, 'utf8');
   assert.ok(!/console\./.test(palettesSrc), 'themePalettes.ts sem `console.*`');
   assert.ok(!/console\./.test(contrastSrc), 'contrast.ts sem `console.*`');
-  for (const [mode, colors] of Object.entries(PALETTES)) {
+  for (const [mode, colors] of Object.entries({ ...PALETTES, sepia: SEPIA })) {
     for (const [token, hex] of Object.entries(colors)) {
       assert.ok(/^#[0-9a-f]{6}$/.test(hex), `[${mode}] ${token}="${hex}" é hex #rrggbb`);
     }
@@ -148,10 +160,11 @@ async function main() {
   console.log('PASS — GUARDA de contraste WCAG AA das paletas de tema (headless, sem device/rede):');
   console.log('  matemática WCAG: preto↔branco=21:1, simétrica, #767676/#fff≈4.54 (cinza AA-mínimo), #777 reprova');
   console.log(`  guarda: ${AUDITED_PAIRS.length} pares × ${Object.keys(PALETTES).length} modos = ${results.length} — TODOS passam AA (4.5 normal / 3 grande+UI)`);
-  console.log('  LIGHT (ajustados na F5.18):');
-  console.log(`    muted/bg    ${fmt(byId('light', 'muted', 'background').ratio)}  (era 3.54 ✗ → #6b6b6b)`);
-  console.log(`    accent/bg   ${fmt(byId('light', 'accent', 'background').ratio)}  (era 3.42 ✗ → #916c00)`);
-  console.log(`    chipLang/bg ${fmt(byId('light', 'chipLang', 'background').ratio)}  (era 2.85 ✗ → #737373)`);
+  console.log(`  SÉPIA (tema de leitura, ADR-0063): ${sepiaResults.length} pares — TODOS passam AA`);
+  console.log('  LIGHT (Vigil · papel quente):');
+  console.log(`    muted/bg    ${fmt(byId('light', 'muted', 'background').ratio)}  (#6e675a)`);
+  console.log(`    accent/bg   ${fmt(byId('light', 'accent', 'background').ratio)}  (#8a6a12)`);
+  console.log(`    chipLang/bg ${fmt(byId('light', 'chipLang', 'background').ratio)}  (#6e675a)`);
   console.log('  guarda NÃO-vacuosa: token injetado (#bdbdbd) é ACUSADO (pass:false); paleta real segue verde');
   console.log(`  decorativos (faint/divider/border): ${decorative.length} reportados, não bloqueiam (1.4.11)`);
   console.log('  higiene: themePalettes.ts / contrast.ts sem console.*; todo token é hex #rrggbb');

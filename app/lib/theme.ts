@@ -25,7 +25,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { useColorScheme } from 'react-native';
+import { Platform, useColorScheme } from 'react-native';
 
 import { getPref, removePref, setPref } from './prefs';
 // TOKENS de cor moram em `themePalettes.ts` (módulo PURO, sem `react-native`) para que a
@@ -33,16 +33,80 @@ import { getPref, removePref, setPref } from './prefs';
 // os componentes seguirem importando `ThemeColors` de `lib/theme` sem mudança.
 import { PALETTES, type ThemeColors } from './themePalettes';
 import { isThemeMode, THEME_PREF_KEY, type ThemeMode } from './themePrefs';
+// TOKENS não-cromáticos (ADR-0063, "Vigil"): espaço/raio/tipografia/elevação/movimento —
+// puros, expostos via `useTheme()` ao lado de `colors`. A tipografia RESOLVE a família serifa
+// por plataforma aqui (o único ponto com `react-native`); o RAMO puro mora em `tokens/type`.
+import {
+  RAMP,
+  serifFamily,
+  sansFamily,
+  space,
+  radius,
+  elevation,
+  motion,
+  type FontRole,
+  type PlatformOS,
+  type SpaceScale,
+  type RadiusScale,
+  type ElevationScale,
+  type Motion,
+} from './tokens';
 
 export type { ThemeMode } from './themePrefs';
-export type { ThemeColors } from './themePalettes';
-export { LIGHT, DARK, PALETTES } from './themePalettes';
+export type { ThemeColors, ReadingPaletteName } from './themePalettes';
+export { LIGHT, DARK, SEPIA, PALETTES, READING_PALETTES } from './themePalettes';
+export { space, radius, elevation, elevationStyle, motion } from './tokens';
+
+/** Papel de texto RESOLVIDO para a plataforma corrente (família serifa/sistema já escolhida). */
+export type ResolvedTypeRole = {
+  fontFamily?: string;
+  fontSize: number;
+  lineHeight: number;
+  fontWeight: '400' | '600' | '700';
+  letterSpacing: number;
+  textTransform?: 'uppercase';
+};
+/** Ramo tipográfico resolvido: papel → estilo pronto para `<Text>`. */
+export type ResolvedType = Record<FontRole, ResolvedTypeRole>;
+
+// Resolve o RAMO tipográfico UMA vez por sessão (a plataforma é constante): cada papel ganha a
+// família concreta (serifa de leitura por SO / fonte do sistema no chrome). Sem custo por render.
+function resolveTypeRamp(os: PlatformOS): ResolvedType {
+  const serif = serifFamily(os);
+  const sans = sansFamily(os);
+  const out = {} as ResolvedType;
+  (Object.keys(RAMP) as FontRole[]).forEach((role) => {
+    const spec = RAMP[role];
+    const fontFamily = spec.family === 'serif' ? serif : sans;
+    out[role] = {
+      ...(fontFamily != null ? { fontFamily } : {}),
+      fontSize: spec.fontSize,
+      lineHeight: spec.lineHeight,
+      fontWeight: spec.fontWeight,
+      letterSpacing: spec.letterSpacing,
+      ...(spec.textTransform ? { textTransform: spec.textTransform } : {}),
+    };
+  });
+  return out;
+}
+
+const TYPE: ResolvedType = resolveTypeRamp(Platform.OS as PlatformOS);
 
 export type ThemeContextValue = {
   /** Modo efetivo aplicado (`light`/`dark`). */
   mode: ThemeMode;
   /** Tokens de cor do modo efetivo. */
   colors: ThemeColors;
+  /** Escala de espaçamento (base-4). */
+  space: SpaceScale;
+  /** Escala de raio de canto. */
+  radius: RadiusScale;
+  /** Ramo tipográfico resolvido (papel → estilo de `<Text>`). */
+  type: ResolvedType;
+  /** Mapa de elevação (sombra por nível). */
+  elevation: ElevationScale;
+  /** Tokens de movimento (durações/easings/mola). */
+  motion: Motion;
   /** Atalho `mode === 'dark'`. */
   isDark: boolean;
   /** `true` quando seguindo o esquema do sistema (sem override persistido). */
@@ -107,6 +171,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     () => ({
       mode,
       colors: PALETTES[mode],
+      // Tokens não-cromáticos: constantes por sessão (a tipografia já foi resolvida à
+      // plataforma no load do módulo). Anexados aqui p/ os componentes lerem tudo de `useTheme`.
+      space,
+      radius,
+      type: TYPE,
+      elevation,
+      motion,
       isDark: mode === 'dark',
       isSystem: override === null,
       toggle: () => setMode(mode === 'dark' ? 'light' : 'dark'),

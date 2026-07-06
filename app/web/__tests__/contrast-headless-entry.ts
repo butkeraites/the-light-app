@@ -6,8 +6,8 @@
 //   - themePalettes: `PALETTES`/`LIGHT`/`DARK` (tokens de cor, SEM `react-native`);
 //   - contrast: matemática WCAG + spec dos pares + `auditPalettes`.
 // NÃO importa `theme.ts` (que puxa `react-native`): tokens e auditoria são puros e isolados.
-import { PALETTES, LIGHT, DARK } from '../../lib/themePalettes';
-import type { ThemeColors } from '../../lib/themePalettes';
+import { PALETTES, READING_PALETTES, LIGHT, DARK, SEPIA } from '../../lib/themePalettes';
+import type { ThemeColors, ReadingPaletteName } from '../../lib/themePalettes';
 import {
   AA_NORMAL_TEXT,
   AA_LARGE_OR_UI,
@@ -20,12 +20,14 @@ import {
   relativeLuminance,
   targetFor,
 } from '../../lib/contrast';
-import type { AuditedPair, ContrastLevel, PairResult } from '../../lib/contrast';
+import type { AuditedPair, ContrastLevel, PairResult, PaletteName } from '../../lib/contrast';
 
 export {
   PALETTES,
+  READING_PALETTES,
   LIGHT,
   DARK,
+  SEPIA,
   AA_NORMAL_TEXT,
   AA_LARGE_OR_UI,
   AUDITED_PAIRS,
@@ -37,4 +39,4 @@ export {
   relativeLuminance,
   targetFor,
 };
-export type { ThemeColors, AuditedPair, ContrastLevel, PairResult };
+export type { ThemeColors, ReadingPaletteName, AuditedPair, ContrastLevel, PairResult, PaletteName };
