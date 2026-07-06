@@ -106,8 +106,8 @@ async function main() {
   assert.equal(translate('pt', 'home.title'), 'The Light', 'pt home.title (marca)');
   assert.equal(translate('en', 'home.title'), 'The Light', 'en home.title (marca, igual)');
   // Chave que DIVERGE entre idiomas → prova a troca de fato re-renderiza texto diferente.
-  assert.equal(translate('pt', 'home.readBible'), 'Ler a Bíblia →', 'pt home.readBible');
-  assert.equal(translate('en', 'home.readBible'), 'Read the Bible →', 'en home.readBible');
+  assert.equal(translate('pt', 'home.readBible'), 'Ler a Bíblia', 'pt home.readBible');
+  assert.equal(translate('en', 'home.readBible'), 'Read the Bible', 'en home.readBible');
   assert.notEqual(
     translate('pt', 'home.readBible'),
     translate('en', 'home.readBible'),
