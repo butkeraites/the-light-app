@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
 import { Link } from 'expo-router';
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { parseReference, type Reference } from '../web/reference';
 // F5.12 (ADR-0041): `getPassage` (store web) só roda no submit (NUNCA no mount) —
@@ -10,7 +10,7 @@ import { parseReference, type Reference } from '../web/reference';
 import type { Passage } from '../web/passage';
 import { runReferenceSelfTest } from '../web/selftest';
 import { useI18n, type TranslateFn } from '../lib/i18n';
-import { useTheme, type ThemeColors } from '../lib/theme';
+import { useTheme, type ThemeContextValue } from '../lib/theme';
 
 // F0.6b/F0.10 — tela ligada à fronteira Rust. A referência é SEMPRE resolvida
 // PELO RUST (the-light-core via UniFFI), não por eco/parsing em TS.
@@ -25,6 +25,11 @@ import { useTheme, type ThemeColors } from '../lib/theme';
 // resultado é guardado como DADO estruturado (`Outcome`) e formatado no RENDER, de
 // modo que trocar o idioma re-renderiza as strings de CROMO na hora — enquanto o
 // TEXTO do versículo (`v.text`) permanece VERBATIM do store, nunca traduzido.
+//
+// ADR-0063 ("Vigil"): a apresentação foi retrabalhada sobre os TOKENS (tipografia serifa,
+// escala de espaço/raio, superfícies) — título em serifa, campo de busca em pílula, uma AÇÃO
+// PRIMÁRIA "Ler a Bíblia" em ouro e a navegação secundária agrupada num cartão. A LÓGICA
+// (busca, self-test, sync, i18n, testIDs, a11y) é idêntica — só o CROMO/estrutura mudou.
 
 // Estado do resultado como DADO (não string pronta): assim o CROMO (placeholder,
 // rótulos de referência, erro) é traduzido no render, e o texto bíblico segue verbatim.
@@ -67,8 +72,9 @@ function formatPassage(passage: Passage, t: TranslateFn): string {
 
 export default function HomeScreen() {
   const { t } = useI18n();
-  const { colors } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const [query, setQuery] = useState('');
   const [outcome, setOutcome] = useState<Outcome>({ kind: 'idle' });
@@ -135,6 +141,7 @@ export default function HomeScreen() {
     default:
       resultText = t('home.resultPlaceholder');
   }
+  const hasResult = outcome.kind !== 'idle';
 
   // Painel de sync aberto → substitui a home (com voltar). O painel vive num chunk async.
   if (syncOpen && SyncPanel) {
@@ -142,11 +149,16 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title} accessibilityRole="header">
-        {t('home.title')}
-      </Text>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+      {/* MARCA — título em serifa (type.display) + régua dourada. */}
+      <View style={styles.brand}>
+        <Text style={styles.title} accessibilityRole="header">
+          {t('home.title')}
+        </Text>
+        <View style={styles.rule} />
+      </View>
 
+      {/* BUSCA — campo em pílula (mesma lógica de resolução da referência). */}
       <TextInput
         style={styles.input}
         value={query}
@@ -160,144 +172,185 @@ export default function HomeScreen() {
         testID="passage-input"
         accessibilityLabel={t('a11y.searchInput')}
       />
-
       {Platform.OS === 'web' ? <Text style={styles.hint}>{t('home.hint')}</Text> : null}
 
-      {/* F5.29: SEM accessibilityLabel — um label fixo ("Resultado da interpretação")
-          SOBRESCREVE os filhos e esconde o conteúdo real do leitor de tela. Com só o
-          role="text", o leitor anuncia os FILHOS (`resultText`): a referência/passagem
-          resolvida OU a mensagem de erro — ambas legíveis por tecnologia assistiva. */}
-      <Text testID="result" style={styles.result} accessibilityRole="text">
+      {/* F5.29: SEM accessibilityLabel — role="text" deixa o leitor anunciar os FILHOS
+          (`resultText`): a passagem resolvida OU a mensagem de erro. Sem resultado, é um
+          placeholder atenuado; com resultado, um cartão com o texto VERBATIM do store. */}
+      <Text
+        testID="result"
+        style={[styles.result, hasResult ? styles.resultCard : styles.resultIdle]}
+        accessibilityRole="text"
+      >
         {resultText}
       </Text>
 
-      {/* F5.26: entrada para SINCRONIZAÇÃO opt-in + backup (todos os alvos). O painel é
-          carregado sob demanda (chunk async); o app funciona 100% offline sem isto. */}
-      <Pressable
-        onPress={openSync}
-        style={styles.readLink}
-        testID="open-sync"
-        accessibilityRole="button"
-        accessibilityLabel={t('a11y.openSync')}
-      >
-        <Text style={styles.readLinkText}>{t('home.syncBackup')}</Text>
-      </Pressable>
-
-      {/* F1.3: entrada para a UI de leitura (livro → capítulo → texto + seletor de
-          versão). Lê do store local: no nativo pela fronteira nativa; no web pelo glue
-          `reading.web.ts` (F1.13 DESTUBADO, wa-sqlite/OPFS). F5.30: paridade web
-          concluída → renderizado nas DUAS plataformas (antes gateado só p/ nativo). */}
+      {/* AÇÃO PRIMÁRIA — Ler a Bíblia (ouro). F5.30: paridade web concluída (as duas
+          plataformas). F1.3: fluxo de leitura (livro → capítulo → texto). */}
       <Link
         href="/read"
-        style={styles.readLink}
-        testID="open-reader"
+        asChild
         accessibilityRole="link"
         accessibilityLabel={t('home.readBible')}
       >
-        {t('home.readBible')}
+        <Pressable style={styles.cta} testID="open-reader">
+          <Text style={styles.ctaTitle}>{t('home.readBible')}</Text>
+          <Text style={styles.ctaChevron}>›</Text>
+        </Pressable>
       </Link>
 
-      {/* F1.6: entrada para a BUSCA (campo + resultados clicáveis). Lê pela fronteira
-          `search`: no nativo F1.5 → JSI → core; no web pelo glue FTS5 real
-          `reading.web.ts` (F1.14 DESTUBADO, ≠ stub). F5.30: paridade web concluída →
-          renderizado nas DUAS plataformas (antes gateado só p/ nativo). */}
-      <Link
-        href="/search"
-        style={styles.readLink}
-        testID="open-search"
-        accessibilityRole="link"
-        accessibilityLabel={t('home.searchBible')}
-      >
-        {t('home.searchBible')}
-      </Link>
-
-      {/* F5.7: entrada para os PLANOS de leitura (lista → iniciar → dia de hoje →
-          marcar). Orquestra a geração (F5.1) + o progresso (F5.4): no nativo pela
-          fronteira nativa; no web geração wasm + progresso OPFS (F5.10/ADR-0050).
-          F5.30: paridade web concluída → renderizado nas DUAS plataformas. */}
-      <Link
-        href="/plans"
-        style={styles.readLink}
-        testID="open-plans"
-        accessibilityRole="link"
-        accessibilityLabel={t('home.readingPlans')}
-      >
-        {t('home.readingPlans')}
-      </Link>
-
-      {/* F5.35: entrada para a tela SOBRE (créditos/licenças das 4 fontes embarcadas +
-          princípios offline-first/BYOK/anti-alucinação + atalho de backup). Explicador de
-          1º uso; 100% offline, sem rede/segredo. Renderizada nas duas plataformas. */}
-      <Link
-        href="/about"
-        style={styles.readLink}
-        testID="open-about"
-        accessibilityRole="link"
-        accessibilityLabel={t('a11y.openAbout')}
-      >
-        {t('home.about')}
-      </Link>
-
-      {/* F6.6: entrada para a tela de AJUSTES / chaves BYOK — hub canônico onde o usuário
-          configura as chaves dos provedores de IA (Claude/GPT/Gemini/Ollama). Recursos offline
-          seguem sem chave; só a IA precisa dela. Renderizada nas duas plataformas. */}
-      <Link
-        href="/settings"
-        style={styles.readLink}
-        testID="open-settings"
-        accessibilityRole="link"
-        accessibilityLabel={t('a11y.openSettings')}
-      >
-        {t('home.settings')}
-      </Link>
-    </View>
+      {/* NAVEGAÇÃO SECUNDÁRIA — agrupada num cartão com divisórias (busca/planos/backup/
+          sobre/ajustes). Cada linha preserva o testID e a a11y do link/ação original. */}
+      <View style={styles.rowsCard}>
+        <Link href="/search" asChild accessibilityRole="link" accessibilityLabel={t('home.searchBible')}>
+          <Pressable style={styles.row} testID="open-search">
+            <Text style={styles.rowLabel}>{t('home.searchBible')}</Text>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
+        </Link>
+        <View style={styles.rowDivider} />
+        <Link href="/plans" asChild accessibilityRole="link" accessibilityLabel={t('home.readingPlans')}>
+          <Pressable style={styles.row} testID="open-plans">
+            <Text style={styles.rowLabel}>{t('home.readingPlans')}</Text>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
+        </Link>
+        <View style={styles.rowDivider} />
+        <Pressable
+          onPress={openSync}
+          style={styles.row}
+          testID="open-sync"
+          accessibilityRole="button"
+          accessibilityLabel={t('a11y.openSync')}
+        >
+          <Text style={styles.rowLabel}>{t('home.syncBackup')}</Text>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
+        <View style={styles.rowDivider} />
+        <Link href="/about" asChild accessibilityRole="link" accessibilityLabel={t('a11y.openAbout')}>
+          <Pressable style={styles.row} testID="open-about">
+            <Text style={styles.rowLabel}>{t('home.about')}</Text>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
+        </Link>
+        <View style={styles.rowDivider} />
+        <Link href="/settings" asChild accessibilityRole="link" accessibilityLabel={t('a11y.openSettings')}>
+          <Pressable style={styles.row} testID="open-settings">
+            <Text style={styles.rowLabel}>{t('home.settings')}</Text>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
+        </Link>
+      </View>
+    </ScrollView>
   );
 }
 
-// Estilos derivados dos TOKENS de tema (zero hex hardcoded — molde ReaderChapterView).
-function makeStyles(colors: ThemeColors) {
+// Estilos derivados dos TOKENS (cor + tipografia + espaço + raio) — zero magic number.
+function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
   return StyleSheet.create({
-    container: {
+    screen: {
       flex: 1,
-      padding: 24,
-      gap: 16,
       backgroundColor: colors.background,
     },
+    container: {
+      padding: space.xl,
+      paddingTop: space.xxl,
+      gap: space.lg,
+    },
+    brand: {
+      gap: space.sm,
+      marginBottom: space.xs,
+    },
     title: {
-      fontSize: 28,
-      fontWeight: '700',
+      ...type.display,
       color: colors.text,
+    },
+    rule: {
+      width: 44,
+      height: 3,
+      borderRadius: 3,
+      backgroundColor: colors.accent,
     },
     input: {
+      ...type.body,
+      color: colors.text,
+      backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      fontSize: 16,
-      color: colors.text,
+      borderRadius: radius.pill,
+      paddingHorizontal: space.lg,
+      paddingVertical: space.md,
     },
     hint: {
-      fontSize: 12,
+      ...type.caption,
       color: colors.muted,
+      marginLeft: space.sm,
+      marginTop: -space.sm,
     },
     result: {
-      fontSize: 16,
+      ...type.body,
       color: colors.text,
     },
-    readLink: {
-      marginTop: 8,
-      // F5.20: alvo de toque ≥44 (padding vertical) p/ o link de navegação (nativo).
-      paddingVertical: 10,
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.accent,
+    // Sem resultado: placeholder atenuado, sem cartão.
+    resultIdle: {
+      color: colors.muted,
     },
-    // F5.26: rótulo do botão (Pressable) de sync — mesmo visual dos links de navegação.
-    readLinkText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.accent,
+    // Com resultado: cartão de superfície (o texto do versículo é verbatim do store).
+    resultCard: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      padding: space.lg,
+      lineHeight: 24,
+    },
+    cta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.accent,
+      borderRadius: radius.lg,
+      paddingHorizontal: space.lg,
+      paddingVertical: space.lg,
+      // F5.20: alvo de toque confortável (≥44).
+      minHeight: 56,
+    },
+    ctaTitle: {
+      ...type.heading,
+      color: colors.onAccent,
+      flex: 1,
+    },
+    ctaChevron: {
+      fontSize: 24,
+      color: colors.onAccent,
+    },
+    rowsCard: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      overflow: 'hidden',
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: space.lg,
+      // F5.20: alvo de toque ≥44.
+      minHeight: 52,
+      paddingVertical: space.md,
+    },
+    rowLabel: {
+      ...type.body,
+      color: colors.text,
+      flex: 1,
+    },
+    chevron: {
+      fontSize: 20,
+      color: colors.muted,
+    },
+    rowDivider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.divider,
+      marginLeft: space.lg,
     },
   });
 }

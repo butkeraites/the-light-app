@@ -397,9 +397,9 @@ const pt: Record<MessageKey, string> = {
   'home.resultPlaceholder': 'O resultado aparecerá aqui.',
   'home.inputPlaceholder': 'Digite uma passagem (ex.: João 3:16)',
   'home.hint': 'Pressione Enter para interpretar (via Rust/wasm).',
-  'home.readBible': 'Ler a Bíblia →',
-  'home.searchBible': 'Buscar na Bíblia →',
-  'home.readingPlans': 'Planos de leitura →',
+  'home.readBible': 'Ler a Bíblia',
+  'home.searchBible': 'Buscar na Bíblia',
+  'home.readingPlans': 'Planos de leitura',
   'home.resolveError': 'Não foi possível resolver: {message}',
   'home.verseNotFound': 'Versículo não encontrado no store local.',
   'search.inputPlaceholder': 'Buscar na Bíblia (ex.: God, amor, light)',
@@ -580,7 +580,7 @@ const pt: Record<MessageKey, string> = {
   'highlight.blue': 'Azul',
   'highlight.pink': 'Rosa',
   // ─── Sincronização opt-in + backup (F5.26) — só CROMO (ver nota na união de chaves) ───
-  'home.syncBackup': 'Sincronização e backup →',
+  'home.syncBackup': 'Sincronização e backup',
   'sync.title': 'Sincronização e backup',
   'sync.offlineFirst':
     'O app funciona 100% offline sem isto. Sincronização e backup são totalmente opcionais.',
@@ -625,7 +625,7 @@ const pt: Record<MessageKey, string> = {
   'a11y.syncDriveSyncNow': 'Sincronizar agora com o Google Drive',
   'a11y.syncClose': 'Fechar sincronização e backup',
   // ─── Sobre / créditos / licenças (F5.35) — só CROMO (ver nota na união de chaves) ─────
-  'home.about': 'Sobre o app →',
+  'home.about': 'Sobre o app',
   'nav.about': 'Sobre',
   'a11y.openAbout': 'Abrir a tela Sobre, com créditos e licenças',
   'about.title': 'Sobre o The Light',
@@ -664,7 +664,7 @@ const pt: Record<MessageKey, string> = {
     'Não foi possível carregar o mecanismo de leitura. Verifique a conexão com o app e tente de novo.',
   'wasm.retry': 'Tentar de novo',
   // ─── Ajustes / chaves BYOK (F6.6) — só CROMO (ver nota na união de chaves) ────────────
-  'home.settings': 'Ajustes e chaves →',
+  'home.settings': 'Ajustes e chaves',
   'nav.settings': 'Ajustes',
   'a11y.openSettings': 'Abrir a tela de Ajustes para configurar chaves de IA (BYOK)',
   'a11y.settingsSaveKey': 'Salvar a chave do provedor {provider}',
@@ -691,9 +691,9 @@ const en: Record<MessageKey, string> = {
   'home.resultPlaceholder': 'The result will appear here.',
   'home.inputPlaceholder': 'Enter a passage (e.g., John 3:16)',
   'home.hint': 'Press Enter to interpret (via Rust/wasm).',
-  'home.readBible': 'Read the Bible →',
-  'home.searchBible': 'Search the Bible →',
-  'home.readingPlans': 'Reading plans →',
+  'home.readBible': 'Read the Bible',
+  'home.searchBible': 'Search the Bible',
+  'home.readingPlans': 'Reading plans',
   'home.resolveError': 'Could not resolve: {message}',
   'home.verseNotFound': 'Verse not found in the local store.',
   'search.inputPlaceholder': 'Search the Bible (e.g., God, love, light)',
@@ -874,7 +874,7 @@ const en: Record<MessageKey, string> = {
   'highlight.blue': 'Blue',
   'highlight.pink': 'Pink',
   // ─── Opt-in sync + backup (F5.26) — CHROME only (see note on the key union) ───────────
-  'home.syncBackup': 'Sync & backup →',
+  'home.syncBackup': 'Sync & backup',
   'sync.title': 'Sync & backup',
   'sync.offlineFirst':
     'The app works 100% offline without this. Sync and backup are entirely optional.',
@@ -919,7 +919,7 @@ const en: Record<MessageKey, string> = {
   'a11y.syncDriveSyncNow': 'Sync now with Google Drive',
   'a11y.syncClose': 'Close sync & backup',
   // ─── About / credits / licenses (F5.35) — CHROME only (see note on the key union) ─────
-  'home.about': 'About the app →',
+  'home.about': 'About the app',
   'nav.about': 'About',
   'a11y.openAbout': 'Open the About screen, with credits and licenses',
   'about.title': 'About The Light',
@@ -958,7 +958,7 @@ const en: Record<MessageKey, string> = {
     'The reading engine could not be loaded. Check the app connection and try again.',
   'wasm.retry': 'Try again',
   // ─── Settings / BYOK keys (F6.6) — CHROME only (see note on the key union) ────────────
-  'home.settings': 'Settings & keys →',
+  'home.settings': 'Settings & keys',
   'nav.settings': 'Settings',
   'a11y.openSettings': 'Open the Settings screen to configure AI keys (BYOK)',
   'a11y.settingsSaveKey': 'Save the key for provider {provider}',
