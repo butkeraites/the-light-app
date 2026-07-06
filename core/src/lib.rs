@@ -157,6 +157,62 @@ pub enum CoreError {
     },
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Plumbing INTERNO da fronteira (ADR-0061): helpers PRIVADOS, NÃO exportados
+// (nenhum `#[uniffi::export]`/`#[derive(uniffi::…)]`), então o `ubrn` não extrai
+// metadata deles e os bindings gerados ficam BYTE-IDÊNTICOS. Concentram o mapeamento
+// de erro e o default de idioma que se repetiam por toda a fronteira. Os combinadores
+// de store (mais abaixo) são `cfg(not(wasm32))` — nomeiam `Store`/`EmbeddedSource`
+// (embedded-only), mantendo `rusqlite`/store fora do grafo wasm (ADR-0005/0010).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Mapeia qualquer erro `Display` para o `CoreError::Generic` da fronteira. cfg-livre
+/// (só referencia `CoreError` local + `Display`) → usável no nativo E nas fns web-prepare
+/// (`ai-pure`), substituindo os ~40 fechamentos `.map_err(|e| CoreError::Generic { … })`.
+fn core_err(e: impl std::fmt::Display) -> CoreError {
+    CoreError::Generic {
+        message: e.to_string(),
+    }
+}
+
+/// Idioma de resposta/exibição a partir do parâmetro `lang`, com default `Pt`. cfg-livre
+/// porque `model::Lang` está na superfície `ai-pure` (todos os alvos). Concentra os 10
+/// sites `lang.parse::<Lang>().unwrap_or(Lang::Pt)`.
+fn parse_lang(lang: &str) -> the_light_core::model::Lang {
+    lang.parse().unwrap_or(the_light_core::model::Lang::Pt)
+}
+
+/// Abre o store só-leitura e passa-o à closure, concentrando `Store::open` + mapeamento de
+/// erro num só lugar. `cfg(not(wasm32))`: nomeia `Store` (embedded-only) → o combinador É a
+/// própria fronteira cfg, então os chamadores param de repetir o prólogo. A closure devolve
+/// um `T` OWNED, então o borrow do store não escapa.
+#[cfg(not(target_arch = "wasm32"))]
+fn with_store<T>(
+    db_path: &str,
+    f: impl FnOnce(&the_light_core::store::Store) -> Result<T, CoreError>,
+) -> Result<T, CoreError> {
+    let store = the_light_core::store::Store::open(db_path).map_err(core_err)?;
+    f(&store)
+}
+
+/// Açúcar sobre [`with_store`] p/ os SELECTs de leitura: constrói `EmbeddedSource` + o
+/// `TranslationId` e passa ambos à closure. `cfg(not(wasm32))` pelo mesmo motivo.
+#[cfg(not(target_arch = "wasm32"))]
+fn with_source<T>(
+    db_path: &str,
+    translation: &str,
+    f: impl FnOnce(
+        &the_light_core::source::EmbeddedSource,
+        &the_light_core::model::TranslationId,
+    ) -> Result<T, CoreError>,
+) -> Result<T, CoreError> {
+    with_store(db_path, |store| {
+        let source = the_light_core::source::EmbeddedSource::new(store);
+        let tid = the_light_core::model::TranslationId::new(translation);
+        f(&source, &tid)
+    })
+}
+
 /// Função trivial exportada via UniFFI.
 ///
 /// Retorna um valor **constante** — sem I/O, sem rede, sem lógica.
@@ -255,9 +311,7 @@ impl From<the_light_core::model::Reference> for Reference {
 pub fn parse_reference(input: String) -> Result<Reference, CoreError> {
     the_light_core::reference::parse_reference(&input)
         .map(Reference::from)
-        .map_err(|e| CoreError::Generic {
-            message: e.to_string(),
-        })
+        .map_err(core_err)
 }
 
 /// Um versículo resolvido com seu texto, na fronteira UniFFI.
@@ -426,23 +480,11 @@ pub fn get_passage(
         // Trait em escopo para poder chamar `.passage(...)` em `EmbeddedSource`.
         use the_light_core::source::BibleSource;
 
-        let reference = the_light_core::reference::parse_reference(&reference).map_err(|e| {
-            CoreError::Generic {
-                message: e.to_string(),
-            }
-        })?;
-        let store =
-            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
-        let source = the_light_core::source::EmbeddedSource::new(&store);
-        let translation = the_light_core::model::TranslationId::new(translation);
-        let passage = source
-            .passage(&reference, &translation)
-            .map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
-        Ok(Passage::from(passage))
+        let reference = the_light_core::reference::parse_reference(&reference).map_err(core_err)?;
+        with_source(&db_path, &translation, |source, translation| {
+            let passage = source.passage(&reference, translation).map_err(core_err)?;
+            Ok(Passage::from(passage))
+        })
     }
     #[cfg(target_arch = "wasm32")]
     {
@@ -572,15 +614,11 @@ pub fn list_translations(db_path: String) -> Result<Vec<Translation>, CoreError>
         // Trait em escopo para chamar `.translations()` em `EmbeddedSource`.
         use the_light_core::source::BibleSource;
 
-        let store =
-            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
-        let source = the_light_core::source::EmbeddedSource::new(&store);
-        let translations = source.translations().map_err(|e| CoreError::Generic {
-            message: e.to_string(),
-        })?;
-        Ok(translations.into_iter().map(Translation::from).collect())
+        with_store(&db_path, |store| {
+            let source = the_light_core::source::EmbeddedSource::new(store);
+            let translations = source.translations().map_err(core_err)?;
+            Ok(translations.into_iter().map(Translation::from).collect())
+        })
     }
     #[cfg(target_arch = "wasm32")]
     {
@@ -638,18 +676,10 @@ pub fn get_chapter(
         use the_light_core::source::BibleSource;
 
         let reference = the_light_core::model::Reference::whole_chapter(book, chapter);
-        let store =
-            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
-        let source = the_light_core::source::EmbeddedSource::new(&store);
-        let translation = the_light_core::model::TranslationId::new(translation);
-        let passage = source
-            .passage(&reference, &translation)
-            .map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
-        Ok(Passage::from(passage))
+        with_source(&db_path, &translation, |source, translation| {
+            let passage = source.passage(&reference, translation).map_err(core_err)?;
+            Ok(Passage::from(passage))
+        })
     }
     #[cfg(target_arch = "wasm32")]
     {
@@ -675,17 +705,9 @@ pub fn get_chapter(
 pub fn chapter_count(db_path: String, translation: String, book: u8) -> Result<u16, CoreError> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let store =
-            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
-        let source = the_light_core::source::EmbeddedSource::new(&store);
-        let translation = the_light_core::model::TranslationId::new(translation);
-        source
-            .chapter_count(book, &translation)
-            .map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })
+        with_source(&db_path, &translation, |source, translation| {
+            source.chapter_count(book, translation).map_err(core_err)
+        })
     }
     #[cfg(target_arch = "wasm32")]
     {
@@ -733,23 +755,17 @@ pub fn search(
         // Trait em escopo para chamar `.search(...)` em `EmbeddedSource`.
         use the_light_core::source::BibleSource;
 
-        let store =
-            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
-        let source = the_light_core::source::EmbeddedSource::new(&store);
-        let translation = the_light_core::model::TranslationId::new(translation);
-        let mut opts = the_light_core::search::SearchOptions::new(translation);
-        opts.book = book;
-        if let Some(limit) = limit {
-            opts.limit = limit as usize;
-        }
-        let hits = source
-            .search(&query, &opts)
-            .map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
-        Ok(hits.into_iter().map(SearchHit::from).collect())
+        with_store(&db_path, |store| {
+            let source = the_light_core::source::EmbeddedSource::new(store);
+            let translation = the_light_core::model::TranslationId::new(translation);
+            let mut opts = the_light_core::search::SearchOptions::new(translation);
+            opts.book = book;
+            if let Some(limit) = limit {
+                opts.limit = limit as usize;
+            }
+            let hits = source.search(&query, &opts).map_err(core_err)?;
+            Ok(hits.into_iter().map(SearchHit::from).collect())
+        })
     }
     #[cfg(target_arch = "wasm32")]
     {
@@ -806,20 +822,22 @@ pub fn cross_refs(
 ) -> Result<Vec<CrossRef>, CoreError> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let store =
-            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
         let min_votes = min_votes.unwrap_or(the_light_core::xref::DEFAULT_MIN_VOTES);
         let limit = limit
             .map(|l| l as usize)
             .unwrap_or(the_light_core::xref::DEFAULT_LIMIT);
-        let hits =
-            the_light_core::xref::for_verse(store.conn(), book, chapter, verse, min_votes, limit)
-                .map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
-        Ok(hits.into_iter().map(CrossRef::from).collect())
+        with_store(&db_path, |store| {
+            let hits = the_light_core::xref::for_verse(
+                store.conn(),
+                book,
+                chapter,
+                verse,
+                min_votes,
+                limit,
+            )
+            .map_err(core_err)?;
+            Ok(hits.into_iter().map(CrossRef::from).collect())
+        })
     }
     #[cfg(target_arch = "wasm32")]
     {
@@ -967,29 +985,25 @@ pub fn lexical_entries(
 ) -> Result<VerifiedLexiconOut, CoreError> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let store =
-            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
         // Léxico independente de tradução: Reference por book/chapter[/verse].
         let reference = match verse {
             Some(v) => the_light_core::model::Reference::single(book, chapter, v),
             None => the_light_core::model::Reference::whole_chapter(book, chapter),
         };
         // lang aceito pela assinatura real, mas ignorado por verified_lexicon; default Pt.
-        let lang = lang
-            .parse::<the_light_core::model::Lang>()
-            .unwrap_or(the_light_core::model::Lang::Pt);
+        let lang = parse_lang(&lang);
         let limit = limit.map(|l| l as usize).unwrap_or(DEFAULT_LEXICON_LIMIT);
-        // Infalível (não Result): verse_numbers = &[] → o core deriva do reference.
-        let vl = the_light_core::ai::lexicon::verified_lexicon(
-            store.conn(),
-            &reference,
-            &[],
-            lang,
-            limit,
-        );
-        Ok(VerifiedLexiconOut::from(vl))
+        with_store(&db_path, |store| {
+            // Infalível (não Result): verse_numbers = &[] → o core deriva do reference.
+            let vl = the_light_core::ai::lexicon::verified_lexicon(
+                store.conn(),
+                &reference,
+                &[],
+                lang,
+                limit,
+            );
+            Ok(VerifiedLexiconOut::from(vl))
+        })
     }
     #[cfg(target_arch = "wasm32")]
     {
@@ -1380,9 +1394,7 @@ pub fn deep_study(
         use the_light_core::source::BibleSource;
 
         // 1) Idioma de exibição/resposta (`"pt"|"en"` + sinônimos); default Pt.
-        let lang = lang
-            .parse::<the_light_core::model::Lang>()
-            .unwrap_or(the_light_core::model::Lang::Pt);
+        let lang = parse_lang(&lang);
 
         // 2) Referência (single ou capítulo inteiro) + rótulo formatado (core).
         let reference = match verse {
@@ -1392,18 +1404,12 @@ pub fn deep_study(
         let reference_label = the_light_core::reference::format_reference(&reference, lang);
 
         // 3) Passagem VERBATIM do store, pela MESMA rota da F1.2 (anti-alucinação).
-        let store =
-            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
+        let store = the_light_core::store::Store::open(&db_path).map_err(core_err)?;
         let source = the_light_core::source::EmbeddedSource::new(&store);
         let translation_id = the_light_core::model::TranslationId::new(translation);
-        let passage =
-            source
-                .passage(&reference, &translation_id)
-                .map_err(|e| CoreError::Generic {
-                    message: e.to_string(),
-                })?;
+        let passage = source
+            .passage(&reference, &translation_id)
+            .map_err(core_err)?;
 
         // 4) Fatos locais para o RAG: léxico verificado (infalível, rota F3.2) + rótulos
         //    de xref (melhor esforço). Nenhum SQL/agregação é reimplementado aqui.
@@ -1424,11 +1430,7 @@ pub fn deep_study(
 
         // 5) Provedor (BYOK: a chave é argumento; "mock" = sem rede/chave).
         let provider =
-            the_light_core::ai::build_provider(&provider_name, key, model).map_err(|e| {
-                CoreError::Generic {
-                    message: e.to_string(),
-                }
-            })?;
+            the_light_core::ai::build_provider(&provider_name, key, model).map_err(core_err)?;
 
         // 5b) Pesquisa web OPT-IN (ADR-0028/ADR-0035): desligada por padrão. Com
         //     `research_backend = Some(backend)`, delega a `ai::build_research_provider`
@@ -1447,14 +1449,10 @@ pub fn deep_study(
                     research_key,
                     lang.code(),
                 )
-                .map_err(|e| CoreError::Generic {
-                    message: e.to_string(),
-                })?;
+                .map_err(core_err)?;
                 research
                     .search(&reference_label, DEFAULT_RESEARCH_LIMIT)
-                    .map_err(|e| CoreError::Generic {
-                        message: e.to_string(),
-                    })?
+                    .map_err(core_err)?
             }
             None => Vec::new(),
         };
@@ -1476,11 +1474,7 @@ pub fn deep_study(
             brief: None,
         };
         let result =
-            the_light_core::ai::study::study(provider.as_ref(), &request).map_err(|e| {
-                CoreError::Generic {
-                    message: e.to_string(),
-                }
-            })?;
+            the_light_core::ai::study::study(provider.as_ref(), &request).map_err(core_err)?;
 
         Ok(StudyResultOut::from(result))
     }
@@ -1623,11 +1617,7 @@ fn resolve_provider(
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        the_light_core::ai::build_provider(provider_name, key, model).map_err(|e| {
-            CoreError::Generic {
-                message: e.to_string(),
-            }
-        })
+        the_light_core::ai::build_provider(provider_name, key, model).map_err(core_err)
     }
     #[cfg(target_arch = "wasm32")]
     {
@@ -1672,9 +1662,7 @@ pub fn refine_scope(
     model: Option<String>,
 ) -> Result<RefinementOut, CoreError> {
     // 1) Idioma (default Pt) + histórico de rodadas como pares (pergunta, resposta).
-    let lang = lang
-        .parse::<the_light_core::model::Lang>()
-        .unwrap_or(the_light_core::model::Lang::Pt);
+    let lang = parse_lang(&lang);
     let prior_pairs: Vec<(String, String)> =
         prior.into_iter().map(|r| (r.question, r.answer)).collect();
 
@@ -1690,9 +1678,7 @@ pub fn refine_scope(
         &prior_pairs,
         round,
     )
-    .map_err(|e| CoreError::Generic {
-        message: e.to_string(),
-    })?;
+    .map_err(core_err)?;
 
     Ok(RefinementOut::from(refinement))
 }
@@ -1760,9 +1746,7 @@ pub fn ask_session_anchored(
         use the_light_core::source::BibleSource;
 
         // 1) Idioma (default Pt) + referência (single ou capítulo inteiro).
-        let lang = lang
-            .parse::<the_light_core::model::Lang>()
-            .unwrap_or(the_light_core::model::Lang::Pt);
+        let lang = parse_lang(&lang);
         let reference = match verse {
             Some(v) => the_light_core::model::Reference::single(book, chapter, v),
             None => the_light_core::model::Reference::whole_chapter(book, chapter),
@@ -1770,18 +1754,12 @@ pub fn ask_session_anchored(
 
         // 2) Passagem VERBATIM do store, pela MESMA rota da F1.2 (anti-alucinação) →
         //    texto numerado (o `cited_text`, a âncora da conversa).
-        let store =
-            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
+        let store = the_light_core::store::Store::open(&db_path).map_err(core_err)?;
         let source = the_light_core::source::EmbeddedSource::new(&store);
         let translation_id = the_light_core::model::TranslationId::new(translation);
-        let passage =
-            source
-                .passage(&reference, &translation_id)
-                .map_err(|e| CoreError::Generic {
-                    message: e.to_string(),
-                })?;
+        let passage = source
+            .passage(&reference, &translation_id)
+            .map_err(core_err)?;
         let cited_text = the_light_core::ai::numbered_passage(&passage);
 
         // 3) Contexto ancorado: rótulo + texto numerado + rótulos de xref (RAG leve).
@@ -1809,9 +1787,7 @@ pub fn ask_session_anchored(
         //    `context` no 1º turno de usuário). Nada de conversa é reimplementado aqui.
         let interpretation =
             the_light_core::ai::ask_session(provider.as_ref(), lang, &context, &messages, study)
-                .map_err(|e| CoreError::Generic {
-                    message: e.to_string(),
-                })?;
+                .map_err(core_err)?;
 
         // Contrato anti-alucinação: cited_text (store) separado da interpretation (modelo).
         Ok(AiAnswer {
@@ -1940,19 +1916,11 @@ impl From<the_light_core::userdata::highlights::Highlight> for Highlight {
 pub fn put_note(data_dir: String, reference: String, body: String) -> Result<(), CoreError> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let reference = the_light_core::reference::parse_reference(&reference).map_err(|e| {
-            CoreError::Generic {
-                message: e.to_string(),
-            }
-        })?;
+        let reference = the_light_core::reference::parse_reference(&reference).map_err(core_err)?;
         let store = the_light_core::userdata::notes::NoteStore::new(
             std::path::Path::new(&data_dir).join("notes"),
         );
-        store
-            .put(&reference, &body)
-            .map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })
+        store.put(&reference, &body).map_err(core_err)
     }
     #[cfg(target_arch = "wasm32")]
     {
@@ -1976,17 +1944,11 @@ pub fn put_note(data_dir: String, reference: String, body: String) -> Result<(),
 pub fn get_note(data_dir: String, reference: String) -> Result<Option<Note>, CoreError> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let reference = the_light_core::reference::parse_reference(&reference).map_err(|e| {
-            CoreError::Generic {
-                message: e.to_string(),
-            }
-        })?;
+        let reference = the_light_core::reference::parse_reference(&reference).map_err(core_err)?;
         let store = the_light_core::userdata::notes::NoteStore::new(
             std::path::Path::new(&data_dir).join("notes"),
         );
-        let note = store.get(&reference).map_err(|e| CoreError::Generic {
-            message: e.to_string(),
-        })?;
+        let note = store.get(&reference).map_err(core_err)?;
         Ok(note.map(Note::from))
     }
     #[cfg(target_arch = "wasm32")]
@@ -2011,17 +1973,11 @@ pub fn get_note(data_dir: String, reference: String) -> Result<Option<Note>, Cor
 pub fn delete_note(data_dir: String, reference: String) -> Result<bool, CoreError> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let reference = the_light_core::reference::parse_reference(&reference).map_err(|e| {
-            CoreError::Generic {
-                message: e.to_string(),
-            }
-        })?;
+        let reference = the_light_core::reference::parse_reference(&reference).map_err(core_err)?;
         let store = the_light_core::userdata::notes::NoteStore::new(
             std::path::Path::new(&data_dir).join("notes"),
         );
-        store.delete(&reference).map_err(|e| CoreError::Generic {
-            message: e.to_string(),
-        })
+        store.delete(&reference).map_err(core_err)
     }
     #[cfg(target_arch = "wasm32")]
     {
@@ -2049,9 +2005,7 @@ pub fn list_notes(data_dir: String) -> Result<Vec<Note>, CoreError> {
         let store = the_light_core::userdata::notes::NoteStore::new(
             std::path::Path::new(&data_dir).join("notes"),
         );
-        let notes = store.list().map_err(|e| CoreError::Generic {
-            message: e.to_string(),
-        })?;
+        let notes = store.list().map_err(core_err)?;
         Ok(notes.into_iter().map(Note::from).collect())
     }
     #[cfg(target_arch = "wasm32")]
@@ -2085,26 +2039,16 @@ pub fn add_highlight(
 ) -> Result<(), CoreError> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let reference = the_light_core::reference::parse_reference(&reference).map_err(|e| {
-            CoreError::Generic {
-                message: e.to_string(),
-            }
-        })?;
+        let reference = the_light_core::reference::parse_reference(&reference).map_err(core_err)?;
         let path = std::path::Path::new(&data_dir).join("highlights.json");
         let mut store =
-            the_light_core::userdata::highlights::HighlightStore::load(&path).map_err(|e| {
-                CoreError::Generic {
-                    message: e.to_string(),
-                }
-            })?;
+            the_light_core::userdata::highlights::HighlightStore::load(&path).map_err(core_err)?;
         store.add(the_light_core::userdata::highlights::Highlight {
             reference,
             color,
             tag,
         });
-        store.save().map_err(|e| CoreError::Generic {
-            message: e.to_string(),
-        })
+        store.save().map_err(core_err)
     }
     #[cfg(target_arch = "wasm32")]
     {
@@ -2129,22 +2073,12 @@ pub fn add_highlight(
 pub fn remove_highlight(data_dir: String, reference: String) -> Result<u32, CoreError> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let reference = the_light_core::reference::parse_reference(&reference).map_err(|e| {
-            CoreError::Generic {
-                message: e.to_string(),
-            }
-        })?;
+        let reference = the_light_core::reference::parse_reference(&reference).map_err(core_err)?;
         let path = std::path::Path::new(&data_dir).join("highlights.json");
         let mut store =
-            the_light_core::userdata::highlights::HighlightStore::load(&path).map_err(|e| {
-                CoreError::Generic {
-                    message: e.to_string(),
-                }
-            })?;
+            the_light_core::userdata::highlights::HighlightStore::load(&path).map_err(core_err)?;
         let removed = store.remove(&reference);
-        store.save().map_err(|e| CoreError::Generic {
-            message: e.to_string(),
-        })?;
+        store.save().map_err(core_err)?;
         Ok(removed as u32)
     }
     #[cfg(target_arch = "wasm32")]
@@ -2171,11 +2105,7 @@ pub fn list_highlights(data_dir: String) -> Result<Vec<Highlight>, CoreError> {
     {
         let path = std::path::Path::new(&data_dir).join("highlights.json");
         let store =
-            the_light_core::userdata::highlights::HighlightStore::load(&path).map_err(|e| {
-                CoreError::Generic {
-                    message: e.to_string(),
-                }
-            })?;
+            the_light_core::userdata::highlights::HighlightStore::load(&path).map_err(core_err)?;
         Ok(store.list().iter().cloned().map(Highlight::from).collect())
     }
     #[cfg(target_arch = "wasm32")]
@@ -2271,30 +2201,18 @@ pub fn ask_anchored(
         use the_light_core::source::BibleSource;
 
         // 1) Referência canônica (delegada ao core), como em `get_passage`.
-        let reference = the_light_core::reference::parse_reference(&reference).map_err(|e| {
-            CoreError::Generic {
-                message: e.to_string(),
-            }
-        })?;
+        let reference = the_light_core::reference::parse_reference(&reference).map_err(core_err)?;
 
         // 2) Idioma de exibição/resposta (`"pt"|"en"` + sinônimos); default Pt.
-        let lang = lang
-            .parse::<the_light_core::model::Lang>()
-            .unwrap_or(the_light_core::model::Lang::Pt);
+        let lang = parse_lang(&lang);
 
         // 3) Passagem VERBATIM do store, pela MESMA rota da F1.2 (anti-alucinação).
-        let store =
-            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
+        let store = the_light_core::store::Store::open(&db_path).map_err(core_err)?;
         let source = the_light_core::source::EmbeddedSource::new(&store);
         let translation_id = the_light_core::model::TranslationId::new(translation);
-        let passage =
-            source
-                .passage(&reference, &translation_id)
-                .map_err(|e| CoreError::Generic {
-                    message: e.to_string(),
-                })?;
+        let passage = source
+            .passage(&reference, &translation_id)
+            .map_err(core_err)?;
 
         // 4) Texto numerado (store) + bloco de contexto RAG — funções PURAS do core.
         let cited_text = the_light_core::ai::numbered_passage(&passage);
@@ -2303,17 +2221,11 @@ pub fn ask_anchored(
 
         // 5) Provedor (BYOK: a chave é argumento; "mock" = sem rede/chave).
         let provider =
-            the_light_core::ai::build_provider(&provider_name, key, model).map_err(|e| {
-                CoreError::Generic {
-                    message: e.to_string(),
-                }
-            })?;
+            the_light_core::ai::build_provider(&provider_name, key, model).map_err(core_err)?;
 
         // 6) Interpretação = SÓ a saída do modelo (o LLM nunca gera texto bíblico).
         let interpretation = the_light_core::ai::ask(provider.as_ref(), &question, &context, lang)
-            .map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
+            .map_err(core_err)?;
 
         // 7) Contrato anti-alucinação: cited_text (store) separado da interpretation.
         Ok(AiAnswer {
@@ -2415,30 +2327,18 @@ pub fn ask_anchored_stream(
         use the_light_core::source::BibleSource;
 
         // 1) Referência canônica (delegada ao core).
-        let reference = the_light_core::reference::parse_reference(&reference).map_err(|e| {
-            CoreError::Generic {
-                message: e.to_string(),
-            }
-        })?;
+        let reference = the_light_core::reference::parse_reference(&reference).map_err(core_err)?;
 
         // 2) Idioma de exibição/resposta (`"pt"|"en"` + sinônimos); default Pt.
-        let lang = lang
-            .parse::<the_light_core::model::Lang>()
-            .unwrap_or(the_light_core::model::Lang::Pt);
+        let lang = parse_lang(&lang);
 
         // 3) Passagem VERBATIM do store, pela MESMA rota da F1.2/F2.1 (anti-alucinação).
-        let store =
-            the_light_core::store::Store::open(&db_path).map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
+        let store = the_light_core::store::Store::open(&db_path).map_err(core_err)?;
         let source = the_light_core::source::EmbeddedSource::new(&store);
         let translation_id = the_light_core::model::TranslationId::new(translation);
-        let passage =
-            source
-                .passage(&reference, &translation_id)
-                .map_err(|e| CoreError::Generic {
-                    message: e.to_string(),
-                })?;
+        let passage = source
+            .passage(&reference, &translation_id)
+            .map_err(core_err)?;
 
         // 4) Texto numerado (store) + bloco de contexto RAG — funções PURAS do core.
         let cited_text = the_light_core::ai::numbered_passage(&passage);
@@ -2447,11 +2347,7 @@ pub fn ask_anchored_stream(
 
         // 5) Provedor (BYOK): "gemini"/etc. sem chave → NoKey (sem rede); "mock" ok.
         let provider =
-            the_light_core::ai::build_provider(&provider_name, key, model).map_err(|e| {
-                CoreError::Generic {
-                    message: e.to_string(),
-                }
-            })?;
+            the_light_core::ai::build_provider(&provider_name, key, model).map_err(core_err)?;
 
         // 6) Streaming: system = contexto ancorado (store); user = pergunta. O callback
         //    transmite tokens da INTERPRETAÇÃO (não do texto bíblico). O default do core
@@ -2459,9 +2355,7 @@ pub fn ask_anchored_stream(
         let mut sink = |tok: &str| on_token.on_token(tok.to_string());
         let interpretation = provider
             .complete_stream(&context, &question, &mut sink)
-            .map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
+            .map_err(core_err)?;
 
         // 7) Contrato anti-alucinação: cited_text (store) separado da interpretation.
         Ok(AiAnswer {
@@ -2598,15 +2492,10 @@ pub fn ai_web_prepare(
     verses: Vec<AiVerseInput>,
 ) -> Result<AiWebRequest, CoreError> {
     // 1) Referência canônica (delegada ao core), como em `ask_anchored`.
-    let reference =
-        the_light_core::reference::parse_reference(&reference).map_err(|e| CoreError::Generic {
-            message: e.to_string(),
-        })?;
+    let reference = the_light_core::reference::parse_reference(&reference).map_err(core_err)?;
 
     // 2) Idioma de exibição/resposta (`"pt"|"en"` + sinônimos); default Pt.
-    let lang = lang
-        .parse::<the_light_core::model::Lang>()
-        .unwrap_or(the_light_core::model::Lang::Pt);
+    let lang = parse_lang(&lang);
 
     // 3) cited_text: VERBATIM do store (verses), numerado pela MESMA fn do nativo.
     let cited_text =
@@ -2665,10 +2554,7 @@ pub fn ai_web_finalize(
     model: String,
     interpretation: String,
 ) -> Result<AiAnswer, CoreError> {
-    let reference =
-        the_light_core::reference::parse_reference(&reference).map_err(|e| CoreError::Generic {
-            message: e.to_string(),
-        })?;
+    let reference = the_light_core::reference::parse_reference(&reference).map_err(core_err)?;
     // Citação anti-alucinação em Rust (mesma impl do nativo): remove âncoras
     // `[V:…]`/`[W:…]` que não estejam no conjunto de válidas (vazio no `ask` simples).
     let interpretation = the_light_core::ai::citation::rewrite_anchors(
@@ -2734,9 +2620,7 @@ pub fn session_web_prepare(
     related: Vec<String>,
 ) -> Result<AiWebRequest, CoreError> {
     // 1) Idioma (default Pt) + referência (single ou capítulo inteiro), como o nativo.
-    let lang = lang
-        .parse::<the_light_core::model::Lang>()
-        .unwrap_or(the_light_core::model::Lang::Pt);
+    let lang = parse_lang(&lang);
     let reference = match verse {
         Some(v) => the_light_core::model::Reference::single(book, chapter, v),
         None => the_light_core::model::Reference::whole_chapter(book, chapter),
@@ -2989,9 +2873,7 @@ pub fn study_web_prepare(
     lexicon_sources: Vec<String>,
     web_sources: Vec<StudyWebSourceInput>,
 ) -> Result<StudyWebRequest, CoreError> {
-    let lang = lang
-        .parse::<the_light_core::model::Lang>()
-        .unwrap_or(the_light_core::model::Lang::Pt);
+    let lang = parse_lang(&lang);
     let reference = match verse {
         Some(v) => the_light_core::model::Reference::single(book, chapter, v),
         None => the_light_core::model::Reference::whole_chapter(book, chapter),
@@ -3085,9 +2967,7 @@ pub fn study_web_finalize(
     lexicon_sources: Vec<String>,
     web_sources: Vec<StudyWebSourceInput>,
 ) -> Result<StudyResultOut, CoreError> {
-    let lang = lang
-        .parse::<the_light_core::model::Lang>()
-        .unwrap_or(the_light_core::model::Lang::Pt);
+    let lang = parse_lang(&lang);
     let reference = match verse {
         Some(v) => the_light_core::model::Reference::single(book, chapter, v),
         None => the_light_core::model::Reference::whole_chapter(book, chapter),
@@ -3364,11 +3244,7 @@ fn plan_store(data_dir: &str) -> the_light_core::userdata::plans::PlanStore {
 pub fn reading_plan_progress(data_dir: String) -> Result<Option<ReadingPlanProgress>, CoreError> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let progress = plan_store(&data_dir)
-            .load()
-            .map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
+        let progress = plan_store(&data_dir).load().map_err(core_err)?;
         Ok(progress.map(ReadingPlanProgress::from))
     }
     #[cfg(target_arch = "wasm32")]
@@ -3417,11 +3293,7 @@ pub fn start_reading_plan(
             })?,
             completed: 0,
         };
-        plan_store(&data_dir)
-            .save(&progress)
-            .map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?;
+        plan_store(&data_dir).save(&progress).map_err(core_err)?;
         Ok(progress.into())
     }
     #[cfg(target_arch = "wasm32")]
@@ -3453,16 +3325,12 @@ pub fn set_reading_plan_completed(
         let store = plan_store(&data_dir);
         let mut progress = store
             .load()
-            .map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })?
+            .map_err(core_err)?
             .ok_or_else(|| CoreError::Generic {
                 message: "nenhum plano de leitura ativo".to_string(),
             })?;
         progress.completed = completed;
-        store.save(&progress).map_err(|e| CoreError::Generic {
-            message: e.to_string(),
-        })?;
+        store.save(&progress).map_err(core_err)?;
         Ok(progress.into())
     }
     #[cfg(target_arch = "wasm32")]
@@ -3486,11 +3354,7 @@ pub fn set_reading_plan_completed(
 pub fn clear_reading_plan(data_dir: String) -> Result<bool, CoreError> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        plan_store(&data_dir)
-            .clear()
-            .map_err(|e| CoreError::Generic {
-                message: e.to_string(),
-            })
+        plan_store(&data_dir).clear().map_err(core_err)
     }
     #[cfg(target_arch = "wasm32")]
     {

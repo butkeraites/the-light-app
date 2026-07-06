@@ -15,9 +15,9 @@
     "offlineFirst": "preservado — assets LOCAIS same-origin; o browser descomprime transparente, o fetch() do app devolve os bytes ORIGINAIS (byte-idênticos). Sem CDN/servidor externo.",
     "docs": "ADR-0045 · loop/perf/SERVING.md"
   },
-  "frontierWasmBytes": 1223324,
-  "frontierWasmBytesGzip": 440559,
-  "frontierWasmBytesBrotli": 319679,
+  "frontierWasmBytes": 1223313,
+  "frontierWasmBytesGzip": 440679,
+  "frontierWasmBytesBrotli": 319894,
   "readingLiteDbBytes": 40308736,
   "lexiconDbBytes": 27869184,
   "waSqliteFts5Bytes": 666267,
@@ -47,10 +47,10 @@
   },
   "assets": {
     "frontierWasm": {
-      "path": "app/dist/assets/web/generated/wasm-bindgen/index_bg.8ab78d0aa0e3970c6e1c55143036dd58.wasm",
-      "bytes": 1223324,
-      "gzipBytes": 440559,
-      "brotliBytes": 319679
+      "path": "app/dist/assets/web/generated/wasm-bindgen/index_bg.49e2fffd04097c0dae6ff370888ed964.wasm",
+      "bytes": 1223313,
+      "gzipBytes": 440679,
+      "brotliBytes": 319894
     },
     "readingLiteDb": {
       "path": "app/dist/assets/_assets/data/reading-lite.018861400e589de05e124aac51d58131.sqlite",
@@ -72,11 +72,11 @@
     }
   },
   "totals": {
-    "stableAssetsBytes": 70067511,
-    "stableAssetsGzipBytes": 23835623,
-    "stableAssetsBrotliBytes": 15806034,
-    "nominalTotalBytes": 71427216,
-    "nominalTotalGzipBytes": 24180733,
-    "nominalTotalBrotliBytes": 16077547
+    "stableAssetsBytes": 70067500,
+    "stableAssetsGzipBytes": 23835743,
+    "stableAssetsBrotliBytes": 15806249,
+    "nominalTotalBytes": 71427205,
+    "nominalTotalGzipBytes": 24180853,
+    "nominalTotalBrotliBytes": 16077762
   }
 }

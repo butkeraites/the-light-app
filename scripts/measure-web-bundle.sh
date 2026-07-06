@@ -97,7 +97,11 @@ const BUDGET = {
     // realizando a paridade web dos planos. NÃO é regressão: é a feature entrando no grafo wasm
     // (git-provável; determinístico em 3 exports: 1.223.324 B, gzip 440.559, br 319.679). O
     // PROGRESSO segue app-side (OPFS, chunk async `plans-fs`), fora do 1º paint.
-    frontierWasm: { bytes: 1223324, re: /^assets\/web\/generated\/wasm-bindgen\/index_bg\..*\.wasm$/ },
+    // ADR-0061 (deepening): 1.223.324 -> 1.223.313 B (-11 B; gzip 440.679, br 319.894). Os helpers
+    // privados core_err/parse_lang (cfg-livres, usados pelas fns web-prepare ai-pure) entram no wasm
+    // e a de-duplicacao encolheu o binario; with_store/with_source sao cfg(not wasm32) (grafo puro).
+    // Bindings .ts BYTE-IDENTICOS (nenhum simbolo exportado mudou). Espelhado em web-bundle-budget.json.
+    frontierWasm: { bytes: 1223313, re: /^assets\/web\/generated\/wasm-bindgen\/index_bg\..*\.wasm$/ },
     // F5.15 (ADR-0044): o `reading-sample.sqlite` COMBINADO (14.409.728 B) SAIU do dist
     // web. A LEITURA agora usa `reading-lite.sqlite` (SEM léxico) e o DADO do léxico virou
     // `lexicon-sample.sqlite` (9.502.720 B), carregado ON-DEMAND (chunk async
