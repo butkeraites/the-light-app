@@ -28,19 +28,14 @@ import {
   View,
 } from 'react-native';
 
+import { errMessage } from '../lib/errMessage';
 import { useI18n } from '../lib/i18n';
-import { getKey, listProviders, setKey, SUPPORTED_PROVIDERS } from '../lib/keystore';
+import { setKey } from '../lib/keystore';
 import { useReaderModalA11y } from '../lib/useReaderModalA11y';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import { askAnchoredStream, type AiAnswer } from '../web/reading';
 import { AiProviderNotice } from './AiProviderNotice';
-
-// Provedor determinístico OFFLINE (sem chave, sem rede): default seguro e o caminho da
-// prova headless. NÃO está em `SUPPORTED_PROVIDERS` (que é só BYOK real) — é adicionado
-// ao seletor apenas para o estudo offline.
-const MOCK_PROVIDER = 'mock';
-// Ordem do seletor: mock primeiro (default offline), depois os provedores BYOK reais.
-const PROVIDER_OPTIONS: readonly string[] = [MOCK_PROVIDER, ...SUPPORTED_PROVIDERS];
+import { ProviderChips, useProviderSelection } from './ProviderPicker';
 
 /** Estimativa de custo SIMPLIFICADA (a fronteira não expõe custo): ~4 chars/token. */
 function approxTokens(text: string): number {
@@ -75,47 +70,31 @@ export function ReaderAskPanel({
   // F5.21: ao abrir, foco do leitor de tela no título (ordem lógica + anúncio de abertura).
   const titleRef = useReaderModalA11y(visible);
 
-  const [provider, setProvider] = useState<string>(MOCK_PROVIDER);
+  // Seleção de provedor + derivações BYOK (seam compartilhado — ADR-0059): provedor default
+  // `mock` (offline), checagem do cofre (com `refresh()` p/ reler após salvar chave inline),
+  // isMock/providerHasKey/showNoProviderNotice e loadKey (lê a chave sob demanda). O seam
+  // desconhece `AiAnswer` — o `citedText` (store) segue separado da interpretação.
+  const {
+    provider,
+    setProvider,
+    options,
+    isMock,
+    providersWithKey,
+    providerHasKey,
+    showNoProviderNotice,
+    refresh,
+    loadKey,
+  } = useProviderSelection(visible);
   const [question, setQuestion] = useState('');
   const [busy, setBusy] = useState(false);
   const [streamed, setStreamed] = useState('');
   const [answer, setAnswer] = useState<AiAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // NOMES dos provedores que TÊM chave no cofre (nunca os valores) — só p/ o badge.
-  const [providersWithKey, setProvidersWithKey] = useState<string[]>([]);
-  // F5.37: `true` após a 1ª checagem do cofre resolver — evita PISCAR o aviso "sem provedor"
-  // antes de sabermos se há chave. Só mostramos o aviso quando checado E lista vazia.
-  const [providersChecked, setProvidersChecked] = useState(false);
   // Rascunho da chave BYOK (input controlado) — NUNCA logado/exibido em claro (input
   // mascarado). No web o cofre é session-only (perdido no reload, ADR-0025); no nativo,
   // secure-store do device. Estado local, some ao fechar/salvar.
   const [keyDraft, setKeyDraft] = useState('');
   const [savingKey, setSavingKey] = useState(false);
-
-  // Ao abrir, descobre quais provedores reais já têm chave (indicador visual, sem
-  // expor valores). `mock` não precisa de chave. Best-effort: falha silenciosa.
-  useEffect(() => {
-    if (!visible) {
-      return;
-    }
-    let alive = true;
-    setProvidersChecked(false);
-    (async () => {
-      try {
-        const withKey = await listProviders();
-        if (alive) {
-          setProvidersWithKey(withKey);
-          setProvidersChecked(true);
-        }
-      } catch {
-        // Sem indicadores de chave; a pergunta ainda funciona (mock/entrada real).
-        if (alive) setProvidersChecked(true);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [visible]);
 
   // Ao trocar de passagem (nova referência) ou fechar, limpa a resposta e o rascunho
   // de chave (o rascunho nunca persiste no estado além da sessão de uso).
@@ -126,11 +105,7 @@ export function ReaderAskPanel({
     setKeyDraft('');
   }, [reference, visible]);
 
-  const isMock = provider === MOCK_PROVIDER;
-  const providerHasKey = providersWithKey.includes(provider);
   const askDisabled = busy || dbPath == null || question.trim().length === 0;
-  // F5.37: nenhum provedor de IA configurado (checado, cofre vazio) → aviso claro + CTA.
-  const showNoProviderNotice = providersChecked && providersWithKey.length === 0;
 
   // F6.6: leva à tela de AJUSTES (hub canônico de chave BYOK, com campos por provedor). Fecha o
   // painel antes de navegar. A entrada inline abaixo permanece (complementa; Ajustes é o hub).
@@ -149,16 +124,10 @@ export function ReaderAskPanel({
     setAnswer(null);
     setStreamed('');
     try {
-      // BYOK: só provedores REAIS precisam de chave — lida SOB DEMANDA do cofre e
-      // passada à fronteira; NUNCA logada/exibida. `mock` = sem chave, sem rede.
-      let key: string | undefined;
-      if (!isMock) {
-        const stored = await getKey(provider);
-        if (!stored) {
-          throw new Error(t('ask.needKeyError', { provider }));
-        }
-        key = stored;
-      }
+      // BYOK: `loadKey()` (seam ADR-0059) lê a chave real SOB DEMANDA do cofre — NUNCA
+      // logada/exibida — e lança o erro i18n de needKey p/ provedor real sem chave; `mock` =
+      // undefined (sem chave, sem rede).
+      const key = await loadKey();
       // STREAMING: a fronteira invoca `onToken` a cada incremento da INTERPRETAÇÃO
       // (LLM), acumulado no estado e renderizado incrementalmente. `model = undefined`
       // → o core usa o default do provedor. O `AiAnswer` final traz o `citedText`
@@ -176,7 +145,7 @@ export function ReaderAskPanel({
       );
       setAnswer(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errMessage(err));
     } finally {
       setBusy(false);
     }
@@ -195,10 +164,10 @@ export function ReaderAskPanel({
     try {
       await setKey(provider, draft);
       setKeyDraft('');
-      const withKey = await listProviders();
-      setProvidersWithKey(withKey);
+      // Relê o cofre pelo seam (ADR-0059) → o badge "com chave" atualiza e o aviso some.
+      refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errMessage(err));
     } finally {
       setSavingKey(false);
     }
@@ -237,45 +206,14 @@ export function ReaderAskPanel({
 
           {/* ── PROVEDOR / MODELO ─────────────────────────────────────────── */}
           <Text style={styles.sectionTitle}>{t('ask.providerSection')}</Text>
-          <View style={styles.providers}>
-            {PROVIDER_OPTIONS.map((p) => {
-              const active = provider === p;
-              const real = p !== MOCK_PROVIDER;
-              const withKey = providersWithKey.includes(p);
-              return (
-                <Pressable
-                  key={p}
-                  style={[styles.provChip, active ? styles.provChipActive : null]}
-                  onPress={() => setProvider(p)}
-                  disabled={busy}
-                  testID={`ask-provider-${p}`}
-                  hitSlop={{ top: 8, bottom: 8 }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={
-                    real
-                      ? withKey
-                        ? t('a11y.providerWithKey', { provider: p })
-                        : t('a11y.providerNoKey', { provider: p })
-                      : t('a11y.providerOffline', { provider: p })
-                  }
-                >
-                  <Text style={[styles.provChipText, active ? styles.provChipTextActive : null]}>
-                    {p}
-                  </Text>
-                  {real ? (
-                    <Text style={[styles.provKeyBadge, active ? styles.provChipTextActive : null]}>
-                      {withKey ? t('ask.keyBadgeYes') : t('ask.keyBadgeNo')}
-                    </Text>
-                  ) : (
-                    <Text style={[styles.provKeyBadge, active ? styles.provChipTextActive : null]}>
-                      {t('ai.offlineBadge')}
-                    </Text>
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
+          <ProviderChips
+            options={options}
+            provider={provider}
+            providersWithKey={providersWithKey}
+            disabled={busy}
+            testIdPrefix="ask"
+            onSelect={setProvider}
+          />
           {!isMock && !providerHasKey ? (
             <View style={styles.keyBlock}>
               <Text style={styles.hint}>{t('ask.byokHint')}</Text>
@@ -417,21 +355,7 @@ function makeStyles(colors: ThemeColors) {
       letterSpacing: 0.5,
       marginTop: 12,
     },
-    providers: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
-    provChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    provChipActive: { backgroundColor: colors.chipActiveBg, borderColor: colors.chipActiveBg },
-    provChipText: { fontSize: 13, fontWeight: '600', color: colors.chipText },
-    provChipTextActive: { color: colors.chipActiveText },
-    provKeyBadge: { fontSize: 11, color: colors.muted },
+    // Chips de provedor agora em `<ProviderChips>` (ProviderPicker, ADR-0059) — donos dos estilos.
     hint: { fontSize: 12, color: colors.muted, marginTop: 6 },
     keyBlock: { marginTop: 6, gap: 6 },
     keyInput: {

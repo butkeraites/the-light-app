@@ -37,12 +37,13 @@ import {
   View,
 } from 'react-native';
 
+import { errMessage } from '../lib/errMessage';
 import { useI18n, type MessageKey } from '../lib/i18n';
-import { getKey, SUPPORTED_PROVIDERS } from '../lib/keystore';
 import { buildStudyExport } from '../lib/studyExport';
 import { useReaderModalA11y } from '../lib/useReaderModalA11y';
 import { useTheme, type ThemeColors } from '../lib/theme';
-import { AiProviderNotice, useConfiguredAiProviders } from './AiProviderNotice';
+import { AiProviderNotice } from './AiProviderNotice';
+import { ProviderChips, useProviderSelection } from './ProviderPicker';
 import {
   deepStudy,
   lexicalEntries,
@@ -53,14 +54,6 @@ import {
   type StudyResultOut,
   type VerifiedLexiconOut,
 } from '../web/reading';
-
-// Provedor determinístico OFFLINE (sem chave, sem rede): default seguro e o caminho da prova
-// headless. NÃO está em `SUPPORTED_PROVIDERS` (que é só BYOK real) — é adicionado ao seletor
-// apenas para o estudo offline.
-const MOCK_PROVIDER = 'mock';
-// Ordem do seletor (molde ReaderAskPanel): mock primeiro (default offline), depois os
-// provedores BYOK reais. F6.7 des-mocka o estudo: a chave real é lida SOB DEMANDA do cofre.
-const PROVIDER_OPTIONS: readonly string[] = [MOCK_PROVIDER, ...SUPPORTED_PROVIDERS];
 
 // Backends de pesquisa web OPT-IN (ADR-0028/ADR-0032/ADR-0035): rede além do LLM, DESLIGADA
 // por padrão. Quando o usuário liga, o estudo (modo Acadêmico) ganha citações `[W:n]`/
@@ -153,9 +146,19 @@ export function ReaderStudyPanel({
   // F5.21: ao abrir, foco do leitor de tela no título (ordem lógica + anúncio de abertura).
   const titleRef = useReaderModalA11y(visible);
 
-  // Provedor de IA selecionado. Default `mock` (offline, sem chave/rede); o usuário troca por
-  // um provedor real quando tiver chave no cofre. F6.7: substitui o `MOCK_PROVIDER` hardcoded.
-  const [provider, setProvider] = useState<string>(MOCK_PROVIDER);
+  // Seleção de provedor + derivações BYOK (seam compartilhado — ADR-0059): estado do provedor,
+  // checagem do cofre, isMock/needsKey/showNoProviderNotice e loadKey (lê a chave sob demanda,
+  // lança o erro i18n de needKey). O seam desconhece `StudyResultOut` (anti-alucinação intacta).
+  const {
+    provider,
+    setProvider,
+    options,
+    isMock,
+    providersWithKey,
+    needsKey,
+    showNoProviderNotice,
+    loadKey,
+  } = useProviderSelection(visible);
   const [mode, setMode] = useState<StudyMode>(StudyMode.Academic);
   const [lens, setLens] = useState<StudyLens>(StudyLens.Presbyterian);
   const [depth, setDepth] = useState<StudyDepth>(StudyDepth.Exegetical);
@@ -171,17 +174,6 @@ export function ReaderStudyPanel({
   const [lexicon, setLexicon] = useState<VerifiedLexiconOut | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
-
-  // F5.37: há algum provedor de IA configurado? (NOMES com chave no cofre, nunca valores.)
-  // Sem nenhum → aviso claro + CTA (esta entrega ainda usa `mock` offline; BYOK real = F3.10).
-  const { checked: providersChecked, providers: providersWithKey } = useConfiguredAiProviders(visible);
-  const showNoProviderNotice = providersChecked && providersWithKey.length === 0;
-
-  const isMock = provider === MOCK_PROVIDER;
-  const providerHasKey = providersWithKey.includes(provider);
-  // Provedor REAL selecionado sem chave no cofre → não dá p/ chamar a IA: erro claro + CTA p/
-  // Ajustes (a chave é inserida lá, F6.6). `mock` nunca cai aqui (offline, sem chave/rede).
-  const needsKey = !isMock && providersChecked && !providerHasKey;
 
   // F6.6: leva à tela de AJUSTES (hub canônico de chave BYOK, campos por provedor). Fecha antes.
   function onConfigureProvider() {
@@ -210,18 +202,10 @@ export function ReaderStudyPanel({
     setResult(null);
     setLexicon(null);
     try {
-      // BYOK (LEI): a chave do LLM é a do KEYSTORE (≠ chave Tavily de web-research). Provedores
-      // REAIS leem a chave SOB DEMANDA do cofre e a passam à fronteira; NUNCA logada/exibida.
-      // `mock` = sem chave, sem rede (default offline). Sem chave p/ provedor real → erro claro
-      // (mesmo texto do CTA/Ajustes) e a chamada é PULADA (o catch exibe; não trava).
-      let key: string | undefined;
-      if (!isMock) {
-        const stored = await getKey(provider);
-        if (!stored) {
-          throw new Error(t('ask.needKeyError', { provider }));
-        }
-        key = stored;
-      }
+      // BYOK (LEI): a chave do LLM é a do KEYSTORE (≠ chave Tavily de web-research). `loadKey()`
+      // (seam ADR-0059) lê a chave real SOB DEMANDA do cofre — NUNCA logada/exibida — e lança o
+      // erro i18n de needKey p/ provedor real sem chave; `mock` = undefined (sem chave/rede).
+      const key = await loadKey();
 
       // Pesquisa web opt-in: Wikipedia (keyless) ou Tavily (BYOK). Off → `undefined` (offline).
       // A chave Tavily (session-only, in-memory) vai SÓ no `researchKey` → o transporte a coloca
@@ -256,7 +240,7 @@ export function ReaderStudyPanel({
       setResult(study);
       setLexicon(lex);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errMessage(err));
     } finally {
       setBusy(false);
     }
@@ -275,7 +259,7 @@ export function ReaderStudyPanel({
       const exp = buildStudyExport(result, sourceLabel, lexicon?.sources ?? []);
       await Share.share({ message: exp.message, title: t('study.shareTitle', { source: sourceLabel }) });
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : String(err));
+      setExportError(errMessage(err));
     }
   }
 
@@ -317,39 +301,14 @@ export function ReaderStudyPanel({
               (sem chave/rede, prova headless). Provedor real → a chave BYOK é lida SOB
               DEMANDA do cofre em onStudy; sem chave → aviso claro + CTA p/ Ajustes. */}
           <Text style={styles.sectionTitle}>{t('ask.providerSection')}</Text>
-          <View style={styles.providers}>
-            {PROVIDER_OPTIONS.map((p) => {
-              const active = provider === p;
-              const real = p !== MOCK_PROVIDER;
-              const withKey = providersWithKey.includes(p);
-              return (
-                <Pressable
-                  key={p}
-                  style={[styles.provChip, active ? styles.provChipActive : null]}
-                  onPress={() => setProvider(p)}
-                  disabled={busy}
-                  testID={`study-provider-${p}`}
-                  hitSlop={{ top: 8, bottom: 8 }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={
-                    real
-                      ? withKey
-                        ? t('a11y.providerWithKey', { provider: p })
-                        : t('a11y.providerNoKey', { provider: p })
-                      : t('a11y.providerOffline', { provider: p })
-                  }
-                >
-                  <Text style={[styles.provChipText, active ? styles.provChipTextActive : null]}>
-                    {p}
-                  </Text>
-                  <Text style={[styles.provKeyBadge, active ? styles.provChipTextActive : null]}>
-                    {real ? (withKey ? t('ask.keyBadgeYes') : t('ask.keyBadgeNo')) : t('ai.offlineBadge')}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <ProviderChips
+            options={options}
+            provider={provider}
+            providersWithKey={providersWithKey}
+            disabled={busy}
+            testIdPrefix="study"
+            onSelect={setProvider}
+          />
           {/* Provedor real sem chave → erro claro + CTA p/ Ajustes (não trava; envio desabilitado). */}
           {needsKey ? (
             <View style={styles.needKeyBlock} testID="study-provider-needkey">
@@ -693,22 +652,8 @@ function makeStyles(colors: ThemeColors) {
     chipActive: { backgroundColor: colors.chipActiveBg, borderColor: colors.chipActiveBg },
     chipText: { fontSize: 13, fontWeight: '600', color: colors.chipText },
     chipTextActive: { color: colors.chipActiveText },
-    // Seletor de PROVEDOR (F6.7) — chip com badge de chave/offline (molde ReaderAskPanel).
-    providers: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
-    provChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    provChipActive: { backgroundColor: colors.chipActiveBg, borderColor: colors.chipActiveBg },
-    provChipText: { fontSize: 13, fontWeight: '600', color: colors.chipText },
-    provChipTextActive: { color: colors.chipActiveText },
-    provKeyBadge: { fontSize: 11, color: colors.muted },
+    // Seletor de PROVEDOR: chips agora em `<ProviderChips>` (ProviderPicker, ADR-0059) — donos
+    // dos próprios estilos. As chaves `chips`/`chip*` abaixo são de mode/lens/depth/web (distintas).
     needKeyBlock: { marginTop: 8, gap: 6 },
     cta: {
       alignSelf: 'flex-start',

@@ -34,20 +34,13 @@ import {
   View,
 } from 'react-native';
 
+import { errMessage } from '../lib/errMessage';
 import { useI18n } from '../lib/i18n';
-import { getKey, SUPPORTED_PROVIDERS } from '../lib/keystore';
 import { useReaderModalA11y } from '../lib/useReaderModalA11y';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import { askSessionAnchored, ChatRole, type AiAnswer, type ChatTurn } from '../web/reading';
-import { AiProviderNotice, useConfiguredAiProviders } from './AiProviderNotice';
-
-// Provedor determinístico OFFLINE (sem chave, sem rede): default seguro e o caminho da prova
-// headless. NÃO está em `SUPPORTED_PROVIDERS` (que é só BYOK real) — é adicionado ao seletor
-// apenas para a conversa offline.
-const MOCK_PROVIDER = 'mock';
-// Ordem do seletor (molde ReaderAskPanel): mock primeiro (default offline), depois os
-// provedores BYOK reais. F6.7 des-mocka a conversa: a chave real é lida SOB DEMANDA do cofre.
-const PROVIDER_OPTIONS: readonly string[] = [MOCK_PROVIDER, ...SUPPORTED_PROVIDERS];
+import { AiProviderNotice } from './AiProviderNotice';
+import { ProviderChips, useProviderSelection } from './ProviderPicker';
 
 export function ReaderChatPanel({
   visible,
@@ -84,25 +77,24 @@ export function ReaderChatPanel({
 
   // Histórico multi-turno (User/Assistant) — a conversa que a UI monta e reenvia a cada
   // follow-up. `answer` guarda o AiAnswer corrente (p/ o `citedText`, a âncora do store).
-  // Provedor de IA selecionado. Default `mock` (offline, sem chave/rede); o usuário troca por
-  // um provedor real quando tiver chave no cofre. F6.7: substitui o `MOCK_PROVIDER` hardcoded.
-  const [provider, setProvider] = useState<string>(MOCK_PROVIDER);
+  // Seleção de provedor + derivações BYOK (seam compartilhado — ADR-0059): provedor default
+  // `mock` (offline), checagem do cofre, isMock/needsKey/showNoProviderNotice e loadKey (lê a
+  // chave sob demanda). O seam desconhece `AiAnswer` (anti-alucinação intacta).
+  const {
+    provider,
+    setProvider,
+    options,
+    isMock,
+    providersWithKey,
+    needsKey,
+    showNoProviderNotice,
+    loadKey,
+  } = useProviderSelection(visible);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<AiAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  // F5.37: há algum provedor de IA configurado? (NOMES com chave no cofre, nunca valores.)
-  // Sem nenhum → aviso claro + CTA. O provedor offline `mock` ainda responde na thread.
-  const { checked: providersChecked, providers: providersWithKey } = useConfiguredAiProviders(visible);
-  const showNoProviderNotice = providersChecked && providersWithKey.length === 0;
-
-  const isMock = provider === MOCK_PROVIDER;
-  const providerHasKey = providersWithKey.includes(provider);
-  // Provedor REAL selecionado sem chave no cofre → não dá p/ chamar a IA: erro claro + CTA p/
-  // Ajustes (a chave é inserida lá, F6.6). `mock` nunca cai aqui (offline, sem chave/rede).
-  const needsKey = !isMock && providersChecked && !providerHasKey;
 
   // F6.6: leva à tela de AJUSTES (hub canônico de chave BYOK, campos por provedor). Fecha antes.
   function onConfigureProvider() {
@@ -131,17 +123,10 @@ export function ReaderChatPanel({
     setBusy(true);
     setError(null);
     try {
-      // BYOK (LEI): provedores REAIS leem a chave SOB DEMANDA do cofre e a passam à fronteira;
-      // NUNCA logada/exibida. `mock` = sem chave, sem rede (default offline). Sem chave p/
-      // provedor real → erro claro e a chamada é PULADA (nada é enviado; o input é preservado).
-      let key: string | undefined;
-      if (!isMock) {
-        const stored = await getKey(provider);
-        if (!stored) {
-          throw new Error(t('ask.needKeyError', { provider }));
-        }
-        key = stored;
-      }
+      // BYOK (LEI): `loadKey()` (seam ADR-0059) lê a chave real SOB DEMANDA do cofre — NUNCA
+      // logada/exibida — e lança o erro i18n de needKey p/ provedor real sem chave (a chamada é
+      // PULADA antes do update otimista → input preservado); `mock` = undefined (sem chave/rede).
+      const key = await loadKey();
       // Monta o histórico do follow-up: os turnos anteriores + o novo turno do usuário.
       const history: ChatTurn[] = [...turns, { role: ChatRole.User, content }];
       // Otimista: mostra o turno do usuário e limpa o input SÓ após a chave validar (assim, se
@@ -171,7 +156,7 @@ export function ReaderChatPanel({
       setTurns((prev) => [...prev, { role: ChatRole.Assistant, content: result.interpretation }]);
       setAnswer(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errMessage(err));
     } finally {
       setBusy(false);
     }
@@ -208,39 +193,14 @@ export function ReaderChatPanel({
               (sem chave/rede, prova headless). Provedor real → a chave BYOK é lida SOB
               DEMANDA do cofre em onSend; sem chave → aviso claro + CTA p/ Ajustes. */}
           <Text style={styles.sectionTitle}>{t('ask.providerSection')}</Text>
-          <View style={styles.providers}>
-            {PROVIDER_OPTIONS.map((p) => {
-              const active = provider === p;
-              const real = p !== MOCK_PROVIDER;
-              const withKey = providersWithKey.includes(p);
-              return (
-                <Pressable
-                  key={p}
-                  style={[styles.provChip, active ? styles.provChipActive : null]}
-                  onPress={() => setProvider(p)}
-                  disabled={busy}
-                  testID={`chat-provider-${p}`}
-                  hitSlop={{ top: 8, bottom: 8 }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={
-                    real
-                      ? withKey
-                        ? t('a11y.providerWithKey', { provider: p })
-                        : t('a11y.providerNoKey', { provider: p })
-                      : t('a11y.providerOffline', { provider: p })
-                  }
-                >
-                  <Text style={[styles.provChipText, active ? styles.provChipTextActive : null]}>
-                    {p}
-                  </Text>
-                  <Text style={[styles.provKeyBadge, active ? styles.provChipTextActive : null]}>
-                    {real ? (withKey ? t('ask.keyBadgeYes') : t('ask.keyBadgeNo')) : t('ai.offlineBadge')}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <ProviderChips
+            options={options}
+            provider={provider}
+            providersWithKey={providersWithKey}
+            disabled={busy}
+            testIdPrefix="chat"
+            onSelect={setProvider}
+          />
           {/* Provedor real sem chave → erro claro + CTA p/ Ajustes (não trava; envio desabilitado). */}
           {needsKey ? (
             <View style={styles.needKeyBlock} testID="chat-provider-needkey">
@@ -376,22 +336,7 @@ function makeStyles(colors: ThemeColors) {
       marginTop: 12,
     },
     hint: { fontSize: 12, color: colors.muted, marginTop: 10, fontStyle: 'italic' },
-    // Seletor de PROVEDOR (F6.7) — chip com badge de chave/offline (molde ReaderAskPanel).
-    providers: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
-    provChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    provChipActive: { backgroundColor: colors.chipActiveBg, borderColor: colors.chipActiveBg },
-    provChipText: { fontSize: 13, fontWeight: '600', color: colors.chipText },
-    provChipTextActive: { color: colors.chipActiveText },
-    provKeyBadge: { fontSize: 11, color: colors.muted },
+    // Seletor de PROVEDOR: chips agora em `<ProviderChips>` (ProviderPicker, ADR-0059).
     needKeyBlock: { marginTop: 8, gap: 6 },
     cta: {
       alignSelf: 'flex-start',

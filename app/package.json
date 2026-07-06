@@ -19,6 +19,7 @@
     "test:web:drivesync": "node web/__tests__/driveSync.web.test.mjs",
     "test:web:syncui": "node web/__tests__/syncui.web.test.mjs",
     "test:keystore": "node web/__tests__/keystore.test.mjs",
+    "test:web:aiproviders": "node web/__tests__/aiProviders.test.mjs",
     "test:i18n": "node web/__tests__/i18n.test.mjs",
     "test:i18n-coverage": "node web/__tests__/i18n-coverage.test.mjs",
     "test:about-attr": "node web/__tests__/about-attributions.test.mjs",

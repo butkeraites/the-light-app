@@ -41,17 +41,20 @@ import {
   View,
 } from 'react-native';
 
+import {
+  MOCK_PROVIDER,
+  PROVIDER_OPTIONS_MOCK_LAST,
+  isMockProvider,
+  keyArg,
+  resolveProviderKey,
+} from '../lib/aiProviders';
+import { errMessage } from '../lib/errMessage';
 import { useI18n } from '../lib/i18n';
-import { getKey, SUPPORTED_PROVIDERS } from '../lib/keystore';
+import { getKey } from '../lib/keystore';
 import { useReaderModalA11y } from '../lib/useReaderModalA11y';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import { askAnchored, type AiAnswer } from '../web/reading';
 import { AiProviderNotice, useConfiguredAiProviders } from './AiProviderNotice';
-
-// Provedor determinístico OFFLINE (sem chave, sem rede): o caminho da prova headless.
-const MOCK_PROVIDER = 'mock';
-// Opções do seletor MULTI de provedores: os BYOK reais + o mock offline.
-const PROVIDER_OPTIONS: readonly string[] = [...SUPPORTED_PROVIDERS, MOCK_PROVIDER];
 // Default sensato: ≥2 provedores DISTINTOS (superfície de comparação). `mock` responde
 // offline; `anthropic` demonstra o caminho BYOK ("sem chave — F3.10" até haver chave).
 const DEFAULT_PROVIDERS: readonly string[] = [MOCK_PROVIDER, 'anthropic'];
@@ -143,14 +146,13 @@ export function ReaderComparePanel({
       const results = await Promise.all(
         selectedProviders.map(async (p): Promise<CompareColumn> => {
           try {
-            let key: string | undefined;
-            if (p !== MOCK_PROVIDER) {
-              const stored = await getKey(p);
-              if (!stored) {
-                return { provider: p, kind: 'no-key' };
-              }
-              key = stored;
+            // BYOK por coluna (seam ADR-0059, neutro de UX): no-key → célula "sem chave" (NÃO
+            // lança). `mock` = sem chave/rede; a chave real vai SÓ à fronteira, nunca logada.
+            const res = await resolveProviderKey(p, getKey);
+            if (res.kind === 'no-key') {
+              return { provider: p, kind: 'no-key' };
             }
+            const key = keyArg(res);
             const answer = await askAnchored(
               dbPath,
               translation,
@@ -166,14 +168,14 @@ export function ReaderComparePanel({
             return {
               provider: p,
               kind: 'error',
-              message: err instanceof Error ? err.message : String(err),
+              message: errMessage(err),
             };
           }
         }),
       );
       setColumns(results);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errMessage(err));
     } finally {
       setBusy(false);
     }
@@ -221,9 +223,9 @@ export function ReaderComparePanel({
           {/* ── PROVEDORES (seletor MULTI, ≥2) ────────────────────────────── */}
           <Text style={styles.sectionTitle}>{t('compare.providersSection')}</Text>
           <View style={styles.chips}>
-            {PROVIDER_OPTIONS.map((p) => {
+            {PROVIDER_OPTIONS_MOCK_LAST.map((p) => {
               const active = selectedProviders.includes(p);
-              const real = p !== MOCK_PROVIDER;
+              const real = !isMockProvider(p);
               return (
                 <Pressable
                   key={p}

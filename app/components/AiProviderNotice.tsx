@@ -11,7 +11,7 @@
 // não toca rede, não exibe texto bíblico. Só o hook `useConfiguredAiProviders` consulta o cofre,
 // e APENAS os NOMES dos provedores com chave (nunca os valores) — o mesmo `listProviders()` do
 // keystore. Todo texto via `t()` (paridade pt/en); cores por TOKENS de tema (zero hex).
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '../lib/i18n';
@@ -21,12 +21,21 @@ import { useTheme, type ThemeColors } from '../lib/theme';
 /**
  * Hook: descobre se HÁ algum provedor de IA configurado (NOMES com chave no cofre, nunca os
  * valores). `active` (ex.: `visible` do painel) dispara/repete a checagem ao abrir. Retorna
- * `checked` (true após a 1ª leitura resolver — evita piscar o aviso antes de saber) e a lista
- * de NOMES de provedores com chave. Falha de leitura → lista vazia (best-effort, offline-first).
+ * `checked` (true após a 1ª leitura resolver — evita piscar o aviso antes de saber), a lista
+ * de NOMES de provedores com chave, e `refresh()` para reler o cofre sob demanda (ex.: após o
+ * `ReaderAskPanel` salvar uma chave inline). Falha de leitura → lista vazia (best-effort,
+ * offline-first).
  */
-export function useConfiguredAiProviders(active: boolean): { checked: boolean; providers: string[] } {
+export function useConfiguredAiProviders(active: boolean): {
+  checked: boolean;
+  providers: string[];
+  refresh: () => void;
+} {
   const [providers, setProviders] = useState<string[]>([]);
   const [checked, setChecked] = useState(false);
+  // Um contador que, ao mudar, re-executa a leitura do cofre (re-checagem sob demanda).
+  const [nonce, setNonce] = useState(0);
+  const refresh = useCallback(() => setNonce((n) => n + 1), []);
 
   useEffect(() => {
     if (!active) {
@@ -52,9 +61,9 @@ export function useConfiguredAiProviders(active: boolean): { checked: boolean; p
     return () => {
       alive = false;
     };
-  }, [active]);
+  }, [active, nonce]);
 
-  return { checked, providers };
+  return { checked, providers, refresh };
 }
 
 /**
