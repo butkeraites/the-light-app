@@ -265,12 +265,19 @@ const BUDGET = {
   //   para 3 modulos compartilhados). BYTES do entry ficam DENTRO da banda existente (o LOC liquido CAIU
   //   apesar do +3 modulos): live raw 1.358.705 / gzip 342.914 / brotli 270.989 — todos dentro dos nominais
   //   ±tolerancia atuais, entao SO o moduleCount e re-baseado. Espelhado em loop/perf/web-bundle-budget.json.
+  // NOTA ADR-0060 — re-baseline DELIBERADO: ESTRUTURAL moduleCount 845 -> 847 (+2 modulos eager EXATOS):
+  //   a extracao de `useChapterReader` da tela do capitulo adicionou `app/lib/useChapterReader.ts` (hook,
+  //   ~230 linhas) + `app/lib/verseMarkers.ts` (reducao pura), importados por [chapter].tsx (rota eager
+  //   web output:static). NAO e regressao: e a extracao dos 7 efeitos de fetching + reducao de userdata
+  //   para uma seam profunda testavel. BYTES do entry re-centrados nos valores MEDIDOS (2 exports IDENTICOS
+  //   -> deterministicos): raw 1.359.705 / gzip 345.110 / brotli 271.513 (a codigo do hook ~2,4 KB gzip
+  //   estourou a banda antiga de gzip/brotli). Tolerancias INALTERADAS. Espelhado em web-bundle-budget.json.
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 845,
-    eagerBytes: { nominal: 1358977, tolerance: 1024 },
-    eagerGzipBytes: { nominal: 342700, tolerance: 2048 },
-    eagerBrotliBytes: { nominal: 270266, tolerance: 1024 },
+    moduleCount: 847,
+    eagerBytes: { nominal: 1359705, tolerance: 1024 },
+    eagerGzipBytes: { nominal: 345110, tolerance: 2048 },
+    eagerBrotliBytes: { nominal: 271513, tolerance: 1024 },
   },
 };
 

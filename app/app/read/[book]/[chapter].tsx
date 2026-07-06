@@ -9,6 +9,10 @@
 //      fronteira — SEM SQL/leitura/texto em TS).
 //   2) TEMA claro/escuro: cores via tokens (`useTheme`), não mais hex hardcoded.
 // Anti-alucinação: o texto vem sempre do Rust/store, nunca gerado na UI.
+//
+// ADR-0060 (deepening): todo o FETCHING de fronteira do capítulo (traduções, passagens,
+// xrefs, dbPath/dataDir, notas/highlights) vive na seam `useChapterReader`; esta tela retém
+// só estado de CONTROLE + apresentação. Os 4 painéis de IA compartilham um `activePanel`.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -22,22 +26,11 @@ import { ReaderAskPanel } from '../../../components/ReaderAskPanel';
 import { ReaderStudyPanel } from '../../../components/ReaderStudyPanel';
 import { ReaderChatPanel } from '../../../components/ReaderChatPanel';
 import { ReaderComparePanel } from '../../../components/ReaderComparePanel';
-import { ensureReadingDb } from '../../../lib/db';
-import { ensureUserDataDir } from '../../../lib/userdata';
 import { resolveHighlightColor } from '../../../lib/highlightColors';
 import { useI18n } from '../../../lib/i18n';
+import { useChapterReader } from '../../../lib/useChapterReader';
 import { useTheme, type ThemeColors } from '../../../lib/theme';
-import {
-  crossRefs,
-  getChapter,
-  listBooks,
-  listHighlights,
-  listNotes,
-  listTranslations,
-  type CrossRef,
-  type Passage,
-  type Translation,
-} from '../../../web/reading';
+import { listBooks, type CrossRef } from '../../../web/reading';
 
 const DEFAULT_TRANSLATION = 'kjv';
 
@@ -99,46 +92,47 @@ function ChapterContent() {
     [locale, t],
   );
 
+  // Estado de CONTROLE da tela (o fetching de fronteira vive no hook useChapterReader).
   const [translation, setTranslation] = useState(DEFAULT_TRANSLATION);
-  const [translations, setTranslations] = useState<Translation[]>([]);
-  const [passage, setPassage] = useState<Passage | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  // F1.4: modo lado a lado + 2ª tradução (sempre diferente da primária).
+  // F1.4: modo lado a lado (a 2ª tradução é reconciliada pelo hook).
   const [parallel, setParallel] = useState(false);
-  const [secondTranslation, setSecondTranslation] = useState<string | null>(null);
-  const [secondaryPassage, setSecondaryPassage] = useState<Passage | null>(null);
-
-  // F2.5: caminho do banco só-leitura (resolvido uma vez) p/ o estudo assistido (IA)
-  // ancorado — o `ReaderAskPanel` recebe o `dbPath` p/ ler o `cited_text` do store.
-  const [dbPath, setDbPath] = useState<string | null>(null);
-  // F2.5: versículo alvo do painel de "Perguntar" (IA). Separado de `selectedVerse`
-  // para que a referência não se perca ao fechar o painel por-versículo.
-  const [askVerse, setAskVerse] = useState<number | null>(null);
-  // F3.5: versículo alvo do painel de "Estudo" (IA profundo). Separado de `selectedVerse`
-  // pelo mesmo motivo — a referência não se perde ao fechar o painel por-versículo.
-  const [studyVerse, setStudyVerse] = useState<number | null>(null);
-  // F3.6: versículo alvo do painel de "Conversa" (IA multi-turno). Separado de
-  // `selectedVerse` pelo mesmo motivo — a âncora não se perde ao fechar o painel.
-  const [chatVerse, setChatVerse] = useState<number | null>(null);
-  // F3.7: versículo alvo do painel de "Comparar" (IA — N provedores lado a lado).
-  // Separado de `selectedVerse` pelo mesmo motivo — a âncora não se perde ao fechar.
-  const [compareVerse, setCompareVerse] = useState<number | null>(null);
-
-  // F1.9: versículo selecionado + painel de referências cruzadas (xref). Os dados
-  // vêm SEMPRE da fronteira `cross_refs` (F1.8) — sem SQL/ordenação/filtro em TS.
+  // F1.9: versículo selecionado (dirige o carregamento de xref no hook).
   const [selectedVerse, setSelectedVerse] = useState<number | null>(null);
-  const [xrefs, setXrefs] = useState<CrossRef[]>([]);
-  const [xrefLoading, setXrefLoading] = useState(false);
-  const [xrefError, setXrefError] = useState<string | null>(null);
 
-  // F1.11: userdata gravável (notas/highlights) — diretório SEPARADO do banco
-  // só-leitura. Os indicadores por versículo vêm SEMPRE de `list_notes`/
-  // `list_highlights` (fronteira F1.10) — sem I/O/serialização/ordenação em TS.
-  const [dataDir, setDataDir] = useState<string | null>(null);
-  const [notedVerses, setNotedVerses] = useState<Set<number>>(new Set());
-  // versículo → NOME da cor (dado do usuário); resolvido p/ hex no render.
-  const [highlightColors, setHighlightColors] = useState<Map<number, string>>(new Map());
+  // F2.5/F3.5/F3.6/F3.7: qual painel de IA está aberto e em qual versículo. Colapsa os quatro
+  // estados paralelos (ask/study/chat/compare) num só — só UM painel abre por vez (cada um é
+  // aberto pelo painel por-versículo, que fecha antes). A âncora não se perde ao fechar o
+  // painel por-versículo porque vive aqui, SEPARADA de `selectedVerse`.
+  type PanelKind = 'ask' | 'study' | 'chat' | 'compare';
+  type ActivePanel = { kind: PanelKind; verse: number } | null;
+  const [activePanel, setActivePanel] = useState<ActivePanel>(null);
+  const panelVerse = (kind: PanelKind): number | null =>
+    activePanel?.kind === kind ? activePanel.verse : null;
+
+  // Seam profunda de leitura (ADR-0060): todo o fetching de fronteira do capítulo (traduções,
+  // passagens primária/paralela, xrefs, dbPath/dataDir, indicadores de nota/highlight).
+  const {
+    translations,
+    secondTranslation,
+    setSecondTranslation,
+    passage,
+    secondaryPassage,
+    error,
+    xrefs,
+    xrefLoading,
+    xrefError,
+    dbPath,
+    dataDir,
+    notedVerses,
+    highlightColors,
+    refreshUserData,
+  } = useChapterReader({
+    book: bookNumber,
+    chapter: chapterNumber,
+    translation,
+    parallel,
+    selectedVerse,
+  });
 
   // Título = "<nome do livro> <capítulo>". O nome vem SEMPRE do STORE/core
   // (namePt/nameEn) — nunca de `t()` (anti-alucinação): o `locale` só ESCOLHE o campo.
@@ -152,179 +146,6 @@ function ChapterContent() {
       : t('read.bookFallback', { number: bookNumber });
     navigation.setOptions({ title: `${name} ${chapterNumber}` });
   }, [navigation, bookNumber, chapterNumber, locale, t]);
-
-  // Carrega as traduções disponíveis (seletor de versão) uma vez.
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const dbPath = await ensureReadingDb();
-        const ts = await listTranslations(dbPath);
-        if (alive) setTranslations(ts);
-      } catch {
-        // Sem traduções → o seletor some; a leitura ainda tenta a default.
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  // Mantém a 2ª tradução válida e SEMPRE diferente da primária.
-  useEffect(() => {
-    if (translations.length === 0) {
-      return;
-    }
-    setSecondTranslation((prev) => {
-      if (prev && prev !== translation && translations.some((tr) => tr.id === prev)) {
-        return prev;
-      }
-      return translations.find((tr) => tr.id !== translation)?.id ?? null;
-    });
-  }, [translations, translation]);
-
-  // Carrega o texto do capítulo na tradução PRIMÁRIA (recarrega ao trocar versão).
-  useEffect(() => {
-    let alive = true;
-    setPassage(null);
-    setError(null);
-    (async () => {
-      try {
-        const dbPath = await ensureReadingDb();
-        const p = await getChapter(dbPath, translation, bookNumber, chapterNumber);
-        if (alive) setPassage(p);
-      } catch (err) {
-        if (alive) setError(err instanceof Error ? err.message : String(err));
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [translation, bookNumber, chapterNumber]);
-
-  // F1.4: no modo paralelo, carrega o MESMO capítulo na 2ª tradução (2ª chamada
-  // de get_chapter). O alinhamento por número de versículo é feito na view.
-  useEffect(() => {
-    if (!parallel || !secondTranslation) {
-      setSecondaryPassage(null);
-      return;
-    }
-    let alive = true;
-    setSecondaryPassage(null);
-    (async () => {
-      try {
-        const dbPath = await ensureReadingDb();
-        const p = await getChapter(dbPath, secondTranslation, bookNumber, chapterNumber);
-        if (alive) setSecondaryPassage(p);
-      } catch (err) {
-        if (alive) setError(err instanceof Error ? err.message : String(err));
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [parallel, secondTranslation, bookNumber, chapterNumber]);
-
-  // F1.9: ao selecionar um versículo, carrega suas xrefs pela fronteira `cross_refs`
-  // (defaults do core p/ min_votes/limit). A UI só APRESENTA o `Vec<CrossRef>`
-  // retornado (já ordenado por votos DESC pelo core) — anti-alucinação: xref é só
-  // referência, sem texto bíblico.
-  useEffect(() => {
-    if (selectedVerse == null) {
-      return;
-    }
-    let alive = true;
-    setXrefLoading(true);
-    setXrefError(null);
-    setXrefs([]);
-    (async () => {
-      try {
-        const dbPath = await ensureReadingDb();
-        const refs = await crossRefs(dbPath, bookNumber, chapterNumber, selectedVerse);
-        if (alive) {
-          setXrefs(refs);
-          setXrefLoading(false);
-        }
-      } catch (err) {
-        if (alive) {
-          setXrefError(err instanceof Error ? err.message : String(err));
-          setXrefLoading(false);
-        }
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [selectedVerse, bookNumber, chapterNumber]);
-
-  // F2.5: resolve o caminho do banco só-leitura uma vez (p/ o estudo assistido de IA
-  // ancorar o `cited_text` no store). A leitura já resolve o mesmo caminho nos seus
-  // efeitos; aqui guardamos p/ passar ao `ReaderAskPanel`.
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const path = await ensureReadingDb();
-        if (alive) setDbPath(path);
-      } catch {
-        // Sem banco → o estudo assistido fica indisponível; a leitura não regride.
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  // F1.11: resolve o diretório de userdata gravável uma vez (separado do banco
-  // só-leitura). Sem ele, a leitura segue normal e as notas/highlights ficam off.
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const dir = await ensureUserDataDir();
-        if (alive) setDataDir(dir);
-      } catch {
-        // userdata indisponível neste alvo → indicadores/edição ficam inativos.
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  // F1.11: deriva os indicadores do capítulo atual a partir de `list_notes`/
-  // `list_highlights` (fronteira). NÃO ordena/parseia nada — só FILTRA os Records
-  // do livro/capítulo correntes e mapeia versículo→cor/nota p/ apresentação.
-  const refreshUserData = useCallback(async () => {
-    if (!dataDir) {
-      return;
-    }
-    try {
-      const [notes, highlights] = await Promise.all([listNotes(dataDir), listHighlights(dataDir)]);
-      const noted = new Set<number>();
-      for (const note of notes) {
-        const r = note.reference;
-        if (r.book === bookNumber && r.chapter === chapterNumber && r.verses.tag === 'Single') {
-          noted.add(r.verses.inner.verse);
-        }
-      }
-      const colorsByVerse = new Map<number, string>();
-      for (const h of highlights) {
-        const r = h.reference;
-        if (r.book === bookNumber && r.chapter === chapterNumber && r.verses.tag === 'Single') {
-          colorsByVerse.set(r.verses.inner.verse, h.color);
-        }
-      }
-      setNotedVerses(noted);
-      setHighlightColors(colorsByVerse);
-    } catch {
-      // best-effort: sem indicadores se a fronteira falhar; a leitura não regride.
-    }
-  }, [dataDir, bookNumber, chapterNumber]);
-
-  useEffect(() => {
-    void refreshUserData();
-  }, [refreshUserData]);
 
   // Resolve os nomes de cor (dado do usuário) p/ a amostra de fundo do tema corrente.
   const highlightedVerses = useMemo(() => {
@@ -446,27 +267,35 @@ function ChapterContent() {
         onSelectXref={openXref}
         onAsk={() => {
           // F2.5: abre o estudo assistido ancorado na MESMA passagem; fecha o painel
-          // por-versículo preservando a referência no `askVerse`.
-          setAskVerse(selectedVerse);
-          setSelectedVerse(null);
+          // por-versículo preservando a referência no `activePanel`.
+          if (selectedVerse != null) {
+            setActivePanel({ kind: 'ask', verse: selectedVerse });
+            setSelectedVerse(null);
+          }
         }}
         onStudy={() => {
           // F3.5: abre o estudo profundo ancorado na MESMA passagem; fecha o painel
-          // por-versículo preservando a referência no `studyVerse`.
-          setStudyVerse(selectedVerse);
-          setSelectedVerse(null);
+          // por-versículo preservando a referência no `activePanel`.
+          if (selectedVerse != null) {
+            setActivePanel({ kind: 'study', verse: selectedVerse });
+            setSelectedVerse(null);
+          }
         }}
         onChat={() => {
           // F3.6: abre a conversa/follow-up ancorada na MESMA passagem; fecha o painel
-          // por-versículo preservando a âncora no `chatVerse`.
-          setChatVerse(selectedVerse);
-          setSelectedVerse(null);
+          // por-versículo preservando a âncora no `activePanel`.
+          if (selectedVerse != null) {
+            setActivePanel({ kind: 'chat', verse: selectedVerse });
+            setSelectedVerse(null);
+          }
         }}
         onCompare={() => {
           // F3.7: abre a comparação multi-IA (N provedores) ancorada na MESMA passagem;
-          // fecha o painel por-versículo preservando a âncora no `compareVerse`.
-          setCompareVerse(selectedVerse);
-          setSelectedVerse(null);
+          // fecha o painel por-versículo preservando a âncora no `activePanel`.
+          if (selectedVerse != null) {
+            setActivePanel({ kind: 'compare', verse: selectedVerse });
+            setSelectedVerse(null);
+          }
         }}
         onChanged={() => void refreshUserData()}
         onClose={() => setSelectedVerse(null)}
@@ -477,17 +306,17 @@ function ChapterContent() {
           exibido SEPARADO da interpretação (LLM) — anti-alucinação visível. A chave
           BYOK é lida sob demanda pelo painel (mock não usa chave). */}
       <ReaderAskPanel
-        visible={askVerse != null}
+        visible={panelVerse('ask') != null}
         sourceLabel={
-          askVerse != null ? `${bookLabel(bookNumber)} ${chapterNumber}:${askVerse}` : ''
+          panelVerse('ask') != null ? `${bookLabel(bookNumber)} ${chapterNumber}:${panelVerse('ask')}` : ''
         }
         reference={
-          askVerse != null ? `${bookNameEn(bookNumber)} ${chapterNumber}:${askVerse}` : ''
+          panelVerse('ask') != null ? `${bookNameEn(bookNumber)} ${chapterNumber}:${panelVerse('ask')}` : ''
         }
         dbPath={dbPath}
         translation={translation}
         lang={locale}
-        onClose={() => setAskVerse(null)}
+        onClose={() => setActivePanel(null)}
       />
 
       {/* F3.5: estudo profundo (IA) ancorado na passagem — modo × lente × profundidade.
@@ -497,17 +326,17 @@ function ChapterContent() {
           obrigatória. Provedor "mock" nesta entrega (offline, sem chave/rede; BYOK = F3.10).
           A passagem vai NUMÉRICA (book/chapter/verse) — não string canônica. */}
       <ReaderStudyPanel
-        visible={studyVerse != null}
+        visible={panelVerse('study') != null}
         sourceLabel={
-          studyVerse != null ? `${bookLabel(bookNumber)} ${chapterNumber}:${studyVerse}` : ''
+          panelVerse('study') != null ? `${bookLabel(bookNumber)} ${chapterNumber}:${panelVerse('study')}` : ''
         }
         book={bookNumber}
         chapter={chapterNumber}
-        verse={studyVerse}
+        verse={panelVerse('study')}
         dbPath={dbPath}
         translation={translation}
         lang={locale}
-        onClose={() => setStudyVerse(null)}
+        onClose={() => setActivePanel(null)}
       />
 
       {/* F3.6: conversa/follow-up (IA) multi-turno ancorada na passagem. Cada follow-up
@@ -516,17 +345,17 @@ function ChapterContent() {
           interpretação (LLM) — anti-alucinação visível. Provedor "mock" nesta entrega
           (offline, sem chave/rede; BYOK = F3.10). A passagem vai NUMÉRICA. */}
       <ReaderChatPanel
-        visible={chatVerse != null}
+        visible={panelVerse('chat') != null}
         sourceLabel={
-          chatVerse != null ? `${bookLabel(bookNumber)} ${chapterNumber}:${chatVerse}` : ''
+          panelVerse('chat') != null ? `${bookLabel(bookNumber)} ${chapterNumber}:${panelVerse('chat')}` : ''
         }
         book={bookNumber}
         chapter={chapterNumber}
-        verse={chatVerse}
+        verse={panelVerse('chat')}
         dbPath={dbPath}
         translation={translation}
         lang={locale}
-        onClose={() => setChatVerse(null)}
+        onClose={() => setActivePanel(null)}
       />
 
       {/* F3.7: comparação multi-IA (N provedores lado a lado) ancorada na passagem. Cada
@@ -537,19 +366,21 @@ function ChapterContent() {
           comparação de respostas reais (diferentes) é a F3.10. A referência vai como
           string canônica EN (`bookNameEn`), como no `ReaderAskPanel`. */}
       <ReaderComparePanel
-        visible={compareVerse != null}
+        visible={panelVerse('compare') != null}
         sourceLabel={
-          compareVerse != null ? `${bookLabel(bookNumber)} ${chapterNumber}:${compareVerse}` : ''
+          panelVerse('compare') != null
+            ? `${bookLabel(bookNumber)} ${chapterNumber}:${panelVerse('compare')}`
+            : ''
         }
         reference={
-          compareVerse != null
-            ? `${bookNameEn(bookNumber)} ${chapterNumber}:${compareVerse}`
+          panelVerse('compare') != null
+            ? `${bookNameEn(bookNumber)} ${chapterNumber}:${panelVerse('compare')}`
             : ''
         }
         dbPath={dbPath}
         translation={translation}
         lang={locale}
-        onClose={() => setCompareVerse(null)}
+        onClose={() => setActivePanel(null)}
       />
     </View>
   );
