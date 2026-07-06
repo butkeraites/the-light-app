@@ -17,25 +17,16 @@
 // local, verbatim; o LLM só interpreta.
 import { useEffect, useMemo, useState } from 'react';
 import { router } from 'expo-router';
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { errMessage } from '../lib/errMessage';
 import { useI18n } from '../lib/i18n';
 import { setKey } from '../lib/keystore';
-import { useReaderModalA11y } from '../lib/useReaderModalA11y';
-import { useTheme, type ThemeColors } from '../lib/theme';
+import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { askAnchoredStream, type AiAnswer } from '../web/reading';
 import { AiProviderNotice } from './AiProviderNotice';
 import { ProviderChips, useProviderSelection } from './ProviderPicker';
+import { BottomSheet, Button, CitedText, InterpretationBlock, SectionLabel } from './ui';
 
 /** Estimativa de custo SIMPLIFICADA (a fronteira não expõe custo): ~4 chars/token. */
 function approxTokens(text: string): number {
@@ -64,11 +55,10 @@ export function ReaderAskPanel({
   lang: string;
   onClose: () => void;
 }) {
-  const { colors } = useTheme();
+  const theme = useTheme();
+  const { colors } = theme;
   const { t } = useI18n();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
-  // F5.21: ao abrir, foco do leitor de tela no título (ordem lógica + anúncio de abertura).
-  const titleRef = useReaderModalA11y(visible);
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   // Seleção de provedor + derivações BYOK (seam compartilhado — ADR-0059): provedor default
   // `mock` (offline), checagem do cofre (com `refresh()` p/ reler após salvar chave inline),
@@ -179,235 +169,131 @@ export function ReaderAskPanel({
   const hasInterpretation = interpretationText.length > 0;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable
-        style={styles.backdrop}
-        onPress={onClose}
-        testID="ask-panel-backdrop"
-        accessibilityRole="button"
-        accessibilityLabel={t('ai.close')}
+    <BottomSheet
+      visible={visible}
+      onClose={onClose}
+      title={t('ask.title', { source: sourceLabel })}
+      testIDPrefix="ask-panel"
+      maxHeightPercent={88}
+    >
+      {/* Aviso "sem provedor de IA" (F5.37): convite claro p/ configurar. */}
+      {showNoProviderNotice ? <AiProviderNotice onConfigure={onConfigureProvider} /> : null}
+
+      {/* ── PROVEDOR / MODELO ─────────────────────────────────────────── */}
+      <SectionLabel>{t('ask.providerSection')}</SectionLabel>
+      <ProviderChips
+        options={options}
+        provider={provider}
+        providersWithKey={providersWithKey}
+        disabled={busy}
+        testIdPrefix="ask"
+        onSelect={setProvider}
       />
-      <View style={styles.sheet} accessibilityViewIsModal>
-        <View style={styles.header}>
-          <Text ref={titleRef} accessibilityRole="header" style={styles.title}>
-            {t('ask.title', { source: sourceLabel })}
-          </Text>
-          <Pressable onPress={onClose} testID="ask-panel-close" accessibilityRole="button" hitSlop={12}>
-            <Text style={styles.close}>{t('ai.close')}</Text>
-          </Pressable>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          {/* ── AVISO "sem provedor de IA" (F5.37) ────────────────────────────
-              Recurso de IA sem nenhum provedor configurado → convite CLARO p/ configurar
-              (com link à tela Sobre), não um erro cru/tela vazia. O provedor offline `mock`
-              ainda responde abaixo; os recursos offline seguem sem chave. */}
-          {showNoProviderNotice ? <AiProviderNotice onConfigure={onConfigureProvider} /> : null}
-
-          {/* ── PROVEDOR / MODELO ─────────────────────────────────────────── */}
-          <Text style={styles.sectionTitle}>{t('ask.providerSection')}</Text>
-          <ProviderChips
-            options={options}
-            provider={provider}
-            providersWithKey={providersWithKey}
-            disabled={busy}
-            testIdPrefix="ask"
-            onSelect={setProvider}
-          />
-          {!isMock && !providerHasKey ? (
-            <View style={styles.keyBlock}>
-              <Text style={styles.hint}>{t('ask.byokHint')}</Text>
-              <TextInput
-                style={styles.keyInput}
-                value={keyDraft}
-                onChangeText={setKeyDraft}
-                placeholder={t('ask.keyPlaceholder', { provider })}
-                placeholderTextColor={colors.muted}
-                secureTextEntry
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={!savingKey && !busy}
-                testID="ask-key-input"
-                accessibilityLabel={t('a11y.byokKey', { provider })}
-              />
-              <Pressable
-                style={[
-                  styles.btn,
-                  keyDraft.trim().length === 0 || savingKey ? styles.btnDisabled : styles.btnPrimary,
-                ]}
-                onPress={onSaveKey}
-                disabled={keyDraft.trim().length === 0 || savingKey}
-                testID="ask-key-save"
-                accessibilityRole="button"
-              >
-                {savingKey ? (
-                  <ActivityIndicator color={colors.chipActiveText} />
-                ) : (
-                  <Text style={styles.btnText}>{t('ask.saveKey')}</Text>
-                )}
-              </Pressable>
-            </View>
-          ) : null}
-
-          {/* ── PERGUNTA ──────────────────────────────────────────────────── */}
-          <Text style={styles.sectionTitle}>{t('ai.questionSection')}</Text>
+      {!isMock && !providerHasKey ? (
+        <View style={styles.keyBlock}>
+          <Text style={styles.hint}>{t('ask.byokHint')}</Text>
           <TextInput
-            style={styles.questionInput}
-            value={question}
-            onChangeText={setQuestion}
-            placeholder={t('ai.questionPlaceholder')}
+            style={styles.keyInput}
+            value={keyDraft}
+            onChangeText={setKeyDraft}
+            placeholder={t('ask.keyPlaceholder', { provider })}
             placeholderTextColor={colors.muted}
-            multiline
-            editable={!busy}
-            testID="ask-question-input"
-            accessibilityLabel={t('a11y.questionField')}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!savingKey && !busy}
+            testID="ask-key-input"
+            accessibilityLabel={t('a11y.byokKey', { provider })}
           />
-          <Pressable
-            style={[styles.btn, askDisabled ? styles.btnDisabled : styles.btnPrimary]}
-            onPress={onAsk}
-            disabled={askDisabled}
-            testID="ask-submit"
-            accessibilityRole="button"
-          >
-            {busy ? (
-              <ActivityIndicator color={colors.chipActiveText} />
-            ) : (
-              <Text style={styles.btnText}>{t('ask.submit')}</Text>
-            )}
-          </Pressable>
+          <Button
+            title={t('ask.saveKey')}
+            onPress={onSaveKey}
+            loading={savingKey}
+            disabled={keyDraft.trim().length === 0 || savingKey}
+            testID="ask-key-save"
+            style={styles.actionBtn}
+          />
+        </View>
+      ) : null}
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+      {/* ── PERGUNTA ──────────────────────────────────────────────────── */}
+      <SectionLabel>{t('ai.questionSection')}</SectionLabel>
+      <TextInput
+        style={styles.questionInput}
+        value={question}
+        onChangeText={setQuestion}
+        placeholder={t('ai.questionPlaceholder')}
+        placeholderTextColor={colors.muted}
+        multiline
+        editable={!busy}
+        testID="ask-question-input"
+        accessibilityLabel={t('a11y.questionField')}
+      />
+      <Button title={t('ask.submit')} onPress={onAsk} loading={busy} disabled={askDisabled} testID="ask-submit" style={styles.actionBtn} />
 
-          {/* ── PASSAGEM (texto bíblico, verbatim do store) ───────────────────
-              Anti-alucinação VISÍVEL: o `citedText` vem do RETORNO real (store),
-              rotulado como texto bíblico — NUNCA como saída do LLM. Só aparece
-              quando o `AiAnswer` retorna (do Rust). */}
-          {answer ? (
-            <View style={styles.citedBlock}>
-              <Text style={styles.sectionTitle}>{t('ai.citedTitle')}</Text>
-              <Text style={styles.citedText} testID="ask-cited-text">
-                {answer.citedText}
-              </Text>
-            </View>
-          ) : null}
+      {error ? <Text style={styles.error}>{error}</Text> : null}
 
-          {/* ── INTERPRETAÇÃO (IA) ────────────────────────────────────────────
-              Rótulo DISTINTO do texto bíblico. Renderiza os tokens acumulados
-              (streaming) e, ao fim, a `interpretation` do `AiAnswer`. */}
-          {hasInterpretation ? (
-            <View style={styles.interpBlock}>
-              <Text style={styles.sectionTitle}>{t('ai.interpTitle')}</Text>
-              <Text style={styles.interpText} testID="ask-interpretation-text">
-                {interpretationText}
-                {busy ? ' ▍' : ''}
-              </Text>
-            </View>
-          ) : null}
+      {/* PASSAGEM (verbatim do store) — anti-alucinação VISÍVEL, via a primitiva CitedText. */}
+      {answer ? <CitedText text={answer.citedText} label={t('ai.citedTitle')} testID="ask-cited-text" /> : null}
 
-          {/* ── PROVEDOR/MODELO USADO + CUSTO (simplificado) ─────────────────
-              A fronteira NÃO expõe estimativa de custo (sem função de custo no core);
-              exibimos uma ESTIMATIVA aproximada de tokens da interpretação, com aviso
-              de que o custo exato é indisponível — sem criar função nova de fronteira. */}
-          {answer ? (
-            <View style={styles.metaBlock}>
-              <Text style={styles.metaText} testID="ask-meta">
-                {t('ai.meta', { provider: answer.provider, model: answer.model })}
-              </Text>
-              <Text style={styles.metaText}>
-                {t('ask.estimate', { tokens: approxTokens(answer.interpretation) })}
-              </Text>
-              <Text style={styles.disclaimer}>{t('ask.disclaimer')}</Text>
-            </View>
-          ) : null}
-        </ScrollView>
-      </View>
-    </Modal>
+      {/* INTERPRETAÇÃO (IA) — rótulo DISTINTO da Escritura; streaming + cursor. */}
+      {hasInterpretation ? (
+        <InterpretationBlock label={t('ai.interpTitle')}>
+          <Text style={styles.interpText} testID="ask-interpretation-text">
+            {interpretationText}
+            {busy ? <Text style={styles.cursor}> ▍</Text> : null}
+          </Text>
+        </InterpretationBlock>
+      ) : null}
+
+      {/* PROVEDOR/MODELO USADO + CUSTO (estimativa; a fronteira não expõe custo). */}
+      {answer ? (
+        <View style={styles.metaBlock}>
+          <Text style={styles.metaText} testID="ask-meta">
+            {t('ai.meta', { provider: answer.provider, model: answer.model })}
+          </Text>
+          <Text style={styles.metaText}>{t('ask.estimate', { tokens: approxTokens(answer.interpretation) })}</Text>
+          <Text style={styles.disclaimer}>{t('ask.disclaimer')}</Text>
+        </View>
+      ) : null}
+    </BottomSheet>
   );
 }
 
-function makeStyles(colors: ThemeColors) {
+function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
   return StyleSheet.create({
-    backdrop: { flex: 1 },
-    sheet: {
-      maxHeight: '85%',
-      backgroundColor: colors.background,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-      paddingBottom: 16,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.divider,
-    },
-    title: { fontSize: 16, fontWeight: '700', color: colors.text, flexShrink: 1 },
-    close: { fontSize: 14, fontWeight: '600', color: colors.accent, paddingLeft: 12 },
-    scroll: { padding: 16, gap: 8 },
-    sectionTitle: {
-      fontSize: 13,
-      fontWeight: '700',
-      color: colors.muted,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-      marginTop: 12,
-    },
-    // Chips de provedor agora em `<ProviderChips>` (ProviderPicker, ADR-0059) — donos dos estilos.
-    hint: { fontSize: 12, color: colors.muted, marginTop: 6 },
-    keyBlock: { marginTop: 6, gap: 6 },
+    // Chips de provedor em `<ProviderChips>` (ADR-0059); Escritura/interpretação em CitedText/
+    // InterpretationBlock (kit) — anti-alucinação. Aqui só os inputs e a meta.
+    hint: { ...type.caption, color: colors.muted, marginTop: space.xs },
+    keyBlock: { marginTop: space.xs, gap: space.xs },
     keyInput: {
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
+      borderRadius: radius.md,
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+      ...type.body,
       fontSize: 14,
       color: colors.verseText,
-      marginTop: 4,
+      marginTop: space.xs,
     },
     questionInput: {
       minHeight: 70,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 8,
-      padding: 12,
-      fontSize: 15,
+      borderRadius: radius.md,
+      padding: space.md,
+      ...type.body,
       color: colors.verseText,
       textAlignVertical: 'top',
-      marginTop: 6,
+      marginTop: space.xs,
     },
-    btn: {
-      paddingHorizontal: 14,
-      paddingVertical: 11,
-      borderRadius: 8,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginTop: 10,
-    },
-    btnPrimary: { backgroundColor: colors.chipActiveBg },
-    btnDisabled: { backgroundColor: colors.divider, opacity: 0.6 },
-    btnText: { fontSize: 15, fontWeight: '700', color: colors.chipActiveText },
-    citedBlock: {
-      marginTop: 12,
-      borderLeftWidth: 3,
-      borderLeftColor: colors.accent,
-      paddingLeft: 12,
-    },
-    citedText: { fontSize: 15, lineHeight: 22, color: colors.verseText, marginTop: 4 },
-    interpBlock: {
-      marginTop: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 8,
-      padding: 12,
-    },
-    interpText: { fontSize: 15, lineHeight: 22, color: colors.text, marginTop: 4 },
-    metaBlock: { marginTop: 14, gap: 4 },
-    metaText: { fontSize: 12, color: colors.muted },
-    disclaimer: { fontSize: 12, color: colors.muted, fontStyle: 'italic', marginTop: 2 },
-    error: { fontSize: 14, color: colors.error, marginTop: 10 },
+    actionBtn: { marginTop: space.sm },
+    interpText: { ...type.body, color: colors.text },
+    cursor: { color: colors.accent },
+    metaBlock: { marginTop: space.md, gap: space.xs },
+    metaText: { ...type.caption, color: colors.muted },
+    disclaimer: { ...type.caption, color: colors.muted, fontStyle: 'italic', marginTop: space.xs },
+    error: { ...type.body, color: colors.error, marginTop: space.sm },
   });
 }
