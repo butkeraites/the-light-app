@@ -65,6 +65,12 @@ export type MessageKey =
   // passa por t(); os NOMES/abreviações das versões vêm do STORE (`listTranslations`),
   // nunca de t() (anti-alucinação), e o texto/ref de resultado seguem VERBATIM do store.
   | 'search.translationLabel'
+  | 'search.didYouMean'
+  | 'search.didYouMeanItem'
+  | 'search.openReference'
+  | 'search.openBook'
+  | 'search.recent'
+  | 'search.recentItem'
   // Títulos de header do expo-router (fluxo de leitura + busca + planos). "The Light"
   // é a MARCA — idêntica nos dois idiomas de propósito.
   | 'nav.home'
@@ -406,6 +412,12 @@ const pt: Record<MessageKey, string> = {
   'search.hintEmpty': 'Digite um termo para buscar no texto bíblico.',
   'search.noResults': 'Nenhum resultado para “{term}”.',
   'search.translationLabel': 'Tradução',
+  'search.didYouMean': 'Você quis dizer?',
+  'search.didYouMeanItem': 'Buscar por {term}',
+  'search.openReference': 'Abrir {ref}',
+  'search.openBook': 'Abrir {book}',
+  'search.recent': 'Buscas recentes',
+  'search.recentItem': 'Buscar novamente por {term}',
   'nav.home': 'The Light',
   'nav.read': 'Ler a Bíblia',
   'nav.chapters': 'Capítulos',
@@ -700,6 +712,12 @@ const en: Record<MessageKey, string> = {
   'search.hintEmpty': 'Type a term to search the biblical text.',
   'search.noResults': 'No results for “{term}”.',
   'search.translationLabel': 'Translation',
+  'search.didYouMean': 'Did you mean?',
+  'search.didYouMeanItem': 'Search for {term}',
+  'search.openReference': 'Open {ref}',
+  'search.openBook': 'Open {book}',
+  'search.recent': 'Recent searches',
+  'search.recentItem': 'Search again for {term}',
   'nav.home': 'The Light',
   'nav.read': 'Read the Bible',
   'nav.chapters': 'Chapters',

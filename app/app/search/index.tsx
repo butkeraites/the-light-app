@@ -1,27 +1,29 @@
-// app/app/search/index.tsx — F1.6 (ADR-0014/0015)
+// app/app/search/index.tsx — F1.6 (ADR-0014/0015) · busca inteligente ADR-0064
 //
-// Tela de BUSCA nativa: um campo (`TextInput`) com debounce que, a cada termo
-// estável, abre o banco bundled (`ensureReadingDb`) e chama a fronteira `search`
-// (F1.5 → binding gerado → JSI → the_light_core::search, FTS5/BM25) e renderiza a
-// LISTA de resultados (`FlatList`). Cada item mostra a referência + o snippet com o
-// termo destacado e, ao tocar, navega para o capítulo no Reader (rota F1.3).
-//
-// Uma fonte da verdade / anti-alucinação: NENHUM SQL/FTS/MATCH/bm25/highlight é
-// reimplementado aqui — a tela só embrulha o retorno de `search` (texto verbatim do
-// store). Cores via TOKENS de tema. PARIDADE WEB (F1.14 DESTUBADO): no web o glue
-// `search` (`reading.web.ts`) roda FTS5 REAL sobre o subset local (`reading-lite.sqlite`,
-// wa-sqlite/OPFS), então esta MESMA tela funciona nas duas plataformas e É alcançável
-// no web — o link é renderizado na home (F5.30), não só via URL digitada.
+// Tela de BUSCA: um campo (`TextInput`) com debounce que, a cada termo estável, chama a
+// fronteira `search` (FTS5/BM25) e renderiza a LISTA de resultados. A busca EXATA do core é
+// INALTERADA (uma fonte da verdade / anti-alucinação: nenhum SQL/FTS/MATCH em TS; texto verbatim
+// do store). ADR-0064 adiciona, 100% APP-SIDE e por CIMA da fronteira intocada:
+//   • AUTOCOMPLETE: sugestões de REFERÊNCIA (cânon `listBooks` + `parseReference`) e BUSCAS
+//     RECENTES (KV offline) — atalhos para abrir a leitura / repetir uma busca.
+//   • DID-YOU-MEAN: quando a busca (AND palavra-a-palavra) dá ZERO, propõe termos alternativos
+//     que DE FATO retornam resultados (termos significativos + equivalências curadas), provados
+//     contra o store — ex.: "armadura do espírito" → "armadura de Deus" → Efésios 6:11.
+// Cores/tipografia via TOKENS Vigil (ADR-0063).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { router } from 'expo-router';
-import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ReaderSearchResultItem } from '../../components/ReaderSearchResultItem';
 import { ReaderVersionPicker } from '../../components/ReaderVersionPicker';
 import { WasmGate } from '../../components/WasmGate';
 import { ensureReadingDb } from '../../lib/db';
 import { useI18n } from '../../lib/i18n';
-import { useTheme, type ThemeColors } from '../../lib/theme';
+import { buildDidYouMean, type DidYouMean } from '../../lib/searchSuggest';
+import { suggestBooks, type BookSuggestion } from '../../lib/searchReferenceSuggest';
+import { getRecentSearches, pushRecentSearch } from '../../lib/recentSearches';
+import { useTheme, type ThemeContextValue } from '../../lib/theme';
+import { parseReference, type Reference } from '../../web/reference';
 import {
   listBooks,
   listTranslations,
@@ -31,12 +33,11 @@ import {
   type Translation,
 } from '../../web/reading';
 
-// F5.31: KJV é a tradução PADRÃO da busca. O seletor (reusa o `ReaderVersionPicker` da
-// leitura) lista as traduções REALMENTE presentes no store (via `listTranslations` — ex.:
-// KJV + Almeida 1911), nunca hardcoded; trocar re-executa a query na tradução escolhida
-// pelo parâmetro EXISTENTE `search(dbPath, term, translation)`. Anti-alucinação: os nomes
-// de versão vêm do store e o texto/ref de resultado seguem VERBATIM do store (nunca `t()`).
-const DEFAULT_TRANSLATION = 'kjv';
+// ADR-0064: a tradução default da busca segue o IDIOMA da UI — um usuário lendo em português
+// busca no texto português (Almeida) por padrão, não no KJV. Cai no KJV se o idioma não bater.
+function defaultTranslationFor(locale: 'pt' | 'en'): string {
+  return locale === 'pt' ? 'alm1911' : 'kjv';
+}
 const DEBOUNCE_MS = 300;
 
 /** Número do versículo de um hit (sempre `Single` num resultado de busca). */
@@ -45,16 +46,18 @@ function verseOf(hit: SearchHit): number | null {
   return v.tag === 'Single' ? v.inner.verse : null;
 }
 
+/** Verso inicial de uma referência parseada (Single/Range) p/ ancorar a navegação. */
+function refVerse(ref: Reference): number | null {
+  const v = ref.verses;
+  return v.tag === 'Single' ? v.inner.verse : v.tag === 'Range' ? v.inner.start : null;
+}
+
 /** Chave estável de um hit (livro/cap/verso/tradução). */
 function keyOf(hit: SearchHit): string {
   return `${hit.translation}-${hit.reference.book}-${hit.reference.chapter}-${verseOf(hit) ?? 'x'}`;
 }
 
 export default function SearchScreen() {
-  // F5.3: a busca resolve o nome do livro via `listBooks()` (síncrono, exige o wasm da
-  // fronteira). Antes o `_layout.tsx` gateava tudo no wasm; agora, com o 1º paint
-  // liberado, esta rota se auto-gateia para não montar (e cair no fallback "Book N")
-  // antes do wasm pronto. No nativo o gate é transparente.
   return (
     <WasmGate>
       <SearchContent />
@@ -63,33 +66,32 @@ export default function SearchScreen() {
 }
 
 function SearchContent() {
-  const { colors } = useTheme();
-  // F5.8: `locale` da UI traduz o CROMO da busca e ESCOLHE o campo de nome do livro no
-  // STORE (namePt/nameEn) p/ a referência do item — NUNCA traduz o texto/ref de resultado
-  // (que vem VERBATIM da fronteira `search`). O TERMO digitado também é dado do usuário.
+  const theme = useTheme();
+  const { colors } = theme;
   const { locale, t } = useI18n();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
-  // F5.31: tradução ATIVA da busca (padrão KJV) + traduções disponíveis (do store).
-  const [translation, setTranslation] = useState(DEFAULT_TRANSLATION);
+  // Tradução ESCOLHIDA pelo usuário (null = ainda seguindo o default do idioma da UI).
+  const [pickedTranslation, setPickedTranslation] = useState<string | null>(null);
   const [translations, setTranslations] = useState<Translation[]>([]);
+  // ADR-0064: sugestões "did you mean?" (só no caminho zero-resultado), recentes e referência.
+  const [suggestions, setSuggestions] = useState<DidYouMean[]>([]);
+  const [recent, setRecent] = useState<string[]>([]);
+  const [parsedRef, setParsedRef] = useState<Reference | null>(null);
 
-  // Cânon (66 livros, PURO) p/ resolver o nome do livro na referência do item.
   useEffect(() => {
     try {
       setBooks(listBooks());
     } catch {
-      // Sem cânon → o item cai no rótulo de fallback (CROMO `read.bookFallback`); não bloqueia a busca.
+      /* sem cânon → item cai no fallback; não bloqueia a busca */
     }
   }, []);
 
-  // F5.31: carrega uma vez as traduções PRESENTES no store (seletor de versão). A lista
-  // vem SEMPRE do store (`listTranslations`) — nunca hardcoded; a default segue KJV.
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -98,28 +100,78 @@ function SearchContent() {
         const ts = await listTranslations(dbPath);
         if (alive) setTranslations(ts);
       } catch {
-        // Sem traduções → o seletor some; a busca ainda usa a default (KJV).
+        /* sem traduções → seletor some; busca usa a default do idioma */
       }
     })();
     return () => {
       alive = false;
     };
   }, []);
-  // Nome do livro p/ a referência do item: vem SEMPRE do STORE (namePt/nameEn) — o `locale`
-  // só ESCOLHE o campo, nunca traduz. O fallback (livro ausente do cânon) é CROMO (`t()`).
+
+  // ADR-0064: carrega as buscas recentes (KV offline) no mount + um refresh sob demanda.
+  const refreshRecent = useMemo(
+    () => () => {
+      void getRecentSearches().then(setRecent).catch(() => setRecent([]));
+    },
+    [],
+  );
+  useEffect(refreshRecent, [refreshRecent]);
+
   const bookNameOf = useMemo(() => {
     const map = new Map(books.map((b) => [b.number, locale === 'en' ? b.nameEn : b.namePt]));
     return (n: number) => map.get(n) ?? t('read.bookFallback', { number: n });
   }, [books, locale, t]);
 
-  // Busca com DEBOUNCE: dispara só quando o termo fica estável por DEBOUNCE_MS.
-  // `seq` evita corridas (descarta respostas de buscas obsoletas). F5.31: `translation`
-  // também dispara — trocar a versão re-executa a MESMA query na tradução escolhida.
+  // ADR-0064: tradução EFETIVA da busca — a escolha do usuário, senão o default do IDIOMA da UI
+  // (validado contra o store). Reativo ao idioma até o usuário escolher explicitamente, então
+  // um usuário em português busca em Almeida por padrão mesmo que o idioma resolva de forma async.
+  const effectiveTranslation = useMemo(() => {
+    if (pickedTranslation && translations.some((x) => x.id === pickedTranslation)) {
+      return pickedTranslation;
+    }
+    const byLocale = defaultTranslationFor(locale);
+    if (translations.length === 0 || translations.some((x) => x.id === byLocale)) {
+      return byLocale;
+    }
+    return translations.find((x) => x.language === locale)?.id ?? translations[0]?.id ?? byLocale;
+  }, [pickedTranslation, translations, locale]);
+
+  const term = query.trim();
+
+  // ADR-0064: sugestões de LIVRO (síncrono, do cânon) — só para um token que prefixa um livro.
+  const bookSuggestions: BookSuggestion[] = useMemo(
+    () => (books.length > 0 ? suggestBooks(term, books, locale) : []),
+    [term, books, locale],
+  );
+
+  // ADR-0064: detecção de REFERÊNCIA COMPLETA ("João 3") via a fronteira (async, debounced).
+  useEffect(() => {
+    if (term.length < 3) {
+      setParsedRef(null);
+      return;
+    }
+    let alive = true;
+    const h = setTimeout(async () => {
+      try {
+        const ref = await parseReference(term);
+        if (alive) setParsedRef(ref);
+      } catch {
+        if (alive) setParsedRef(null); // não é uma referência → só busca de texto
+      }
+    }, DEBOUNCE_MS);
+    return () => {
+      alive = false;
+      clearTimeout(h);
+    };
+  }, [term]);
+
+  // Busca com DEBOUNCE + guarda de corrida (`seq`). Ao dar ZERO, computa o "did you mean?"
+  // (sondando candidatos contra o store, limit=1). A busca EXATA em si é inalterada.
   const seqRef = useRef(0);
   useEffect(() => {
-    const term = query.trim();
     if (term.length === 0) {
       setResults([]);
+      setSuggestions([]);
       setError(null);
       setLoading(false);
       return;
@@ -129,27 +181,37 @@ function SearchContent() {
     const handle = setTimeout(async () => {
       try {
         const dbPath = await ensureReadingDb();
-        const hits = await search(dbPath, term, translation);
-        if (mySeq === seqRef.current) {
-          setResults(hits);
-          setError(null);
-          setLoading(false);
+        const hits = await search(dbPath, term, effectiveTranslation);
+        if (mySeq !== seqRef.current) return;
+        setResults(hits);
+        setError(null);
+        setLoading(false);
+        if (hits.length === 0) {
+          // Sonda de existência: nº de resultados de um termo (limit=1 → 0/1). Só no zero-path.
+          const probe = (cand: string) =>
+            search(dbPath, cand, effectiveTranslation, undefined, 1)
+              .then((r) => r.length)
+              .catch(() => 0);
+          const dym = await buildDidYouMean({ query: term, locale, probe });
+          if (mySeq === seqRef.current) setSuggestions(dym);
+        } else {
+          setSuggestions([]);
         }
       } catch (err) {
         if (mySeq === seqRef.current) {
           setError(err instanceof Error ? err.message : String(err));
           setResults([]);
+          setSuggestions([]);
           setLoading(false);
         }
       }
     }, DEBOUNCE_MS);
     return () => clearTimeout(handle);
-  }, [query, translation]);
+  }, [query, effectiveTranslation, locale]);
 
   function openHit(hit: SearchHit) {
+    void pushRecentSearch(term).then(refreshRecent);
     const verse = verseOf(hit);
-    // Navega ao capítulo (rota F1.3). `verse` vai como param OPCIONAL (best-effort:
-    // ancoragem/realce é follow-up; a tela do capítulo hoje ignora `verse`).
     router.push({
       pathname: '/read/[book]/[chapter]',
       params: {
@@ -160,7 +222,28 @@ function SearchContent() {
     });
   }
 
-  const term = query.trim();
+  function openBook(book: number) {
+    router.push({ pathname: '/read/[book]', params: { book: String(book) } });
+  }
+
+  function openRef(ref: Reference) {
+    void pushRecentSearch(term).then(refreshRecent);
+    const verse = refVerse(ref);
+    router.push({
+      pathname: '/read/[book]/[chapter]',
+      params: {
+        book: String(ref.book),
+        chapter: String(ref.chapter),
+        ...(verse != null ? { verse: String(verse) } : {}),
+      },
+    });
+  }
+
+  function runTerm(next: string) {
+    setQuery(next);
+  }
+
+  const refLabel = parsedRef ? `${bookNameOf(parsedRef.book)} ${parsedRef.chapter}` : '';
 
   return (
     <View style={styles.container}>
@@ -168,6 +251,7 @@ function SearchContent() {
         style={styles.input}
         value={query}
         onChangeText={setQuery}
+        onSubmitEditing={() => term.length > 0 && void pushRecentSearch(term).then(refreshRecent)}
         placeholder={t('search.inputPlaceholder')}
         placeholderTextColor={colors.muted}
         autoCapitalize="none"
@@ -177,18 +261,46 @@ function SearchContent() {
         accessibilityLabel={t('a11y.searchTextInput')}
       />
 
-      {/* F5.31: seletor de tradução (reusa o ReaderVersionPicker). Os NOMES das versões vêm
-          do store (`listTranslations`); só o rótulo "Tradução" é cromo via t(). Trocar
-          re-executa a query na versão escolhida. Some se o store não expõe traduções. */}
       {translations.length > 0 ? (
         <View style={styles.pickerRow}>
           <Text style={styles.pickerLabel}>{t('search.translationLabel')}</Text>
           <ReaderVersionPicker
             translations={translations}
-            current={translation}
-            onChange={setTranslation}
+            current={effectiveTranslation}
+            onChange={setPickedTranslation}
             testIDPrefix="search-version"
           />
+        </View>
+      ) : null}
+
+      {/* ADR-0064: REFERÊNCIA — abrir capítulo/livro direto (autocomplete de referência). */}
+      {term.length > 0 && (parsedRef || bookSuggestions.length > 0) ? (
+        <View style={styles.suggestBlock}>
+          {parsedRef ? (
+            <Pressable
+              style={styles.refRow}
+              onPress={() => openRef(parsedRef)}
+              testID="search-open-ref"
+              accessibilityRole="link"
+              accessibilityLabel={t('search.openReference', { ref: refLabel })}
+            >
+              <Text style={styles.refText}>{t('search.openReference', { ref: refLabel })}</Text>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
+          ) : null}
+          {bookSuggestions.map((b) => (
+            <Pressable
+              key={b.book}
+              style={styles.refRow}
+              onPress={() => openBook(b.book)}
+              testID={`search-book-${b.book}`}
+              accessibilityRole="link"
+              accessibilityLabel={t('search.openBook', { book: b.label })}
+            >
+              <Text style={styles.refText}>{t('search.openBook', { book: b.label })}</Text>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
+          ))}
         </View>
       ) : null}
 
@@ -201,13 +313,51 @@ function SearchContent() {
           <ActivityIndicator color={colors.text} />
         </View>
       ) : term.length === 0 ? (
-        <View style={styles.centered}>
-          <Text style={styles.hint}>{t('search.hintEmpty')}</Text>
-        </View>
+        // ADR-0064: vazio → BUSCAS RECENTES (se houver), senão a dica.
+        recent.length > 0 ? (
+          <View style={styles.recentBlock}>
+            <Text style={styles.sectionLabel}>{t('search.recent')}</Text>
+            {recent.map((r) => (
+              <Pressable
+                key={r}
+                style={styles.recentRow}
+                onPress={() => runTerm(r)}
+                testID={`search-recent-${r}`}
+                accessibilityRole="button"
+                accessibilityLabel={t('search.recentItem', { term: r })}
+              >
+                <Text style={styles.recentText}>{r}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : (
+          <View style={styles.centered}>
+            <Text style={styles.hint}>{t('search.hintEmpty')}</Text>
+          </View>
+        )
       ) : results.length === 0 ? (
-        <View style={styles.centered}>
-          {/* `{term}` é o TERMO do usuário (dado dele), só interpolado no cromo — não traduzido. */}
+        // ADR-0064: sem resultados → "você quis dizer?" (só termos que RETORNAM resultados).
+        <View style={styles.noResults}>
           <Text style={styles.hint}>{t('search.noResults', { term })}</Text>
+          {suggestions.length > 0 ? (
+            <View style={styles.dymBlock}>
+              <Text style={styles.sectionLabel}>{t('search.didYouMean')}</Text>
+              <View style={styles.chipWrap}>
+                {suggestions.map((s) => (
+                  <Pressable
+                    key={s.term}
+                    style={styles.dymChip}
+                    onPress={() => runTerm(s.term)}
+                    testID={`search-dym-${s.term}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('search.didYouMeanItem', { term: s.term })}
+                  >
+                    <Text style={styles.dymChipText}>{s.term}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
         </View>
       ) : (
         <FlatList
@@ -228,28 +378,73 @@ function SearchContent() {
   );
 }
 
-function makeStyles(colors: ThemeColors) {
+function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     input: {
-      margin: 16,
+      ...type.body,
+      margin: space.lg,
+      marginBottom: space.sm,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      fontSize: 16,
+      borderRadius: radius.pill,
+      paddingHorizontal: space.lg,
+      paddingVertical: space.md,
       color: colors.text,
+      backgroundColor: colors.surface,
     },
-    centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-    hint: { fontSize: 14, color: colors.muted, textAlign: 'center' },
-    error: { fontSize: 14, color: colors.error, textAlign: 'center' },
-    pickerRow: { gap: 2 },
-    pickerLabel: {
-      fontSize: 11,
-      color: colors.muted,
-      textTransform: 'uppercase',
-      paddingHorizontal: 16,
+    pickerRow: { gap: space.xs, paddingBottom: space.sm },
+    pickerLabel: { ...type.label, color: colors.muted, paddingHorizontal: space.lg },
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xl },
+    hint: { ...type.body, color: colors.muted, textAlign: 'center' },
+    error: { ...type.body, color: colors.error, textAlign: 'center' },
+
+    // Autocomplete de referência (abrir livro/capítulo).
+    suggestBlock: {
+      marginHorizontal: space.lg,
+      marginBottom: space.sm,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      overflow: 'hidden',
     },
+    refRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      minHeight: 48,
+      paddingHorizontal: space.lg,
+      paddingVertical: space.md,
+    },
+    refText: { ...type.body, color: colors.accent, flex: 1, fontWeight: '600' },
+    chevron: { fontSize: 20, color: colors.muted },
+
+    // Buscas recentes.
+    recentBlock: { paddingHorizontal: space.lg, paddingTop: space.sm },
+    sectionLabel: { ...type.label, color: colors.muted, marginBottom: space.sm },
+    recentRow: {
+      minHeight: 48,
+      justifyContent: 'center',
+      paddingVertical: space.sm,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.divider,
+    },
+    recentText: { ...type.body, color: colors.text },
+
+    // "Você quis dizer?"
+    noResults: { flex: 1, alignItems: 'center', paddingTop: space.xxl, paddingHorizontal: space.xl },
+    dymBlock: { marginTop: space.xl, alignSelf: 'stretch', alignItems: 'center' },
+    chipWrap: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: space.sm },
+    dymChip: {
+      minHeight: 44,
+      justifyContent: 'center',
+      paddingHorizontal: space.lg,
+      paddingVertical: space.sm,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: colors.accent,
+      backgroundColor: colors.selectionBg,
+    },
+    dymChipText: { ...type.button, color: colors.accent },
   });
 }

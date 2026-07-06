@@ -11,6 +11,7 @@
     "test:web:reading": "node web/__tests__/reading.web.test.mjs",
     "test:web:coverage": "node web/__tests__/coverage.web.test.mjs",
     "test:web:search": "node web/__tests__/search.web.test.mjs",
+    "test:web:search-smart": "node web/__tests__/search-smart.test.mjs",
     "test:web:xref": "node web/__tests__/xref.web.test.mjs",
     "test:web:notes": "node web/__tests__/notes.web.test.mjs",
     "test:web:verse-markers": "node web/__tests__/verseMarkers.test.mjs",

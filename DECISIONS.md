@@ -3686,3 +3686,21 @@ Fim-de-jogo: UMA fonte da verdade (SQL, corpo de request, constantes, ranking/cl
 **Fora de escopo (fases seguintes).** Aplicar os tokens aos componentes (kit `Button/Chip/Card/BottomSheet/…` + telas); **bundlar Literata** (`expo-font`) e o **set de ícones SVG** (`react-native-svg`) — exigem novas deps NATIVAS + verificação de build (checkpoint com o usuário); `readingPrefs` + folha de ajustes de leitura (consome sépia + escala de `verse`).
 
 **Consequências.** (+) A identidade Vigil (cor) é aplicada IMEDIATAMENTE por re-tematização; as escalas ficam prontas para o kit; a guarda AA agora protege as 3 paletas. (−) Os tokens novos ainda não são consumidos por componentes (código aditivo, exercido pela guarda mas visualmente inerte até as fases seguintes); a família serifa do SISTEMA difere levemente por plataforma até a Literata bundlada entrar. (Rejeitado) adicionar `expo-font`/`react-native-svg` nesta fatia — arrastaria deps nativas + binário de fonte sem poder verificar o build nativo aqui; isolado numa etapa própria.
+
+## ADR-0064 — Busca inteligente APP-SIDE (autocomplete + "did you mean?" + equivalência de termos), sem tocar o core nem o espelho parity-locked
+
+- **Data:** 2026-07-06 · **Status:** ACEITO (Fase A) · **Tarefa:** melhoria de busca (aprovada pelo usuário) · **Depende:** ADR-0014 (busca FTS5/BM25), ADR-0038 (i18n/prefs KV), ADR-0063 (tokens Vigil). Escolha do usuário: **exato + "did you mean?"** (não auto-broaden) e autocomplete de **referências + recentes + termos do corpus** (este último = Fase B).
+
+**Contexto.** A busca do core é **AND palavra-a-palavra** (`search::build_match_query` — cada palavra entre aspas, AND-adas), pinada e espelhada byte-a-byte no web (`sqlite-search.web.ts`, travado por `mirror-drift`). Logo "armadura do espírito" → **zero**, embora "armadura" ache Efésios 6:11 ("armadura de Deus"). Não havia autocomplete. Descoberta-chave: o caso do usuário é uma **falha de AND**, não (só) falta de sinônimo; e um usuário lendo em PT buscava por padrão no **KJV** (inglês).
+
+**Decisão (100% app-side, POR CIMA da fronteira `search` INALTERADA).**
+1. **Busca EXATA primária intocada.** No caminho **ZERO resultado**, um "**você quis dizer?**" propõe termos que **de fato retornam resultados** — candidatos em prioridade: EQUIVALÊNCIA de conceito curada (`"armadura do espírito"→"armadura de Deus"`) → TERMOS SIGNIFICATIVOS (conectivas removidas) → SINÔNIMOS curados — cada um **PROVADO** via `probe` (`search(limit=1)`) antes de aparecer. Módulos PUROS `searchNormalize`/`searchStopwords`/`searchSynonyms`/`searchSuggest` com **prova headless** (`test:web:search-smart`, `probe` injetado).
+2. **Autocomplete:** sugestão de **REFERÊNCIA** (`listBooks`/`parseReference` — "Abrir Efésios") + **BUSCAS RECENTES** (`recentSearches`, KV offline, dedup por forma dobrada). (Termos do corpus = Fase B.)
+3. **Tradução default da busca segue o IDIOMA da UI** (pt→Almeida, en→KJV), **reativa** e validada contra o store (via `Translation.language`), até o usuário escolher explicitamente — corrige o PT que buscava no KJV.
+4. UI nova em **tokens Vigil** (chips/linhas), a11y (role/label/alvo≥44 — um `Pressable` por item, lição do a11y-scan), i18n pt/en.
+
+**Restrições preservadas.** Core e espelho **intocados** (o `search` mirror-locked segue verde; `mirror-drift`/`app-const-parity`/`test:web:search` passam). Probes só no **zero-path**, com cap. Offline. Anti-alucinação: só expande a **CONSULTA**; o texto do resultado segue **verbatim** do store. O mapa de sinônimos é dado **app curado** (semente, crescível), locale-aware.
+
+**Verificação.** Prova headless `search-smart` + guardas a11y/i18n/`test:web:*` verdes; verificado no **browser rodando**: PT "armadura do espírito" → chips "armadura de Deus / armadura / espírito / couraça" → tocar "armadura de Deus" → Efésios 6:11 (2 resultados); EN "armour of the spirit" → armour/spirit/soul; "Efé" → "Abrir Efésios".
+
+**Consequências.** (+) Busca deixa de falhar em silêncio (rescata via "did you mean?"), ganha autocomplete e equivalências, e casa o idioma do leitor. (−) O mapa de sinônimos/conceitos exige **curadoria manual** (a semente cobre pouco; cresce sob demanda). **(Fase B)** dicionário de palavras do corpus (asset derivado em build-time) para autocomplete de TERMO + candidatos de digitação (typo) no "did you mean?".
