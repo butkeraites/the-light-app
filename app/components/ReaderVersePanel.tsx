@@ -18,23 +18,12 @@
 // nomeada (`highlightColors.ts`). Anti-alucinação: a referência é canônica via o core;
 // o corpo da nota é texto livre do usuário.
 import { useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  ScrollView,
-  Share,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { HIGHLIGHT_COLORS, resolveHighlightColor } from '../lib/highlightColors';
 import { useI18n } from '../lib/i18n';
 import { buildNotesExport } from '../lib/notesExport';
-import { useReaderModalA11y } from '../lib/useReaderModalA11y';
-import { useTheme, type ThemeColors } from '../lib/theme';
+import { useTheme, type ThemeContextValue } from '../lib/theme';
 import {
   addHighlight,
   deleteNote,
@@ -46,6 +35,7 @@ import {
   type CrossRef,
 } from '../web/reading';
 import { XREF_ATTRIBUTION } from './ReaderXrefPanel';
+import { BottomSheet, Button, ListRow, SectionLabel } from './ui';
 
 type XrefReference = CrossRef['reference'];
 
@@ -111,15 +101,14 @@ export function ReaderVersePanel({
   onChanged: () => void;
   onClose: () => void;
 }) {
-  const { colors, isDark } = useTheme();
+  const theme = useTheme();
+  const { colors, isDark } = theme;
   // F5.16: só o CROMO (seções, botões, placeholders, a11y) passa por `t()`. O
   // `{sourceLabel}` e os nomes de livro (`bookNameOf`) vêm do STORE; o corpo da NOTA é
   // texto livre do usuário; a atribuição CC-BY é VERBATIM — nada disso via `t()`
   // (anti-alucinação). `{color}` = rótulo da paleta de marcação (dado da app).
   const { t } = useI18n();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
-  // F5.21: ao abrir, foco do leitor de tela no título (ordem lógica + anúncio de abertura).
-  const titleRef = useReaderModalA11y(visible);
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const [body, setBody] = useState('');
   const [noteLoading, setNoteLoading] = useState(false);
@@ -213,283 +202,167 @@ export function ReaderVersePanel({
   const noteEmpty = body.trim().length === 0;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable
-        style={styles.backdrop}
-        onPress={onClose}
-        testID="verse-panel-backdrop"
-        accessibilityRole="button"
-        accessibilityLabel={t('common.close')}
-      />
-      <View style={styles.sheet} accessibilityViewIsModal>
-        <View style={styles.header}>
-          <Text ref={titleRef} accessibilityRole="header" style={styles.title}>
-            {sourceLabel}
-          </Text>
-          <Pressable onPress={onClose} testID="verse-panel-close" accessibilityRole="button" hitSlop={12}>
-            <Text style={styles.close}>{t('common.close')}</Text>
-          </Pressable>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          {/* ── NOTA ─────────────────────────────────────────────────────── */}
-          <Text style={styles.sectionTitle}>{t('versePanel.noteSection')}</Text>
-          {noteLoading ? (
-            <ActivityIndicator color={colors.text} />
-          ) : (
-            <TextInput
-              style={styles.noteInput}
-              value={body}
-              onChangeText={setBody}
-              placeholder={t('versePanel.notePlaceholder')}
-              placeholderTextColor={colors.muted}
-              multiline
-              editable={!busy}
-              testID="note-input"
-              accessibilityLabel={t('versePanel.noteEditorLabel')}
-            />
-          )}
-          <View style={styles.row}>
-            <Pressable
-              style={[styles.btn, noteEmpty || busy ? styles.btnDisabled : styles.btnPrimary]}
-              onPress={onSaveNote}
-              disabled={noteEmpty || busy}
-              testID="note-save"
-              accessibilityRole="button"
-            >
-              <Text style={styles.btnText}>{t('versePanel.saveNote')}</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.btn, busy ? styles.btnDisabled : styles.btnGhost]}
-              onPress={onDeleteNote}
-              disabled={busy}
-              testID="note-delete"
-              accessibilityRole="button"
-            >
-              <Text style={[styles.btnText, styles.btnGhostText]}>{t('versePanel.deleteNote')}</Text>
-            </Pressable>
-          </View>
-
-          {/* ── MARCAÇÃO (highlight) ─────────────────────────────────────── */}
-          <Text style={styles.sectionTitle}>{t('versePanel.highlightSection')}</Text>
-          <View style={styles.swatches}>
-            {HIGHLIGHT_COLORS.map((c) => {
-              const active = currentHighlight === c.name;
-              return (
-                <Pressable
-                  key={c.name}
-                  style={[
-                    styles.swatch,
-                    { backgroundColor: resolveHighlightColor(c.name, isDark) },
-                    active ? styles.swatchActive : null,
-                  ]}
-                  onPress={() => onSetHighlight(c.name)}
-                  disabled={busy}
-                  testID={`highlight-${c.name}`}
-                  hitSlop={{ top: 8, bottom: 8, left: 5, right: 5 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('versePanel.highlightWith', {
-                    color: t(`highlight.${c.name}`),
-                  })}
-                  accessibilityState={{ selected: active }}
-                >
-                  {active ? <Text style={styles.swatchCheck}>✓</Text> : null}
-                </Pressable>
-              );
-            })}
-            <Pressable
-              style={[styles.btn, busy || !currentHighlight ? styles.btnDisabled : styles.btnGhost]}
-              onPress={onRemoveHighlight}
-              disabled={busy || !currentHighlight}
-              testID="highlight-remove"
-              accessibilityRole="button"
-            >
-              <Text style={[styles.btnText, styles.btnGhostText]}>{t('versePanel.unhighlight')}</Text>
-            </Pressable>
-          </View>
-
-          {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
-
-          {/* ── ESTUDO ASSISTIDO (IA) — F2.5 ─────────────────────────────── */}
-          {onAsk ? (
-            <Pressable
-              style={[styles.btn, styles.btnAsk]}
-              onPress={onAsk}
-              testID="verse-ask"
-              accessibilityRole="button"
-              accessibilityLabel={t('versePanel.askLabel')}
-            >
-              <Text style={styles.btnText}>{t('versePanel.askButton')}</Text>
-            </Pressable>
-          ) : null}
-
-          {/* ── ESTUDO PROFUNDO (IA) — F3.5 ──────────────────────────────── */}
-          {onStudy ? (
-            <Pressable
-              style={[styles.btn, styles.btnAsk]}
-              onPress={onStudy}
-              testID="verse-study"
-              accessibilityRole="button"
-              accessibilityLabel={t('versePanel.studyLabel')}
-            >
-              <Text style={styles.btnText}>{t('versePanel.studyButton')}</Text>
-            </Pressable>
-          ) : null}
-
-          {/* ── CONVERSA/FOLLOW-UP (IA) — F3.6 ───────────────────────────── */}
-          {onChat ? (
-            <Pressable
-              style={[styles.btn, styles.btnAsk]}
-              onPress={onChat}
-              testID="verse-chat"
-              accessibilityRole="button"
-              accessibilityLabel={t('versePanel.chatLabel')}
-            >
-              <Text style={styles.btnText}>{t('versePanel.chatButton')}</Text>
-            </Pressable>
-          ) : null}
-
-          {/* ── COMPARAÇÃO MULTI-IA (IA) — F3.7 ──────────────────────────── */}
-          {onCompare ? (
-            <Pressable
-              style={[styles.btn, styles.btnAsk]}
-              onPress={onCompare}
-              testID="verse-compare"
-              accessibilityRole="button"
-              accessibilityLabel={t('versePanel.compareLabel')}
-            >
-              <Text style={styles.btnText}>{t('versePanel.compareButton')}</Text>
-            </Pressable>
-          ) : null}
-
-          {/* ── EXPORTAR ─────────────────────────────────────────────────── */}
-          <Pressable
-            style={[styles.btn, styles.btnExport]}
-            onPress={onExport}
-            testID="notes-export"
-            accessibilityRole="button"
-          >
-            <Text style={[styles.btnText, styles.btnGhostText]}>{t('versePanel.exportButton')}</Text>
-          </Pressable>
-
-          {/* ── REFERÊNCIAS CRUZADAS (F1.9) ──────────────────────────────── */}
-          <Text style={styles.sectionTitle}>{t('xref.section')}</Text>
-          {xrefLoading ? (
-            <ActivityIndicator color={colors.text} />
-          ) : xrefError ? (
-            <Text style={styles.error}>{xrefError}</Text>
-          ) : refs.length === 0 ? (
-            <Text style={styles.empty}>{t('xref.empty')}</Text>
-          ) : (
-            <View>
-              {refs.map((cr) => {
-                const verseLabel = formatVerses(cr.reference.verses);
-                const label = `${bookNameOf(cr.reference.book)} ${cr.reference.chapter}${
-                  verseLabel ? `:${verseLabel}` : ''
-                }`;
-                return (
-                  <Pressable
-                    key={keyOf(cr.reference)}
-                    style={styles.xrefRow}
-                    onPress={() => onSelectXref(cr.reference)}
-                    testID={`xref-${keyOf(cr.reference)}`}
-                    accessibilityRole="button"
-                    accessibilityLabel={label}
-                  >
-                    <Text style={styles.xrefRef}>{label}</Text>
-                    <Text style={styles.xrefVotes}>{t('xref.votes', { count: String(cr.votes) })}</Text>
-                  </Pressable>
-                );
-              })}
-              {/* Atribuição CC-BY OBRIGATÓRIA (ADR-0016) — string EXATA. */}
-              <Text style={styles.attribution}>{XREF_ATTRIBUTION}</Text>
-            </View>
-          )}
-        </ScrollView>
+    <BottomSheet visible={visible} onClose={onClose} title={sourceLabel} testIDPrefix="verse-panel" maxHeightPercent={82}>
+      {/* ── NOTA ─────────────────────────────────────────────────────── */}
+      <SectionLabel>{t('versePanel.noteSection')}</SectionLabel>
+      {noteLoading ? (
+        <ActivityIndicator color={colors.text} />
+      ) : (
+        <TextInput
+          style={styles.noteInput}
+          value={body}
+          onChangeText={setBody}
+          placeholder={t('versePanel.notePlaceholder')}
+          placeholderTextColor={colors.muted}
+          multiline
+          editable={!busy}
+          testID="note-input"
+          accessibilityLabel={t('versePanel.noteEditorLabel')}
+        />
+      )}
+      <View style={styles.row}>
+        <Button title={t('versePanel.saveNote')} onPress={onSaveNote} disabled={noteEmpty || busy} testID="note-save" />
+        <Button title={t('versePanel.deleteNote')} variant="ghost" onPress={onDeleteNote} disabled={busy} testID="note-delete" />
       </View>
-    </Modal>
+
+      {/* ── MARCAÇÃO (highlight) ─────────────────────────────────────── */}
+      <SectionLabel>{t('versePanel.highlightSection')}</SectionLabel>
+      <View style={styles.swatches}>
+        {HIGHLIGHT_COLORS.map((c) => {
+          const active = currentHighlight === c.name;
+          return (
+            <Pressable
+              key={c.name}
+              style={[
+                styles.swatch,
+                { backgroundColor: resolveHighlightColor(c.name, isDark) },
+                active ? styles.swatchActive : null,
+              ]}
+              onPress={() => onSetHighlight(c.name)}
+              disabled={busy}
+              testID={`highlight-${c.name}`}
+              hitSlop={{ top: 8, bottom: 8, left: 5, right: 5 }}
+              accessibilityRole="button"
+              accessibilityLabel={t('versePanel.highlightWith', { color: t(`highlight.${c.name}`) })}
+              accessibilityState={{ selected: active }}
+            >
+              {active ? <Text style={styles.swatchCheck}>✓</Text> : null}
+            </Pressable>
+          );
+        })}
+      </View>
+      <Button
+        title={t('versePanel.unhighlight')}
+        variant="ghost"
+        onPress={onRemoveHighlight}
+        disabled={busy || !currentHighlight}
+        testID="highlight-remove"
+        style={styles.inlineBtn}
+      />
+
+      {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
+
+      {/* ── AÇÕES DE IA (grade 2×2; Perguntar em destaque) ────────────── */}
+      {onAsk || onStudy || onChat || onCompare ? (
+        <>
+          <SectionLabel>{t('versePanel.aiSection')}</SectionLabel>
+          <View style={styles.aiGrid}>
+            {onAsk ? (
+              <View style={styles.aiCell}>
+                <Button title={t('versePanel.askButton')} icon="ask" onPress={onAsk} testID="verse-ask" accessibilityLabel={t('versePanel.askLabel')} />
+              </View>
+            ) : null}
+            {onStudy ? (
+              <View style={styles.aiCell}>
+                <Button title={t('versePanel.studyButton')} icon="study" variant="secondary" onPress={onStudy} testID="verse-study" accessibilityLabel={t('versePanel.studyLabel')} />
+              </View>
+            ) : null}
+            {onChat ? (
+              <View style={styles.aiCell}>
+                <Button title={t('versePanel.chatButton')} icon="chat" variant="secondary" onPress={onChat} testID="verse-chat" accessibilityLabel={t('versePanel.chatLabel')} />
+              </View>
+            ) : null}
+            {onCompare ? (
+              <View style={styles.aiCell}>
+                <Button title={t('versePanel.compareButton')} icon="compare" variant="secondary" onPress={onCompare} testID="verse-compare" accessibilityLabel={t('versePanel.compareLabel')} />
+              </View>
+            ) : null}
+          </View>
+        </>
+      ) : null}
+
+      {/* ── EXPORTAR ─────────────────────────────────────────────────── */}
+      <Button
+        title={t('versePanel.exportButton')}
+        variant="ghost"
+        icon="share"
+        onPress={onExport}
+        testID="notes-export"
+        style={styles.inlineBtn}
+      />
+
+      {/* ── REFERÊNCIAS CRUZADAS (F1.9) ──────────────────────────────── */}
+      <SectionLabel>{t('xref.section')}</SectionLabel>
+      {xrefLoading ? (
+        <ActivityIndicator color={colors.text} />
+      ) : xrefError ? (
+        <Text style={styles.error}>{xrefError}</Text>
+      ) : refs.length === 0 ? (
+        <Text style={styles.empty}>{t('xref.empty')}</Text>
+      ) : (
+        <View>
+          {refs.map((cr) => {
+            const verseLabel = formatVerses(cr.reference.verses);
+            const label = `${bookNameOf(cr.reference.book)} ${cr.reference.chapter}${verseLabel ? `:${verseLabel}` : ''}`;
+            return (
+              <ListRow
+                key={keyOf(cr.reference)}
+                label={label}
+                value={t('xref.votes', { count: String(cr.votes) })}
+                onPress={() => onSelectXref(cr.reference)}
+                testID={`xref-${keyOf(cr.reference)}`}
+                accessibilityLabel={label}
+              />
+            );
+          })}
+          {/* Atribuição CC-BY OBRIGATÓRIA (ADR-0016) — string EXATA. */}
+          <Text style={styles.attribution}>{XREF_ATTRIBUTION}</Text>
+        </View>
+      )}
+    </BottomSheet>
   );
 }
 
-function makeStyles(colors: ThemeColors) {
+function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
   return StyleSheet.create({
-    backdrop: { flex: 1 },
-    sheet: {
-      maxHeight: '80%',
-      backgroundColor: colors.background,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-      paddingBottom: 16,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.divider,
-    },
-    title: { fontSize: 16, fontWeight: '700', color: colors.text, flexShrink: 1 },
-    close: { fontSize: 14, fontWeight: '600', color: colors.accent, paddingLeft: 12 },
-    scroll: { padding: 16, gap: 8 },
-    sectionTitle: {
-      fontSize: 13,
-      fontWeight: '700',
-      color: colors.muted,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-      marginTop: 12,
-    },
     noteInput: {
       minHeight: 90,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 8,
-      padding: 12,
-      fontSize: 15,
+      borderRadius: radius.md,
+      padding: space.md,
+      ...type.body,
       color: colors.verseText,
       textAlignVertical: 'top',
     },
-    row: { flexDirection: 'row', gap: 8, marginTop: 8 },
-    btn: {
-      paddingHorizontal: 14,
-      paddingVertical: 9,
-      borderRadius: 8,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    btnPrimary: { backgroundColor: colors.chipActiveBg },
-    btnGhost: { borderWidth: 1, borderColor: colors.border },
-    btnExport: { borderWidth: 1, borderColor: colors.border, alignSelf: 'flex-start', marginTop: 8 },
-    btnAsk: { backgroundColor: colors.chipActiveBg, alignSelf: 'flex-start', marginTop: 12 },
-    btnDisabled: { backgroundColor: colors.divider, opacity: 0.6 },
-    btnText: { fontSize: 14, fontWeight: '600', color: colors.chipActiveText },
-    btnGhostText: { color: colors.accent },
-    swatches: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 },
+    row: { flexDirection: 'row', gap: space.sm, marginTop: space.sm },
+    inlineBtn: { alignSelf: 'flex-start', marginTop: space.sm },
+    swatches: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.sm },
     swatch: {
       width: 34,
       height: 34,
-      borderRadius: 17,
+      borderRadius: radius.pill,
       borderWidth: 1,
       borderColor: colors.border,
       alignItems: 'center',
       justifyContent: 'center',
     },
     swatchActive: { borderWidth: 2, borderColor: colors.accent },
-    swatchCheck: { fontSize: 16, fontWeight: '800', color: colors.text },
-    xrefRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingVertical: 10,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.divider,
-    },
-    xrefRef: { fontSize: 15, fontWeight: '600', color: colors.accent },
-    xrefVotes: { fontSize: 13, color: colors.muted },
-    empty: { fontSize: 14, color: colors.muted },
-    error: { fontSize: 14, color: colors.error },
-    attribution: { fontSize: 12, color: colors.muted, textAlign: 'center', paddingTop: 12 },
+    swatchCheck: { ...type.button, color: colors.text },
+    aiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.xs },
+    aiCell: { flexBasis: '47%', flexGrow: 1 },
+    empty: { ...type.body, color: colors.muted },
+    error: { ...type.body, color: colors.error, marginTop: space.sm },
+    attribution: { ...type.caption, color: colors.muted, textAlign: 'center', paddingTop: space.md },
   });
 }

@@ -270,6 +270,7 @@ export type MessageKey =
   | 'xref.empty'
   | 'xref.votes'
   | 'versePanel.noteSection'
+  | 'versePanel.aiSection'
   | 'versePanel.notePlaceholder'
   | 'versePanel.noteEditorLabel'
   | 'versePanel.saveNote'
@@ -608,6 +609,7 @@ const pt: Record<MessageKey, string> = {
   'xref.empty': 'Sem referências cruzadas para este versículo.',
   'xref.votes': '{count} votos',
   'versePanel.noteSection': 'Nota',
+  'versePanel.aiSection': 'Estudo com IA',
   'versePanel.notePlaceholder': 'Escreva uma nota (Markdown)…',
   'versePanel.noteEditorLabel': 'Editor de nota do versículo',
   'versePanel.saveNote': 'Salvar nota',
@@ -927,6 +929,7 @@ const en: Record<MessageKey, string> = {
   'xref.empty': 'No cross references for this verse.',
   'xref.votes': '{count} votes',
   'versePanel.noteSection': 'Note',
+  'versePanel.aiSection': 'AI study',
   'versePanel.notePlaceholder': 'Write a note (Markdown)…',
   'versePanel.noteEditorLabel': 'Verse note editor',
   'versePanel.saveNote': 'Save note',

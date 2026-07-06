@@ -3746,3 +3746,15 @@ Fim-de-jogo: UMA fonte da verdade (SQL, corpo de request, constantes, ranking/cl
 **Restrições preservadas.** Só apresentação/prefs; offline (mesmo KV da F5.2); anti-alucinação (texto VERBATIM do store — só re-estiliza, nunca toca o conteúdo); a11y embutida (kit). Core/mirror intocados. Verde: `tsc` + 31 testes web + `a11y-scan`/`a11y-modals` + `i18n`/`-coverage` + `readingprefs`; verificado no browser (SÉPIA + tamanho aplicados ao vivo).
 
 **Consequências.** (+) Leitura CUSTOMIZÁVEL (lacuna table-stakes fechada); a paleta sépia/`READING_PALETTES` sai da ociosidade; 1º consumo REAL do kit (`BottomSheet`/`Chip`/`IconButton`). (−) O chrome do leitor (header/picker) permanece no modo do app enquanto a superfície usa o tema de leitura — split INTENCIONAL (canvas temado sob nav do app); uma polonização futura pode unificar.
+
+## ADR-0068 — Superfície de IA sobre o kit: painéis em `<BottomSheet>` + primitivas anti-alucinação (`CitedText`/`InterpretationBlock`)
+
+- **Data:** 2026-07-06 · **Status:** EM ANDAMENTO (Fase 3; per-verse sheet ✓; Ask/Study/Chat/Compare/Xref em migração) · **Depende:** ADR-0066 (kit), ADR-0059 (seam de provedor BYOK), ADR-0008/0049 (anti-alucinação + a11y de modal).
+
+**Contexto.** Os 6 painéis de leitura repetiam `<Modal>`+backdrop+sheet+header, botões `btn*` e o contrato anti-alucinação (Escritura citada vs. interpretação) copiado em cada painel de IA.
+
+**Decisão.** Migrar os painéis para o `<BottomSheet>` do kit (a11y de modal DELEGADA e verificada à parte), `Button`/`Chip`/`SectionLabel`/`ListRow`, e — nos painéis de IA — `CitedText`/`InterpretationBlock` (a Escritura VERBATIM atrás da régua dourada, rotulada, vs. a interpretação do modelo). A LÓGICA (BYOK — chave nunca logada, streaming, provider seam da ADR-0059, atribuições CC-BY VERBATIM, testIDs, a11y) é PRESERVADA intacta — só a apresentação muda. **1ª landing:** `ReaderVersePanel` (nota / marcação / **grade 2×2 de ações de IA** / exportar / xrefs em `ListRow`) — dedup de ~90 linhas de boilerplate; ícones ainda são glifos temporários (ícones reais na Fase 5).
+
+**Restrições preservadas.** Anti-alucinação: texto do versículo VERBATIM do store; `CitedText`/`InterpretationBlock` separam visualmente cited vs. interp. BYOK e atribuições CC-BY intactas. Core/mirror intocados. Verde: `tsc` + `a11y-scan`/`a11y-modals` (delegação a `BottomSheet`) + `i18n`; verse sheet verificado no browser.
+
+**Consequências.** (+) Dedup dos 6 modais; o contrato anti-alucinação vira primitiva reutilizável; UI de estudo consistente. (−) Migração FASEADA (vários commits sob esta ADR); os painéis de IA (Ask/Study/Chat/Compare) seguem nos próximos commits.
