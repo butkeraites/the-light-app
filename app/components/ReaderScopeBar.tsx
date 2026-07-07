@@ -17,7 +17,7 @@ import { Button, Chip, Surface } from './ui';
 export function ReaderScopeBar({
   chunks,
   bookLabelOf,
-  chapterWhole,
+  chapterWhole = false,
   onToggleChapter,
   onRemove,
   onClear,
@@ -28,11 +28,13 @@ export function ReaderScopeBar({
   /** Nome de EXIBIÇÃO do livro (idioma da versão/UI) — do store, via listBooks. */
   bookLabelOf: (book: number) => string;
   /** O capítulo ATUAL já está inteiro no escopo (estado do chip "+ Capítulo"). */
-  chapterWhole: boolean;
-  onToggleChapter: () => void;
+  chapterWhole?: boolean;
+  /** Alterna o capítulo atual inteiro. Ausente (ex.: tela de busca) → o chip "+ Capítulo" some. */
+  onToggleChapter?: () => void;
   onRemove: (key: string) => void;
   onClear: () => void;
-  onDone: () => void;
+  /** Sai do modo seleção (leitor). Ausente (busca) → o botão "Concluir" some. */
+  onDone?: () => void;
   onStudy: () => void;
 }) {
   const { t } = useI18n();
@@ -51,7 +53,9 @@ export function ReaderScopeBar({
           {chunks.length > 0 ? (
             <Button title={t('scope.clear')} variant="ghost" onPress={onClear} testID="scope-clear" style={styles.smallBtn} />
           ) : null}
-          <Button title={t('scope.done')} variant="ghost" onPress={onDone} testID="scope-done" style={styles.smallBtn} />
+          {onDone ? (
+            <Button title={t('scope.done')} variant="ghost" onPress={onDone} testID="scope-done" style={styles.smallBtn} />
+          ) : null}
         </View>
       </View>
 
@@ -71,12 +75,14 @@ export function ReaderScopeBar({
             />
           );
         })}
-        <Chip
-          label={t('scope.addChapter')}
-          active={chapterWhole}
-          onPress={onToggleChapter}
-          testID="scope-add-chapter"
-        />
+        {onToggleChapter ? (
+          <Chip
+            label={t('scope.addChapter')}
+            active={chapterWhole}
+            onPress={onToggleChapter}
+            testID="scope-add-chapter"
+          />
+        ) : null}
       </ScrollView>
 
       <Button

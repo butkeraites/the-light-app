@@ -130,6 +130,7 @@ export type MessageKey =
   | 'scope.independentAnswers'
   | 'scope.preview'
   | 'a11y.scopeRemove'
+  | 'a11y.scopeAdd'
   | 'a11y.scopeVerse'
   | 'reading.title'
   | 'reading.size'
@@ -495,6 +496,7 @@ const pt: Record<MessageKey, string> = {
   'scope.independentAnswers': '{count} passagens · respostas independentes',
   'scope.preview': 'Passagem selecionada',
   'a11y.scopeRemove': 'Remover {ref} da seleção',
+  'a11y.scopeAdd': 'Adicionar {ref} à seleção de estudo',
   'a11y.scopeVerse': 'Manter pressionado um versículo para selecionar vários',
   'reading.title': 'Leitura',
   'reading.size': 'Tamanho do texto',
@@ -830,6 +832,7 @@ const en: Record<MessageKey, string> = {
   'scope.independentAnswers': '{count} passages · independent answers',
   'scope.preview': 'Selected passage',
   'a11y.scopeRemove': 'Remove {ref} from the selection',
+  'a11y.scopeAdd': 'Add {ref} to the study selection',
   'a11y.scopeVerse': 'Long-press a verse to select several',
   'reading.title': 'Reading',
   'reading.size': 'Text size',
