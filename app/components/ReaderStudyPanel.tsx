@@ -214,6 +214,13 @@ export function ReaderStudyPanel({
       // Provedor selecionado + chave BYOK (ou undefined p/ mock); modelo undefined → default do
       // core. O léxico é independente de tradução (sem `translation`). Ambas as chamadas leem do
       // STORE local verbatim (anti-alucinação): `passageText` + glosas do banco.
+      //
+      // ROBUSTEZ (regressão relatada): o ESTUDO (passagem + interpretação) é o conteúdo PRIMÁRIO;
+      // o LÉXICO é SUPLEMENTAR. Antes, o `Promise.all` acoplava os dois — se `lexicalEntries`
+      // falhasse (ex.: no web o asset do léxico não carrega → "no such table: original_tokens"),
+      // o estudo INTEIRO era descartado e o usuário via só um erro. Agora a falha do léxico é
+      // TOLERADA (→ null): o estudo aparece sem a seção de léxico. `deepStudy` falhar (provedor/
+      // rede) segue fatal — é o conteúdo principal — e cai no catch abaixo.
       const [study, lex] = await Promise.all([
         deepStudy(
           dbPath,
@@ -231,7 +238,7 @@ export function ReaderStudyPanel({
           researchBackend,
           researchKey,
         ),
-        lexicalEntries(dbPath, book, chapter, verse ?? undefined, lang, undefined),
+        lexicalEntries(dbPath, book, chapter, verse ?? undefined, lang, undefined).catch(() => null),
       ]);
       setResult(study);
       setLexicon(lex);
