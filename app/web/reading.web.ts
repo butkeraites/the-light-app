@@ -50,6 +50,8 @@ import type {
   Note,
   Highlight,
   AiAnswer,
+  AiAnswerMulti,
+  CitedPassage,
   StudyResultOut,
   StudySection,
   StudyCitation,
@@ -82,6 +84,8 @@ export type {
   Note,
   Highlight,
   AiAnswer,
+  AiAnswerMulti,
+  CitedPassage,
   StudyResultOut,
   StudySection,
   StudyCitation,
@@ -360,6 +364,44 @@ export async function askAnchored(
       defaultFetch,
       translation,
       reference,
+      question,
+      provider,
+      key,
+      model,
+      lang,
+    );
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * Estudo temático CONJUNTO no web sobre VÁRIOS trechos disjuntos: abre o store web e
+ * delega ao pipeline `askMultiAnchoredOnHandle` (wasm `ai-pure` + `fetch`). `_dbPath` é
+ * aceito por paridade com o nativo. O `AiAnswerMulti` traz N `citedPassages` (store,
+ * verbatim) SEPARADAS da `interpretation` (LLM) única que as tece.
+ */
+export async function askMultiAnchored(
+  _dbPath: string,
+  translation: string,
+  references: string[],
+  question: string,
+  provider: string,
+  key: string | undefined,
+  model: string | undefined,
+  lang: string,
+): Promise<AiAnswerMulti> {
+  const [{ openReadingDbWeb }, { askMultiAnchoredOnHandle }] = await Promise.all([
+    import('./sqlite-reading-opfs.web'),
+    import('./ai-anchored.web'),
+  ]);
+  const handle = await openReadingDbWeb();
+  try {
+    return await askMultiAnchoredOnHandle(
+      handle,
+      defaultFetch,
+      translation,
+      references,
       question,
       provider,
       key,
