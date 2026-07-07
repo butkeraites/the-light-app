@@ -380,7 +380,7 @@ function ActivePlanView(props: {
                   {t('plans.dayLabel', { day: i + 1 })}
                   {isToday ? ` · ${t('plans.today')}` : ''}
                 </Text>
-                <Text style={styles.dayLabel} numberOfLines={2}>
+                <Text style={[styles.dayLabel, isToday && styles.dayLabelToday]} numberOfLines={2}>
                   {day.label}
                 </Text>
               </View>
@@ -629,6 +629,9 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
     dayNumber: { ...type.caption, fontWeight: '600', color: colors.accent },
     dayNumberToday: { color: colors.chipActiveText },
     dayLabel: { ...type.body, color: colors.text },
+    // No "hoje" (fundo chipActiveBg), o rótulo (livro+capítulos) precisa da cor sobre-destaque,
+    // igual ao número — senão fica colors.text (escuro) sobre fundo escuro e some (Dia 1 "vazio").
+    dayLabelToday: { color: colors.chipActiveText },
     doneBadge: {
       paddingHorizontal: space.sm,
       paddingVertical: 3,
