@@ -4,12 +4,17 @@
 // rotas) para PERSISTIR ao navegar entre capítulos/livros — é o que permite juntar trechos de
 // lugares diferentes num escopo só. Exposto via `useSyncExternalStore` (sem Provider). Só estado
 // em memória + notificação; a lógica pura dos trechos vive em `studyScope.ts` (testável headless).
-// Offline-first: nada de rede/persistência aqui (o escopo é de sessão; persistir sessões é fase
-// posterior). Anti-alucinação: guarda só REFERÊNCIAS (book/chapter/verso) — nunca texto bíblico.
+// Fase 4b: a SESSÃO de escopo agora PERSISTE no KV de prefs OFFLINE (re-hidrata no boot, grava a
+// cada mudança de trechos) — offline-first, sem rede. Anti-alucinação: guarda só REFERÊNCIAS
+// (book/chapter/verso) — nunca texto bíblico.
 import { useSyncExternalStore } from 'react';
 
+import { getPref, removePref, setPref } from './prefs';
 import {
+  parseChunks,
   removeChunk as removeChunkPure,
+  serializeChunks,
+  STUDY_SCOPE_KEY,
   toggleVerse as toggleVersePure,
   toggleWholeChapter as toggleWholeChapterPure,
   type ScopeChunk,
@@ -19,11 +24,47 @@ export type ScopeState = { chunks: ScopeChunk[]; selecting: boolean };
 
 let state: ScopeState = { chunks: [], selecting: false };
 const listeners = new Set<() => void>();
+// `true` assim que o usuário MEXER nos trechos: a hidratação assíncrona não sobrescreve isso.
+let mutated = false;
+
+// Grava a sessão (só quando os trechos mudam). Escopo vazio → limpa a chave. Fire-and-forget:
+// falha de KV é tolerada (offline-first). `selecting` é UI efêmera e NÃO é persistido.
+function persistScope(chunks: ScopeChunk[]) {
+  void (async () => {
+    try {
+      if (chunks.length === 0) await removePref(STUDY_SCOPE_KEY);
+      else await setPref(STUDY_SCOPE_KEY, serializeChunks(chunks));
+    } catch {
+      /* tolerado */
+    }
+  })();
+}
 
 function set(next: ScopeState) {
+  const chunksChanged = next.chunks !== state.chunks;
   state = next;
+  if (chunksChanged) {
+    mutated = true;
+    persistScope(next.chunks);
+  }
   for (const l of listeners) l();
 }
+
+// Re-hidrata a última sessão no BOOT do módulo — a menos que o usuário já tenha mexido nos trechos
+// (aí a interação dele vence). Aplica direto (sem `set`) p/ não re-gravar o que acabou de ler.
+void (async () => {
+  let raw: string | null;
+  try {
+    raw = await getPref(STUDY_SCOPE_KEY);
+  } catch {
+    return; // KV indisponível → começa vazio (offline-first)
+  }
+  if (mutated) return;
+  const chunks = parseChunks(raw);
+  if (chunks.length === 0) return;
+  state = { ...state, chunks };
+  for (const l of listeners) l();
+})();
 function subscribe(l: () => void) {
   listeners.add(l);
   return () => listeners.delete(l);

@@ -90,7 +90,47 @@ assert.equal(S.isSingleChunk(c), false, '3 trechos ≠ único');
 c = S.removeChunk(c, '43:3:16-16');
 assert.deepEqual(keys(c), ['19:23:*-*', '45:8:1-1'], 'removeu João 3:16');
 
+// ── (8) SESSÃO: serialize/parse round-trip (Fase 4b) ─────────────────────────────────
+assert.equal(typeof S.STUDY_SCOPE_KEY, 'string', 'chave de KV exportada');
+c = [];
+c = S.toggleVerse(c, 43, 3, 16);
+c = S.toggleVerse(c, 43, 3, 17);
+c = S.toggleWholeChapter(c, 19, 23);
+c = S.toggleVerse(c, 45, 8, 1);
+const round = S.parseChunks(S.serializeChunks(c));
+assert.deepEqual(keys(round), keys(c), 'round-trip preserva os trechos');
+assert.deepEqual(round, c, 'round-trip preserva os campos (book/chapter/from/to)');
+// capítulo inteiro re-hidrata sem from/to
+assert.equal(round.find((x) => x.book === 19).from, undefined, 'capítulo inteiro sem from');
+
+// ── (9) parseChunks TOLERANTE a lixo (offline-first: nunca lança) ─────────────────────
+assert.deepEqual(S.parseChunks(null), [], 'null → []');
+assert.deepEqual(S.parseChunks(''), [], 'vazio → []');
+assert.deepEqual(S.parseChunks('não é json {'), [], 'json inválido → []');
+assert.deepEqual(S.parseChunks('{"book":43}'), [], 'objeto (não-array) → []');
+assert.deepEqual(S.parseChunks('42'), [], 'número → []');
+// itens inválidos são descartados; válidos sobrevivem
+const mixed = S.parseChunks(
+  JSON.stringify([
+    { book: 43, chapter: 3, from: 16, to: 18 }, // ok
+    { book: 0, chapter: 3 }, // book inválido → fora
+    { chapter: 3 }, // sem book → fora
+    { book: 45, chapter: 8, from: 5, to: 2 }, // faixa invertida → vira capítulo inteiro
+    null, // fora
+    { book: 19, chapter: 23 }, // capítulo inteiro ok
+  ]),
+);
+// parseChunks preserva a ORDEM de entrada (o que gravamos já vem ordenado do escopo).
+assert.deepEqual(keys(mixed), ['43:3:16-18', '45:8:*-*', '19:23:*-*'], 'só válidos, faixa ruim vira capítulo');
+// dedup por chave
+assert.deepEqual(
+  keys(S.parseChunks(JSON.stringify([{ book: 43, chapter: 3, from: 1, to: 1 }, { book: 43, chapter: 3, from: 1, to: 1 }]))),
+  ['43:3:1-1'],
+  'trechos duplicados são deduplicados',
+);
+
 console.log('PASS — Escopo de Estudo (studyScope) puro, headless:');
 console.log('  coalescência de versos contíguos; alternar verso (add/remove/re-coalesce); capítulo inteiro');
 console.log('  versesForChapter (whole vs conjunto); referência EN (parse_reference: Single/Range/WholeChapter)');
 console.log('  rótulo de exibição; ordenação cross-capítulo/livro; remoção por chave; contagens');
+console.log('  SESSÃO (Fase 4b): serialize/parse round-trip; parseChunks tolerante a lixo + dedup');

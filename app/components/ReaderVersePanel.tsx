@@ -70,6 +70,8 @@ export function ReaderVersePanel({
   onStudy,
   onChat,
   onCompare,
+  onAddToScope,
+  inScope = false,
   onChanged,
   onClose,
 }: {
@@ -97,6 +99,10 @@ export function ReaderVersePanel({
   onChat?: () => void;
   /** Abre a comparação multi-IA (N provedores lado a lado) desta passagem (F3.7). Opcional. */
   onCompare?: () => void;
+  /** Fase 4b: adiciona/remove ESTE versículo do Escopo de Estudo (montar estudo multi-trecho). */
+  onAddToScope?: () => void;
+  /** Este versículo já está no Escopo (o botão vira "No estudo ✓"). */
+  inScope?: boolean;
   /** Avisa a tela após criar/editar/remover nota ou highlight (re-lista indicadores). */
   onChanged: () => void;
   onClose: () => void;
@@ -289,6 +295,18 @@ export function ReaderVersePanel({
             ) : null}
           </View>
         </>
+      ) : null}
+
+      {/* ── ADICIONAR AO ESTUDO (Fase 4b: montar escopo multi-trecho a partir daqui) ── */}
+      {onAddToScope ? (
+        <Button
+          title={t(inScope ? 'versePanel.inScope' : 'versePanel.addToScope')}
+          variant={inScope ? 'secondary' : 'ghost'}
+          icon={inScope ? 'check' : 'plus'}
+          onPress={onAddToScope}
+          testID="verse-add-scope"
+          style={styles.inlineBtn}
+        />
       ) : null}
 
       {/* ── EXPORTAR ─────────────────────────────────────────────────── */}
