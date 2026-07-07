@@ -1,17 +1,18 @@
 // app/components/ReaderStudyPanel.tsx — F3.5 (ADR-0027; molde ReaderAskPanel F2.5 +
-// atribuição CC-BY do ReaderXrefPanel F1.9)
+// atribuição CC-BY do ReaderXrefPanel F1.9) · ADR-0068 (kit "Vigil")
 //
 // Painel de ESTUDO PROFUNDO ANCORADO (bottom sheet, molde do `ReaderAskPanel` da F2.5)
 // aberto pela ação "Estudo (IA)" do painel por-versículo. A partir de uma passagem
 // selecionada, o usuário escolhe MODO × LENTE (denominação) × PROFUNDIDADE e recebe um
 // estudo estruturado com ANTI-ALUCINAÇÃO VISÍVEL: a `passageText` (texto bíblico,
-// VERBATIM do store) é exibida SEPARADA e ROTULADA, distinta da `interpretation` (LLM);
-// mais `sections`/`citations`/`warnings` e o LÉXICO Strong inline (`lexicalEntries`).
+// VERBATIM do store) é exibida SEPARADA e ROTULADA (primitiva CitedText), distinta da
+// `interpretation` (LLM, na InterpretationBlock); mais `sections`/`citations`/`warnings`
+// e o LÉXICO Strong inline (`lexicalEntries`).
 //
 // A UI SÓ chama a fronteira (`deepStudy`/`lexicalEntries`, F3.3/F3.2 via JSI) e APRESENTA
 // o retorno: NENHUM prompt/RAG/aparato/SQL/JOIN de léxico é reimplementado em TS (uma
 // fonte da verdade — o texto bíblico, o léxico e as citações vêm do Rust/core). NENHUM
-// texto/glosa/citação é hardcoded. Cores via TOKENS de tema (`useTheme`).
+// texto/glosa/citação é hardcoded. Cores/tipografia via TOKENS de tema (`useTheme`).
 //
 // ATRIBUIÇÃO STEP CC-BY (ADR-0026, OBRIGATÓRIA): as `VerifiedLexiconOut.sources` (a
 // atribuição verbatim de `scholarly_sources.attribution`) são exibidas SEMPRE que o
@@ -25,25 +26,15 @@
 // store local, verbatim; o LLM só interpreta. (F6.7 des-mocka; transporte/core inalterados.)
 import { useEffect, useMemo, useState } from 'react';
 import { router } from 'expo-router';
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  ScrollView,
-  Share,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { errMessage } from '../lib/errMessage';
 import { useI18n, type MessageKey } from '../lib/i18n';
 import { buildStudyExport } from '../lib/studyExport';
-import { useReaderModalA11y } from '../lib/useReaderModalA11y';
-import { useTheme, type ThemeColors } from '../lib/theme';
+import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { AiProviderNotice } from './AiProviderNotice';
 import { ProviderChips, useProviderSelection } from './ProviderPicker';
+import { BottomSheet, Button, Chip, CitedText, InterpretationBlock, SectionLabel } from './ui';
 import {
   deepStudy,
   lexicalEntries,
@@ -103,6 +94,12 @@ const DEPTH_OPTIONS: readonly Option<StudyDepth>[] = [
   { value: StudyDepth.Exegetical, key: 'Exegetical', labelKey: 'study.depthExegetical' },
   { value: StudyDepth.WordStudy, key: 'WordStudy', labelKey: 'study.depthWordStudy' },
 ];
+// Opções do seletor de pesquisa web (chrome traduzível; `value`/testID estáveis).
+const WEB_OPTIONS: readonly Option<WebBackend>[] = [
+  { value: 'off', key: 'off', labelKey: 'study.webOff' },
+  { value: 'wikipedia', key: 'wikipedia', labelKey: 'study.webWikipedia' },
+  { value: 'tavily', key: 'tavily', labelKey: 'study.webTavily' },
+];
 
 /** Linha legível de uma entrada léxica (do RETORNO real; nada hardcoded). */
 function lexLine(e: LexEntry): string {
@@ -140,11 +137,10 @@ export function ReaderStudyPanel({
   lang: string;
   onClose: () => void;
 }) {
-  const { colors } = useTheme();
+  const theme = useTheme();
+  const { colors } = theme;
   const { t } = useI18n();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
-  // F5.21: ao abrir, foco do leitor de tela no título (ordem lógica + anúncio de abertura).
-  const titleRef = useReaderModalA11y(visible);
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   // Seleção de provedor + derivações BYOK (seam compartilhado — ADR-0059): estado do provedor,
   // checagem do cofre, isMock/needsKey/showNoProviderNotice e loadKey (lê a chave sob demanda,
@@ -271,467 +267,324 @@ export function ReaderStudyPanel({
   const showAttribution = result != null || (lexicon != null && lexicon.entries.length > 0);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable
-        style={styles.backdrop}
-        onPress={onClose}
-        testID="study-panel-backdrop"
-        accessibilityRole="button"
-        accessibilityLabel={t('ai.close')}
+    <BottomSheet
+      visible={visible}
+      onClose={onClose}
+      title={t('study.title', { source: sourceLabel })}
+      testIDPrefix="study-panel"
+      maxHeightPercent={88}
+    >
+      {/* ── AVISO "sem provedor de IA" (F5.37) ────────────────────────────
+          Estudo profundo usa IA; sem nenhum provedor configurado, convite CLARO p/
+          configurar (link à tela Ajustes), não um erro cru. Os recursos offline seguem
+          sem chave; o provedor offline `mock` ainda produz o estudo abaixo. */}
+      {showNoProviderNotice ? <AiProviderNotice onConfigure={onConfigureProvider} /> : null}
+
+      {/* ── PROVEDOR (F6.7) ───────────────────────────────────────────────
+          Seletor mock + BYOK reais. `mock` = default OFFLINE (prova headless). Provedor
+          real → chave BYOK lida SOB DEMANDA em onStudy; sem chave → aviso + CTA p/ Ajustes. */}
+      <SectionLabel>{t('ask.providerSection')}</SectionLabel>
+      <ProviderChips
+        options={options}
+        provider={provider}
+        providersWithKey={providersWithKey}
+        disabled={busy}
+        testIdPrefix="study"
+        onSelect={setProvider}
       />
-      <View style={styles.sheet} accessibilityViewIsModal>
-        <View style={styles.header}>
-          <Text ref={titleRef} accessibilityRole="header" style={styles.title}>
-            {t('study.title', { source: sourceLabel })}
-          </Text>
-          <Pressable onPress={onClose} testID="study-panel-close" accessibilityRole="button" hitSlop={12}>
-            <Text style={styles.close}>{t('ai.close')}</Text>
-          </Pressable>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          {/* ── AVISO "sem provedor de IA" (F5.37) ────────────────────────────
-              Estudo profundo usa IA; sem nenhum provedor configurado, convite CLARO p/
-              configurar (link à tela Sobre), não um erro cru. Os recursos offline seguem
-              sem chave; o provedor offline `mock` ainda produz o estudo abaixo. */}
-          {showNoProviderNotice ? <AiProviderNotice onConfigure={onConfigureProvider} /> : null}
-
-          {/* ── PROVEDOR (F6.7) ───────────────────────────────────────────────
-              Seletor mock + BYOK reais (molde ReaderAskPanel). `mock` = default OFFLINE
-              (sem chave/rede, prova headless). Provedor real → a chave BYOK é lida SOB
-              DEMANDA do cofre em onStudy; sem chave → aviso claro + CTA p/ Ajustes. */}
-          <Text style={styles.sectionTitle}>{t('ask.providerSection')}</Text>
-          <ProviderChips
-            options={options}
-            provider={provider}
-            providersWithKey={providersWithKey}
-            disabled={busy}
-            testIdPrefix="study"
-            onSelect={setProvider}
+      {/* Provedor real sem chave → erro claro + CTA p/ Ajustes (não trava; envio desabilitado). */}
+      {needsKey ? (
+        <View style={styles.needKeyBlock} testID="study-provider-needkey">
+          <Text style={styles.error}>{t('ask.needKeyError', { provider })}</Text>
+          <Button
+            title={t('ai.noProviderCta')}
+            variant="secondary"
+            onPress={onConfigureProvider}
+            testID="study-provider-configure"
+            accessibilityLabel={t('a11y.aiConfigure')}
+            style={styles.actionBtn}
           />
-          {/* Provedor real sem chave → erro claro + CTA p/ Ajustes (não trava; envio desabilitado). */}
-          {needsKey ? (
-            <View style={styles.needKeyBlock} testID="study-provider-needkey">
-              <Text style={styles.error}>{t('ask.needKeyError', { provider })}</Text>
-              <Pressable
-                style={styles.cta}
-                onPress={onConfigureProvider}
-                testID="study-provider-configure"
-                accessibilityRole="button"
-                accessibilityLabel={t('a11y.aiConfigure')}
-              >
-                <Text style={styles.ctaText}>{t('ai.noProviderCta')}</Text>
-              </Pressable>
-            </View>
-          ) : null}
+        </View>
+      ) : null}
 
-          {/* ── MODO ──────────────────────────────────────────────────────── */}
-          <Text style={styles.sectionTitle}>{t('study.modeSection')}</Text>
-          <View style={styles.chips}>
-            {MODE_OPTIONS.map((o) => {
-              const active = mode === o.value;
-              return (
-                <Pressable
-                  key={o.key}
-                  style={[styles.chip, active ? styles.chipActive : null]}
-                  onPress={() => setMode(o.value)}
-                  disabled={busy}
-                  hitSlop={{ top: 8, bottom: 8 }}
-                  testID={`study-mode-${o.key}`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                >
-                  <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>
-                    {t(o.labelKey)}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          {/* ── LENTE (denominação) ───────────────────────────────────────── */}
-          <Text style={styles.sectionTitle}>{t('study.lensSection')}</Text>
-          <View style={styles.chips}>
-            {LENS_OPTIONS.map((o) => {
-              const active = lens === o.value;
-              return (
-                <Pressable
-                  key={o.key}
-                  style={[styles.chip, active ? styles.chipActive : null]}
-                  onPress={() => setLens(o.value)}
-                  disabled={busy}
-                  hitSlop={{ top: 8, bottom: 8 }}
-                  testID={`study-lens-${o.key}`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                >
-                  <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>
-                    {t(o.labelKey)}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          {/* ── PROFUNDIDADE ──────────────────────────────────────────────── */}
-          <Text style={styles.sectionTitle}>{t('study.depthSection')}</Text>
-          <View style={styles.chips}>
-            {DEPTH_OPTIONS.map((o) => {
-              const active = depth === o.value;
-              return (
-                <Pressable
-                  key={o.key}
-                  style={[styles.chip, active ? styles.chipActive : null]}
-                  onPress={() => setDepth(o.value)}
-                  disabled={busy}
-                  hitSlop={{ top: 8, bottom: 8 }}
-                  testID={`study-depth-${o.key}`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                >
-                  <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>
-                    {t(o.labelKey)}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          {/* ── PESQUISA WEB (opt-in) — ADR-0028/ADR-0032/ADR-0035 ───────────────
-              Padrão DESLIGADO. Quando ligada, é rede além do LLM e o estudo Acadêmico ganha
-              citações [W:n] das URLs (montadas pelo Rust `ai-pure`, NUNCA pelo modelo):
-                • Wikipedia — KEYLESS (sem chave/segredo).
-                • Tavily    — BYOK: a chave é SESSION-ONLY (perdida no reload, nunca persistida/
-                  logada) e vai SÓ no CORPO do POST. Aviso de privacidade/atribuição abaixo. */}
-          <Text style={styles.sectionTitle}>{t('study.webSection')}</Text>
-          <View style={styles.chips}>
-            {(
-              [
-                { value: 'off', key: 'off', labelKey: 'study.webOff' },
-                { value: 'wikipedia', key: 'wikipedia', labelKey: 'study.webWikipedia' },
-                { value: 'tavily', key: 'tavily', labelKey: 'study.webTavily' },
-              ] as const
-            ).map((o) => {
-              const active = webBackend === o.value;
-              return (
-                <Pressable
-                  key={o.key}
-                  style={[styles.chip, active ? styles.chipActive : null]}
-                  onPress={() => setWebBackend(o.value)}
-                  disabled={busy}
-                  hitSlop={{ top: 8, bottom: 8 }}
-                  testID={`study-web-research-${o.key}`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                >
-                  <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>
-                    {t(o.labelKey)}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          {webBackend === 'wikipedia' ? (
-            <Text style={styles.hint} testID="study-web-research-privacy">
-              {t('study.wikipediaPrivacy')}
-            </Text>
-          ) : null}
-          {webBackend === 'tavily' ? (
-            <>
-              <TextInput
-                style={styles.keyInput}
-                value={tavilyKey}
-                onChangeText={setTavilyKey}
-                placeholder={t('study.tavilyKeyPlaceholder')}
-                placeholderTextColor={colors.muted}
-                secureTextEntry
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={!busy}
-                testID="study-web-research-tavily-key"
-                accessibilityLabel={t('a11y.tavilyKey')}
-              />
-              <Text style={styles.hint} testID="study-web-research-privacy">
-                {t('study.tavilyPrivacy')}
-              </Text>
-            </>
-          ) : null}
-
-          {/* Nota do provedor OFFLINE `mock` — só quando ele está selecionado (F6.7). */}
-          {isMock ? <Text style={styles.hint}>{t('ai.mockProviderNote')}</Text> : null}
-
-          <Pressable
-            style={[styles.btn, studyDisabled ? styles.btnDisabled : styles.btnPrimary]}
-            onPress={onStudy}
-            disabled={studyDisabled}
-            testID="study-submit"
-            accessibilityRole="button"
-          >
-            {busy ? (
-              <ActivityIndicator color={colors.chipActiveText} />
-            ) : (
-              <Text style={styles.btnText}>{t('study.submit')}</Text>
-            )}
-          </Pressable>
-
-          {/* ── CARREGANDO (UX do dado ON-DEMAND) — F5.15 (ADR-0044) ──────────
-              O léxico (~9 MB) foi SEPARADO do caminho de leitura: só "desce"
-              (lexicon-sample.sqlite, asset local — sem rede externa) quando o estudo/
-              léxico roda. Este indicador torna a deferência HONESTA na 1ª abertura;
-              nas próximas o léxico já está em OPFS (local, instantâneo). */}
-          {busy ? (
-            <View style={styles.loadingRow} testID="study-loading-lexicon">
-              <ActivityIndicator color={colors.muted} />
-              <Text style={styles.loadingText}>{t('study.loadingLexicon')}</Text>
-            </View>
-          ) : null}
-
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-
-          {/* ── PASSAGEM (texto bíblico, verbatim do store) ───────────────────
-              Anti-alucinação VISÍVEL: a `passageText` vem do RETORNO real (store),
-              rotulada como texto bíblico — NUNCA como saída do LLM. */}
-          {result ? (
-            <View style={styles.passageBlock}>
-              <Text style={styles.sectionTitle}>{t('ai.citedTitle')}</Text>
-              <Text style={styles.passageText} testID="study-passage-text">
-                {result.passageText}
-              </Text>
-            </View>
-          ) : null}
-
-          {/* ── INTERPRETAÇÃO (IA) ────────────────────────────────────────────
-              Rótulo DISTINTO do texto bíblico. É a saída do modelo (mock), separada. */}
-          {result ? (
-            <View style={styles.interpBlock}>
-              <Text style={styles.sectionTitle}>{t('ai.interpTitle')}</Text>
-              <Text style={styles.interpText} testID="study-interpretation">
-                {result.interpretation}
-              </Text>
-              {/* Seções estruturadas (fatiadas por `## ` pelo core), quando houver. */}
-              {result.sections.map((s, i) => (
-                <View key={`${s.heading}-${i}`} style={styles.section}>
-                  <Text style={styles.sectionHeading}>{s.heading}</Text>
-                  <Text style={styles.interpText}>{s.body}</Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-
-          {/* ── AVISOS de verificação (Strong/[W:n] fora do acervo) ─────────── */}
-          {result && result.warnings.length > 0 ? (
-            <View style={styles.warnBlock} testID="study-warnings">
-              <Text style={styles.sectionTitle}>{t('study.warnings')}</Text>
-              {result.warnings.map((w, i) => (
-                <Text key={i} style={styles.warnText}>
-                  ⚠ {w}
-                </Text>
-              ))}
-            </View>
-          ) : null}
-
-          {/* ── CITAÇÕES verificáveis (do banco/URLs — nunca do modelo) ─────── */}
-          {result && result.citations.length > 0 ? (
-            <View style={styles.citeBlock} testID="study-citations">
-              <Text style={styles.sectionTitle}>{t('study.citations')}</Text>
-              {result.citations.map((c, i) => (
-                <View key={`${c.kind}-${c.key}-${i}`} style={styles.citeRow}>
-                  <Text style={styles.citeText}>
-                    [{c.kind}:{c.key}]
-                    {c.title ? ` ${c.title}` : ''}
-                    {c.license ? ` · ${c.license}` : ''}
-                  </Text>
-                  {c.attribution ? (
-                    <Text style={styles.attribution}>{c.attribution}</Text>
-                  ) : null}
-                </View>
-              ))}
-            </View>
-          ) : null}
-
-          {/* ── LÉXICO Strong inline (verbatim do léxico local verificado) ────
-              Anti-alucinação: Strong/lema/translit/glosa vêm SÓ do banco (STEP Bible /
-              TBESH–TBESG), nunca do modelo. */}
-          {lexicon && lexicon.entries.length > 0 ? (
-            <View style={styles.lexBlock} testID="study-lexicon">
-              <Text style={styles.sectionTitle}>{t('study.lexicon')}</Text>
-              {lexicon.entries.map((e) => (
-                <View key={e.strongs} style={styles.lexRow}>
-                  <Text style={styles.lexText}>{lexLine(e)}</Text>
-                  <Text style={styles.lexOcc}>
-                    {e.testament} · {e.occurrences}×
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-
-          {/* ── ATRIBUIÇÃO STEP CC-BY (ADR-0026, OBRIGATÓRIA) ────────────────
-              Exibida SEMPRE que o léxico/estudo aparece (requisito de licença, molde do
-              xref/ADR-0016). Vem das `sources` REAIS do retorno (verbatim do banco). */}
-          {showAttribution ? (
-            <View style={styles.attributionBlock} testID="study-attribution">
-              {attributionLines.map((s, i) => (
-                <Text key={i} style={styles.attribution}>
-                  {s}
-                </Text>
-              ))}
-            </View>
-          ) : null}
-
-          {/* ── PROVEDOR/MODELO + DISCLAIMER (anti-alucinação) ──────────────── */}
-          {result ? (
-            <View style={styles.metaBlock}>
-              <Text style={styles.metaText} testID="study-meta">
-                {t('ai.meta', { provider: result.provider, model: result.model })}
-              </Text>
-              <Text style={styles.disclaimer}>{t('study.disclaimer')}</Text>
-            </View>
-          ) : null}
-
-          {/* ── EXPORTAÇÃO ACADÊMICA (F3.8) ──────────────────────────────────
-              Markdown SBL (do core) + sidecar de citações, compartilhados pelo Share
-              nativo (molde F1.11). Habilitado quando há resultado. */}
-          {result ? (
-            <>
-              <Pressable
-                style={[styles.btn, styles.btnPrimary]}
-                onPress={onExportAcademic}
-                testID="study-export-academic"
-                accessibilityRole="button"
-              >
-                <Text style={styles.btnText}>{t('study.exportAcademic')}</Text>
-              </Pressable>
-              {exportError ? <Text style={styles.error}>{exportError}</Text> : null}
-            </>
-          ) : null}
-        </ScrollView>
+      {/* ── MODO ──────────────────────────────────────────────────────── */}
+      <SectionLabel>{t('study.modeSection')}</SectionLabel>
+      <View style={styles.chips}>
+        {MODE_OPTIONS.map((o) => (
+          <Chip
+            key={o.key}
+            label={t(o.labelKey)}
+            active={mode === o.value}
+            onPress={() => setMode(o.value)}
+            disabled={busy}
+            testID={`study-mode-${o.key}`}
+          />
+        ))}
       </View>
-    </Modal>
+
+      {/* ── LENTE (denominação) ───────────────────────────────────────── */}
+      <SectionLabel>{t('study.lensSection')}</SectionLabel>
+      <View style={styles.chips}>
+        {LENS_OPTIONS.map((o) => (
+          <Chip
+            key={o.key}
+            label={t(o.labelKey)}
+            active={lens === o.value}
+            onPress={() => setLens(o.value)}
+            disabled={busy}
+            testID={`study-lens-${o.key}`}
+          />
+        ))}
+      </View>
+
+      {/* ── PROFUNDIDADE ──────────────────────────────────────────────── */}
+      <SectionLabel>{t('study.depthSection')}</SectionLabel>
+      <View style={styles.chips}>
+        {DEPTH_OPTIONS.map((o) => (
+          <Chip
+            key={o.key}
+            label={t(o.labelKey)}
+            active={depth === o.value}
+            onPress={() => setDepth(o.value)}
+            disabled={busy}
+            testID={`study-depth-${o.key}`}
+          />
+        ))}
+      </View>
+
+      {/* ── PESQUISA WEB (opt-in) — ADR-0028/ADR-0032/ADR-0035 ───────────────
+          Padrão DESLIGADO. Quando ligada, é rede além do LLM e o estudo Acadêmico ganha
+          citações [W:n] das URLs (montadas pelo Rust `ai-pure`, NUNCA pelo modelo):
+            • Wikipedia — KEYLESS (sem chave/segredo).
+            • Tavily    — BYOK: a chave é SESSION-ONLY (perdida no reload, nunca persistida/
+              logada) e vai SÓ no CORPO do POST. Aviso de privacidade/atribuição abaixo. */}
+      <SectionLabel>{t('study.webSection')}</SectionLabel>
+      <View style={styles.chips}>
+        {WEB_OPTIONS.map((o) => (
+          <Chip
+            key={o.key}
+            label={t(o.labelKey)}
+            active={webBackend === o.value}
+            onPress={() => setWebBackend(o.value)}
+            disabled={busy}
+            testID={`study-web-research-${o.key}`}
+          />
+        ))}
+      </View>
+      {webBackend === 'wikipedia' ? (
+        <Text style={styles.hint} testID="study-web-research-privacy">
+          {t('study.wikipediaPrivacy')}
+        </Text>
+      ) : null}
+      {webBackend === 'tavily' ? (
+        <>
+          <TextInput
+            style={styles.keyInput}
+            value={tavilyKey}
+            onChangeText={setTavilyKey}
+            placeholder={t('study.tavilyKeyPlaceholder')}
+            placeholderTextColor={colors.muted}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!busy}
+            testID="study-web-research-tavily-key"
+            accessibilityLabel={t('a11y.tavilyKey')}
+          />
+          <Text style={styles.hint} testID="study-web-research-privacy">
+            {t('study.tavilyPrivacy')}
+          </Text>
+        </>
+      ) : null}
+
+      {/* Nota do provedor OFFLINE `mock` — só quando ele está selecionado (F6.7). */}
+      {isMock ? <Text style={styles.hint}>{t('ai.mockProviderNote')}</Text> : null}
+
+      <Button
+        title={t('study.submit')}
+        onPress={onStudy}
+        loading={busy}
+        disabled={studyDisabled}
+        testID="study-submit"
+        style={styles.actionBtn}
+      />
+
+      {/* ── CARREGANDO (UX do dado ON-DEMAND) — F5.15 (ADR-0044) ──────────
+          O léxico (~9 MB) foi SEPARADO do caminho de leitura: só "desce" (lexicon-sample.
+          sqlite, asset local — sem rede externa) quando o estudo/léxico roda. Este indicador
+          torna a deferência HONESTA na 1ª abertura; nas próximas já está em OPFS (local). */}
+      {busy ? (
+        <View style={styles.loadingRow} testID="study-loading-lexicon">
+          <ActivityIndicator color={colors.muted} />
+          <Text style={styles.loadingText}>{t('study.loadingLexicon')}</Text>
+        </View>
+      ) : null}
+
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+
+      {/* ── PASSAGEM (texto bíblico, verbatim do store) — primitiva CitedText ──
+          Anti-alucinação VISÍVEL: a `passageText` vem do RETORNO real (store), atrás da
+          régua dourada e rotulada como Escritura — NUNCA como saída do LLM. */}
+      {result ? (
+        <CitedText text={result.passageText} label={t('ai.citedTitle')} testID="study-passage-text" />
+      ) : null}
+
+      {/* ── INTERPRETAÇÃO (IA) — InterpretationBlock, rótulo DISTINTO da Escritura ──
+          Saída do modelo (mock) + seções estruturadas (fatiadas por `## ` pelo core). */}
+      {result ? (
+        <InterpretationBlock label={t('ai.interpTitle')}>
+          <Text style={styles.interpText} testID="study-interpretation">
+            {result.interpretation}
+          </Text>
+          {result.sections.map((s, i) => (
+            <View key={`${s.heading}-${i}`} style={styles.section}>
+              <Text style={styles.sectionHeading}>{s.heading}</Text>
+              <Text style={styles.interpText}>{s.body}</Text>
+            </View>
+          ))}
+        </InterpretationBlock>
+      ) : null}
+
+      {/* ── AVISOS de verificação (Strong/[W:n] fora do acervo) ─────────── */}
+      {result && result.warnings.length > 0 ? (
+        <View style={styles.warnBlock} testID="study-warnings">
+          <SectionLabel>{t('study.warnings')}</SectionLabel>
+          {result.warnings.map((w, i) => (
+            <Text key={i} style={styles.warnText}>
+              ⚠ {w}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
+      {/* ── CITAÇÕES verificáveis (do banco/URLs — nunca do modelo) ─────── */}
+      {result && result.citations.length > 0 ? (
+        <View style={styles.citeBlock} testID="study-citations">
+          <SectionLabel>{t('study.citations')}</SectionLabel>
+          {result.citations.map((c, i) => (
+            <View key={`${c.kind}-${c.key}-${i}`} style={styles.citeRow}>
+              <Text style={styles.citeText}>
+                [{c.kind}:{c.key}]
+                {c.title ? ` ${c.title}` : ''}
+                {c.license ? ` · ${c.license}` : ''}
+              </Text>
+              {c.attribution ? <Text style={styles.attribution}>{c.attribution}</Text> : null}
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {/* ── LÉXICO Strong inline (verbatim do léxico local verificado) ────
+          Anti-alucinação: Strong/lema/translit/glosa vêm SÓ do banco (STEP Bible /
+          TBESH–TBESG), nunca do modelo. */}
+      {lexicon && lexicon.entries.length > 0 ? (
+        <View style={styles.lexBlock} testID="study-lexicon">
+          <SectionLabel>{t('study.lexicon')}</SectionLabel>
+          {lexicon.entries.map((e) => (
+            <View key={e.strongs} style={styles.lexRow}>
+              <Text style={styles.lexText}>{lexLine(e)}</Text>
+              <Text style={styles.lexOcc}>
+                {e.testament} · {e.occurrences}×
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {/* ── ATRIBUIÇÃO STEP CC-BY (ADR-0026, OBRIGATÓRIA) ────────────────
+          Exibida SEMPRE que o léxico/estudo aparece (requisito de licença, molde do
+          xref/ADR-0016). Vem das `sources` REAIS do retorno (verbatim do banco). */}
+      {showAttribution ? (
+        <View style={styles.attributionBlock} testID="study-attribution">
+          {attributionLines.map((s, i) => (
+            <Text key={i} style={styles.attribution}>
+              {s}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
+      {/* ── PROVEDOR/MODELO + DISCLAIMER (anti-alucinação) ──────────────── */}
+      {result ? (
+        <View style={styles.metaBlock}>
+          <Text style={styles.metaText} testID="study-meta">
+            {t('ai.meta', { provider: result.provider, model: result.model })}
+          </Text>
+          <Text style={styles.disclaimer}>{t('study.disclaimer')}</Text>
+        </View>
+      ) : null}
+
+      {/* ── EXPORTAÇÃO ACADÊMICA (F3.8) ──────────────────────────────────
+          Markdown SBL (do core) + sidecar de citações, compartilhados pelo Share
+          nativo (molde F1.11). Habilitado quando há resultado. */}
+      {result ? (
+        <>
+          <Button
+            title={t('study.exportAcademic')}
+            onPress={onExportAcademic}
+            testID="study-export-academic"
+            style={styles.actionBtn}
+          />
+          {exportError ? <Text style={styles.error}>{exportError}</Text> : null}
+        </>
+      ) : null}
+    </BottomSheet>
   );
 }
 
-function makeStyles(colors: ThemeColors) {
+function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
   return StyleSheet.create({
-    backdrop: { flex: 1 },
-    sheet: {
-      maxHeight: '88%',
-      backgroundColor: colors.background,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-      paddingBottom: 16,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.divider,
-    },
-    title: { fontSize: 16, fontWeight: '700', color: colors.text, flexShrink: 1 },
-    close: { fontSize: 14, fontWeight: '600', color: colors.accent, paddingLeft: 12 },
-    scroll: { padding: 16, gap: 8 },
-    sectionTitle: {
-      fontSize: 13,
-      fontWeight: '700',
-      color: colors.muted,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-      marginTop: 12,
-    },
-    chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
-    chip: {
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    chipActive: { backgroundColor: colors.chipActiveBg, borderColor: colors.chipActiveBg },
-    chipText: { fontSize: 13, fontWeight: '600', color: colors.chipText },
-    chipTextActive: { color: colors.chipActiveText },
-    // Seletor de PROVEDOR: chips agora em `<ProviderChips>` (ProviderPicker, ADR-0059) — donos
-    // dos próprios estilos. As chaves `chips`/`chip*` abaixo são de mode/lens/depth/web (distintas).
-    needKeyBlock: { marginTop: 8, gap: 6 },
-    cta: {
-      alignSelf: 'flex-start',
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      borderRadius: 8,
-      backgroundColor: colors.chipActiveBg,
-    },
-    ctaText: { fontSize: 14, fontWeight: '700', color: colors.chipActiveText },
-    hint: { fontSize: 12, color: colors.muted, marginTop: 10, fontStyle: 'italic' },
+    // Folha/cabeçalho no <BottomSheet>; chips (mode/lens/depth/web) na <Chip> do kit; Escritura/
+    // interpretação em CitedText/InterpretationBlock; botões em <Button>. Aqui: layout dos grupos
+    // de chips, inputs, e os blocos de aparato (avisos/citações/léxico/atribuição/meta).
+    chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.xs },
+    needKeyBlock: { marginTop: space.sm, gap: space.xs },
+    actionBtn: { marginTop: space.md },
+    hint: { ...type.caption, color: colors.muted, marginTop: space.sm, fontStyle: 'italic' },
     keyInput: {
-      marginTop: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 9,
-      borderRadius: 8,
+      marginTop: space.sm,
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+      borderRadius: radius.md,
       borderWidth: 1,
       borderColor: colors.border,
+      ...type.body,
       fontSize: 14,
       color: colors.text,
       backgroundColor: colors.background,
     },
-    btn: {
-      paddingHorizontal: 14,
-      paddingVertical: 11,
-      borderRadius: 8,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginTop: 12,
-    },
-    btnPrimary: { backgroundColor: colors.chipActiveBg },
-    btnDisabled: { backgroundColor: colors.divider, opacity: 0.6 },
-    btnText: { fontSize: 15, fontWeight: '700', color: colors.chipActiveText },
-    loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
-    loadingText: { fontSize: 13, color: colors.muted, flexShrink: 1 },
-    passageBlock: {
-      marginTop: 14,
-      borderLeftWidth: 3,
-      borderLeftColor: colors.accent,
-      paddingLeft: 12,
-    },
-    passageText: { fontSize: 15, lineHeight: 22, color: colors.verseText, marginTop: 4 },
-    interpBlock: {
-      marginTop: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 8,
-      padding: 12,
-    },
-    interpText: { fontSize: 15, lineHeight: 22, color: colors.text, marginTop: 4 },
-    section: { marginTop: 10 },
-    sectionHeading: { fontSize: 14, fontWeight: '700', color: colors.text, marginTop: 4 },
-    warnBlock: { marginTop: 12 },
-    warnText: { fontSize: 13, color: colors.error, marginTop: 2 },
-    citeBlock: { marginTop: 12 },
-    citeRow: { marginTop: 6 },
-    citeText: { fontSize: 13, color: colors.muted },
-    lexBlock: { marginTop: 12 },
+    loadingRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm },
+    loadingText: { ...type.caption, color: colors.muted, flexShrink: 1 },
+    interpText: { ...type.body, color: colors.text, marginTop: space.xs },
+    section: { marginTop: space.sm },
+    sectionHeading: { ...type.body, fontWeight: '700', color: colors.text, marginTop: space.xs },
+    warnBlock: { marginTop: space.md },
+    warnText: { ...type.caption, color: colors.error, marginTop: 2 },
+    citeBlock: { marginTop: space.md },
+    citeRow: { marginTop: space.xs },
+    citeText: { ...type.caption, color: colors.muted },
+    lexBlock: { marginTop: space.md },
     lexRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingVertical: 6,
+      paddingVertical: space.xs,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.divider,
     },
-    lexText: { fontSize: 14, color: colors.verseText, flexShrink: 1, paddingRight: 8 },
-    lexOcc: { fontSize: 12, color: colors.muted },
-    attributionBlock: { marginTop: 12 },
+    lexText: { ...type.body, fontSize: 14, color: colors.verseText, flexShrink: 1, paddingRight: space.sm },
+    lexOcc: { ...type.caption, color: colors.muted },
+    attributionBlock: { marginTop: space.md },
     attribution: {
-      fontSize: 12,
+      ...type.caption,
       color: colors.muted,
       textAlign: 'center',
-      paddingHorizontal: 8,
-      paddingTop: 6,
+      paddingHorizontal: space.sm,
+      paddingTop: space.xs,
     },
-    metaBlock: { marginTop: 14, gap: 4 },
-    metaText: { fontSize: 12, color: colors.muted },
-    disclaimer: { fontSize: 12, color: colors.muted, fontStyle: 'italic', marginTop: 2 },
-    error: { fontSize: 14, color: colors.error, marginTop: 10 },
+    metaBlock: { marginTop: space.md, gap: space.xs },
+    metaText: { ...type.caption, color: colors.muted },
+    disclaimer: { ...type.caption, color: colors.muted, fontStyle: 'italic', marginTop: 2 },
+    error: { ...type.body, color: colors.error, marginTop: space.sm },
   });
 }
