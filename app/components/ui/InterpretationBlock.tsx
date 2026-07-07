@@ -8,6 +8,7 @@ import { useMemo, type ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useTheme, type ThemeContextValue } from '../../lib/theme';
+import { Reveal } from './Reveal';
 
 export function InterpretationBlock({
   label,
@@ -20,11 +21,14 @@ export function InterpretationBlock({
 }) {
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  // Fase 6: a interpretação da IA REVELA (fade+subida) ao aparecer — gated em reduce-motion.
   return (
-    <View style={styles.block} testID={testID}>
-      <Text style={styles.tag}>{label}</Text>
-      <View style={styles.body}>{children}</View>
-    </View>
+    <Reveal style={styles.block}>
+      <View testID={testID}>
+        <Text style={styles.tag}>{label}</Text>
+        <View style={styles.body}>{children}</View>
+      </View>
+    </Reveal>
   );
 }
 

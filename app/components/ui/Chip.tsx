@@ -3,9 +3,12 @@
 // Chip/pílula selecionável (version picker, provedores, toggles). Ativo = ouro; inativo = borda.
 // a11y: role="button" + state.selected; alvo confortável via padding (sem altura fixa <44).
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text } from 'react-native';
 
 import { useTheme, type ThemeContextValue } from '../../lib/theme';
+import { usePressScale } from './usePressScale';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export function Chip({
   label,
@@ -28,12 +31,21 @@ export function Chip({
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const fg = active ? theme.colors.onAccent : theme.colors.chipText;
+  // Fase 6: feedback tátil (encolhe ao pressionar), gated em reduce-motion.
+  const press = usePressScale();
   return (
-    <Pressable
+    <AnimatedPressable
       onPress={disabled ? undefined : onPress}
+      onPressIn={disabled ? undefined : press.onPressIn}
+      onPressOut={disabled ? undefined : press.onPressOut}
       disabled={disabled}
       hitSlop={{ top: 6, bottom: 6 }}
-      style={[styles.chip, active ? styles.active : styles.inactive, disabled ? styles.disabled : null]}
+      style={[
+        styles.chip,
+        active ? styles.active : styles.inactive,
+        disabled ? styles.disabled : null,
+        { transform: [{ scale: press.scale }] },
+      ]}
       testID={testID}
       accessibilityRole="button"
       accessibilityState={{ selected: active, disabled }}
@@ -43,7 +55,7 @@ export function Chip({
       {badge ? (
         <Text style={[styles.badge, { color: active ? theme.colors.onAccent : theme.colors.muted }]}>{badge}</Text>
       ) : null}
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 

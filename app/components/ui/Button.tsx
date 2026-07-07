@@ -4,12 +4,15 @@
 // arquivos). Variantes: primary (ouro), secondary (superfície), ghost (borda), danger (erro).
 // a11y embutida: role="button", rótulo (prop ou texto), alvo ≥44. Tokens Vigil (zero magic number).
 import { useMemo } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useTheme, type ThemeContextValue } from '../../lib/theme';
 import { Icon, type IconName } from './Icon';
+import { usePressScale } from './usePressScale';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export function Button({
   title,
@@ -37,12 +40,16 @@ export function Button({
   const inert = disabled || loading;
   const v = styles.variants[variant];
   const fg = inert ? theme.colors.muted : v.fg;
+  // Fase 6: feedback tátil (encolhe ao pressionar), gated em reduce-motion.
+  const press = usePressScale();
 
   return (
-    <Pressable
+    <AnimatedPressable
       onPress={inert ? undefined : onPress}
+      onPressIn={inert ? undefined : press.onPressIn}
+      onPressOut={inert ? undefined : press.onPressOut}
       disabled={inert}
-      style={[styles.base, v.container, inert ? styles.disabled : null, style]}
+      style={[styles.base, v.container, inert ? styles.disabled : null, { transform: [{ scale: press.scale }] }, style]}
       testID={testID}
       accessibilityRole="button"
       accessibilityState={{ disabled: inert }}
@@ -56,7 +63,7 @@ export function Button({
           <Text style={[styles.label, { color: fg }]}>{title}</Text>
         </View>
       )}
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 

@@ -9,12 +9,14 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { useTheme, type ThemeContextValue } from '../../lib/theme';
 import { Icon } from './Icon';
+import { Reveal } from './Reveal';
 
 export function CitedText({ text, label, testID }: { text: string; label: string; testID?: string }) {
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  // Fase 6: a Escritura citada REVELA (fade+subida) ao aparecer — gated em reduce-motion.
   return (
-    <View style={styles.block}>
+    <Reveal style={styles.block}>
       <View style={styles.tag}>
         <Icon name="book" size={12} color={theme.colors.accent} />
         <Text style={styles.tagText}>{label}</Text>
@@ -22,7 +24,7 @@ export function CitedText({ text, label, testID }: { text: string; label: string
       <Text style={styles.text} testID={testID}>
         {text}
       </Text>
-    </View>
+    </Reveal>
   );
 }
 

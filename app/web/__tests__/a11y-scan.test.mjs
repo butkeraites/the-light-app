@@ -46,7 +46,10 @@ const APP_DIR = join(APP_ROOT, 'app');
 
 // ── Tags interativas e políticas por tag ──────────────────────────────────────────────────
 // Touchables GENÉRICOS: View pressionável SEM papel implícito → role E tamanho obrigatórios.
-const GENERIC_TOUCHABLES = ['Pressable', 'TouchableOpacity', 'TouchableHighlight', 'TouchableWithoutFeedback'];
+// `AnimatedPressable` (ADR-0068 Fase 6): `Animated.createAnimatedComponent(Pressable)` p/ o feedback
+// de press do kit — é um Pressable, então as MESMAS exigências (role/label/tamanho) valem. Componentes
+// animados DEVEM usar este nome p/ a guarda os alcançar.
+const GENERIC_TOUCHABLES = ['Pressable', 'AnimatedPressable', 'TouchableOpacity', 'TouchableHighlight', 'TouchableWithoutFeedback'];
 // Nativos com papel/tamanho INTRÍNSECOS: só rótulo é obrigatório.
 const NATIVE_CONTROLS = ['TextInput', 'Switch'];
 // Link: papel implícito (link), MAS é wrapper sem tamanho intrínseco → tamanho obrigatório.
