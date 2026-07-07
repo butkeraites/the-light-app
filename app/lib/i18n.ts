@@ -166,6 +166,7 @@ export type MessageKey =
   | 'a11y.openChapter'
   | 'a11y.verseOptions'
   | 'a11y.readingSettings'
+  | 'a11y.back'
   | 'language.switchToOther'
   // Rótulos de acessibilidade do SELETOR TRI-ESTADO de tema (F5.33): claro / escuro / seguir o sistema.
   | 'theme.light'
@@ -530,6 +531,7 @@ const pt: Record<MessageKey, string> = {
   'a11y.openChapter': 'Abrir o capítulo {chapter}',
   'a11y.verseOptions': 'Abrir opções do versículo',
   'a11y.readingSettings': 'Ajustes de leitura',
+  'a11y.back': 'Voltar',
   'a11y.startPlan': 'Começar o plano {name}',
   'a11y.openDay': 'Abrir a leitura do dia {day}: {label}',
   'a11y.markDone': 'Marcar o dia de hoje como lido',
@@ -868,6 +870,7 @@ const en: Record<MessageKey, string> = {
   'a11y.openChapter': 'Open chapter {chapter}',
   'a11y.verseOptions': 'Open verse options',
   'a11y.readingSettings': 'Reading settings',
+  'a11y.back': 'Back',
   'a11y.startPlan': 'Start the {name} plan',
   'a11y.openDay': 'Open the reading for day {day}: {label}',
   'a11y.markDone': "Mark today's day as read",

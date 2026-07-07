@@ -14,8 +14,9 @@
 // xrefs, dbPath/dataDir, notas/highlights) vive na seam `useChapterReader`; esta tela retém
 // só estado de CONTROLE + apresentação. Os 4 painéis de IA compartilham um `activePanel`.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { router, useLocalSearchParams, useNavigation } from 'expo-router';
-import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ReaderChapterView } from '../../../components/ReaderChapterView';
 import { ReaderParallelView } from '../../../components/ReaderParallelView';
@@ -40,7 +41,7 @@ import { useReducedMotion } from '../../../lib/useReducedMotion';
 import { useReadingPrefs } from '../../../lib/useReadingPrefs';
 import { studyScope, useStudyScope } from '../../../lib/useStudyScope';
 import { versesForChapter } from '../../../lib/studyScope';
-import { useTheme, type ThemeColors } from '../../../lib/theme';
+import { useTheme, type ThemeContextValue } from '../../../lib/theme';
 import { listBooks, type CrossRef } from '../../../web/reading';
 
 const DEFAULT_TRANSLATION = 'kjv';
@@ -68,13 +69,13 @@ export default function ChapterScreen() {
 }
 
 function ChapterContent() {
-  const navigation = useNavigation();
-  const { colors, isDark } = useTheme();
+  const theme = useTheme();
+  const { colors, isDark } = theme;
   // F5.5: `locale` da UI. Distinto de `translation` (versão bíblica): o `locale` traduz
   // o CROMO e escolhe o campo de nome do livro no STORE; ele NÃO altera o texto citado.
   // É também o `lang` repassado aos painéis de IA (a resposta segue o idioma da UI).
   const { locale, t } = useI18n();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   // ADR-0067: preferências de leitura (tamanho/entrelinha/tema/família/just) + folha de ajustes.
   const readingPrefs = useReadingPrefs();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -105,28 +106,54 @@ function ChapterContent() {
   // F1.9: versículo selecionado (dirige o carregamento de xref no hook).
   const [selectedVerse, setSelectedVerse] = useState<number | null>(null);
 
-  // LEITURA IMERSIVA: rolar PRA FRENTE esconde o cromo do topo (header nativo + versão +
-  // controles) → texto fullscreen; rolar PRA TRÁS o traz de volta. `chromeAnim` colapsa o cromo
-  // IN-SCREEN (altura+opacidade); o header nativo acompanha via `headerShown`. Respeita reduce-motion.
-  const { hidden: chromeHidden, onScroll: onReaderScroll } = useHideOnScroll();
+  // LEITURA IMERSIVA (ADR-0069-feel): o topo INTEIRO (voltar + título + versão + Aa + idioma +
+  // tema + controles) é UMA barra-OVERLAY absoluta. Rolar PRA FRENTE a desliza pra fora (texto
+  // fullscreen); PRA TRÁS ela volta ("acompanha e aparece"). `chromeAnim` (1 visível · 0 escondido)
+  // dirige translateY + opacity no DRIVER NATIVO — o frame do ScrollView NUNCA muda de tamanho
+  // (sem pulo). Header nativo desligado nesta rota (_layout). Esconder é DELIBERADO (limiar maior),
+  // mostrar é ÁGIL. Respeita reduce-motion (troca instantânea).
+  const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
+  const [barHeight, setBarHeight] = useState(0);
+  const { hidden: chromeHidden, onScroll: onReaderScroll, reset: resetChrome } = useHideOnScroll({
+    topGuard: barHeight || 24, // dobra como "mínimo antes de esconder": nunca descobre um vão
+    hideThreshold: 24,
+    showThreshold: 8,
+  });
   const chromeAnim = useRef(new Animated.Value(1)).current; // 1 = visível · 0 = escondido
-  const [chromeHeight, setChromeHeight] = useState(0);
+  // `chromeGone`: barra TOTALMENTE escondida → sai do FLUXO/FOCO/a11y (display:none). Some só ao FIM
+  // da animação de esconder e volta ANTES de animar a entrada — assim controles fora de vista não
+  // ficam tabbáveis/anunciados (o antigo header nativo desmontava; a barra-overlay precisa disto).
+  const [chromeGone, setChromeGone] = useState(false);
 
-  // O header NATIVO esconde/mostra junto com o cromo in-screen.
-  useEffect(() => {
-    navigation.setOptions({ headerShown: !chromeHidden });
-  }, [navigation, chromeHidden]);
-
-  // Colapsa/expande o cromo in-screen; instantâneo sob reduce-motion (sem animação de movimento).
+  // Desliza a barra (translateY) + fade; curvas ASSIMÉTRICAS: sai acelerando, volta desacelerando.
   useEffect(() => {
     const toValue = chromeHidden ? 0 : 1;
+    if (!chromeHidden) setChromeGone(false); // re-monta ANTES de animar a entrada
     if (reduceMotion) {
       chromeAnim.setValue(toValue);
+      setChromeGone(chromeHidden);
       return;
     }
-    Animated.timing(chromeAnim, { toValue, duration: 200, useNativeDriver: false }).start();
+    const anim = Animated.timing(chromeAnim, {
+      toValue,
+      duration: chromeHidden ? 190 : 240,
+      easing: chromeHidden ? Easing.bezier(0.3, 0, 1, 1) : Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    anim.start(({ finished }) => {
+      if (finished && chromeHidden) setChromeGone(true); // fora do foco/a11y após terminar de esconder
+    });
+    return () => anim.stop(); // interrupção limpa em viradas rápidas de direção
   }, [chromeHidden, reduceMotion, chromeAnim]);
+
+  // Âncora de busca/xref: a barra deve estar VISÍVEL quando a nova âncora chega (senão a rolagem
+  // programática a esconde e o versículo-alvo fica atrás dela).
+  useEffect(() => {
+    if (anchorVerse != null) {
+      resetChrome();
+    }
+  }, [anchorVerse, resetChrome]);
 
   // Fase 2: versículos DESTE capítulo já no Escopo (realce multi-seleção) + handlers de gesto.
   const chapterScope = useMemo(
@@ -202,33 +229,9 @@ function ChapterContent() {
     [nameLang, t],
   );
 
-  // Título = "<nome do livro> <capítulo>". O nome vem SEMPRE do STORE/core (namePt/nameEn) — nunca
-  // de `t()` (anti-alucinação): `nameLang` (idioma da VERSÃO) só ESCOLHE o campo. Reativo à versão.
-  useEffect(() => {
-    const b = listBooks().find((x) => x.number === bookNumber);
-    const name = b
-      ? nameLang === 'en'
-        ? b.nameEn
-        : b.namePt
-      : t('read.bookFallback', { number: bookNumber });
-    // ADR-0067: o header do leitor ganha o botão "Aa" (ajustes de leitura), ao lado do idioma
-    // e do tema. Substitui o headerRight global (idioma+tema) SÓ nesta tela.
-    navigation.setOptions({
-      title: `${name} ${chapterNumber}`,
-      headerRight: () => (
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <IconButton
-            label="Aa"
-            onPress={() => setSettingsOpen(true)}
-            accessibilityLabel={t('a11y.readingSettings')}
-            testID="reading-settings-open"
-          />
-          <LanguageToggleButton />
-          <ThemeModeSelector />
-        </View>
-      ),
-    });
-  }, [navigation, bookNumber, chapterNumber, nameLang, t]);
+  // (Leitura imersiva) O título + os controles (Aa/idioma/tema) NÃO vão mais ao header nativo —
+  // ele está desligado nesta rota. Vivem na barra-overlay in-screen (ver render). O rótulo do
+  // título usa `bookLabel(bookNumber)` (nome do STORE, `nameLang` escolhe o campo — anti-alucinação).
 
   // Resolve os nomes de cor (dado do usuário) p/ a amostra de fundo do tema corrente.
   const highlightedVerses = useMemo(() => {
@@ -262,33 +265,62 @@ function ChapterContent() {
 
   return (
     <View style={styles.container}>
-      {/* Leitura imersiva: o cromo (versão + controles) COLAPSA ao rolar pra frente e reaparece
-          ao rolar pra trás; a altura natural é medida uma vez (onLayout) p/ animar height+opacity. */}
+      {/* Leitura imersiva: TODO o topo é UMA barra-OVERLAY absoluta que DESLIZA (translateY+opacity,
+          driver nativo) — o frame do ScrollView NÃO muda de tamanho (sem pulo). A altura natural é
+          medida (onLayout) p/ o translateY e p/ o paddingTop do texto (topInset). */}
       <Animated.View
         testID="reader-chrome"
+        // Escondida → sem toque/mouse e fora da árvore de a11y (nativo); `chromeGone` tira do fluxo
+        // (web: display:none), removendo do Tab/leitor de tela quando totalmente fora de vista.
+        pointerEvents={chromeHidden ? 'none' : 'auto'}
+        accessibilityElementsHidden={chromeHidden}
+        importantForAccessibility={chromeHidden ? 'no-hide-descendants' : 'auto'}
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          if (h > 0 && h !== barHeight) setBarHeight(h);
+        }}
         style={[
           styles.chrome,
-          chromeHeight > 0
-            ? {
-                height: chromeAnim.interpolate({ inputRange: [0, 1], outputRange: [0, chromeHeight] }),
-                opacity: chromeAnim,
-              }
-            : null,
+          { paddingTop: insets.top },
+          chromeGone ? styles.chromeGone : null,
+          {
+            transform: [
+              { translateY: chromeAnim.interpolate({ inputRange: [0, 1], outputRange: [-barHeight, 0] }) },
+            ],
+            opacity: chromeAnim.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 0.15, 1] }),
+          },
         ]}
       >
-        <View
-          onLayout={(e) => {
-            const h = e.nativeEvent.layout.height;
-            if (h > 0 && h !== chromeHeight) setChromeHeight(h);
-          }}
-        >
-          {translations.length > 0 ? (
-            <ReaderVersionPicker
-              translations={translations}
-              current={translation}
-              onChange={setTranslation}
+        {/* Linha de navegação: voltar + título (nome do STORE, `bookLabel`) + Aa / idioma / tema. */}
+        <View style={styles.navRow}>
+          <IconButton
+            name="back"
+            // Deep-link a frio (pilha vazia): `router.back()` seria no-op → cai na lista de leitura.
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/read'))}
+            accessibilityLabel={t('a11y.back')}
+            testID="reader-back"
+          />
+          <Text style={styles.navTitle} numberOfLines={1}>
+            {`${bookLabel(bookNumber)} ${chapterNumber}`}
+          </Text>
+          <View style={styles.navRight}>
+            <IconButton
+              label="Aa"
+              onPress={() => setSettingsOpen(true)}
+              accessibilityLabel={t('a11y.readingSettings')}
+              testID="reading-settings-open"
             />
-          ) : null}
+            <LanguageToggleButton />
+            <ThemeModeSelector />
+          </View>
+        </View>
+        {translations.length > 0 ? (
+          <ReaderVersionPicker
+            translations={translations}
+            current={translation}
+            onChange={setTranslation}
+          />
+        ) : null}
 
       <View style={styles.controls}>
         {canParallel ? (
@@ -324,7 +356,6 @@ function ChapterContent() {
               testIDPrefix="version2"
             />
           ) : null}
-        </View>
       </Animated.View>
 
       {error ? (
@@ -341,7 +372,12 @@ function ChapterContent() {
             <ActivityIndicator color={colors.text} />
           </View>
         ) : (
-          <ReaderParallelView primary={passage} secondary={secondaryPassage} />
+          <ReaderParallelView
+            primary={passage}
+            secondary={secondaryPassage}
+            onScroll={onReaderScroll}
+            topInset={barHeight}
+          />
         )
       ) : (
         <ReaderChapterView
@@ -361,6 +397,7 @@ function ChapterContent() {
           readingFont={readingPrefs.readingFont}
           justify={readingPrefs.justify}
           onScroll={onReaderScroll}
+          topInset={barHeight}
         />
       )}
 
@@ -548,11 +585,31 @@ function ChapterContent() {
   );
 }
 
-function makeStyles(colors: ThemeColors) {
+function makeStyles({ colors, type, space }: ThemeContextValue) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    // Leitura imersiva: recorta o cromo enquanto colapsa (height animada 0..natural).
-    chrome: { overflow: 'hidden' },
+    // Leitura imersiva: barra-OVERLAY absoluta no topo (desliza via translateY). Opaca + acima do
+    // ScrollView (zIndex) p/ o texto não vazar por trás; hairline embaixo como o header nativo tinha.
+    chrome: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 10,
+      backgroundColor: colors.headerBackground,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.divider,
+    },
+    // Leitura imersiva: barra TOTALMENTE escondida sai do fluxo/foco/a11y (não só translada).
+    chromeGone: { display: 'none' },
+    navRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: space.sm,
+    },
+    navTitle: { ...type.title, color: colors.text, flex: 1, marginHorizontal: space.sm },
+    navRight: { flexDirection: 'row', alignItems: 'center' },
     controls: {
       flexDirection: 'row',
       alignItems: 'center',

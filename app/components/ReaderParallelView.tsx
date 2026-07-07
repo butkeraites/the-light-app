@@ -11,7 +11,14 @@
 // tem 1 versículo a menos em alguns capítulos), a outra coluna mostra um
 // placeholder atenuado. Cores via TOKENS de tema (`useTheme`), nunca hex literal.
 import { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 
 import { useI18n } from '../lib/i18n';
 import { useTheme, type ThemeColors } from '../lib/theme';
@@ -38,9 +45,15 @@ function passageLabel(passage: Passage, fallback: string): string {
 export function ReaderParallelView({
   primary,
   secondary,
+  onScroll,
+  topInset = 0,
 }: {
   primary: Passage;
   secondary: Passage;
+  /** Leitura imersiva: repassado ao `<ScrollView onScroll>` (esconder o cromo também no paralelo). */
+  onScroll?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  /** Leitura imersiva: altura da barra-overlay a limpar no topo. */
+  topInset?: number;
 }) {
   const { colors } = useTheme();
   // F5.16: só o CROMO (estado-vazio) passa por `t()`. O TEXTO dos versículos e os rótulos
@@ -59,7 +72,12 @@ export function ReaderParallelView({
 
   if (numbers.length === 0) {
     return (
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingTop: 16 + topInset }]}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        contentInsetAdjustmentBehavior="never"
+      >
         <Text style={styles.empty}>{t('read.chapterNotFound')}</Text>
       </ScrollView>
     );
@@ -69,7 +87,12 @@ export function ReaderParallelView({
   const secondaryLabel = passageLabel(secondary, 'B');
 
   return (
-    <ScrollView contentContainerStyle={styles.content}>
+    <ScrollView
+      contentContainerStyle={[styles.content, { paddingTop: 16 + topInset }]}
+      onScroll={onScroll}
+      scrollEventThrottle={16}
+      contentInsetAdjustmentBehavior="never"
+    >
       <View style={styles.headerRow}>
         <View style={styles.numberCol} />
         <Text style={styles.colHeader} testID="parallel-header-primary">

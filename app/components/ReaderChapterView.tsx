@@ -60,6 +60,7 @@ export function ReaderChapterView({
   readingFont = DEFAULT_READING_FONT,
   justify = false,
   onScroll,
+  topInset = 0,
 }: {
   passage: Passage;
   /**
@@ -109,6 +110,8 @@ export function ReaderChapterView({
   justify?: boolean;
   /** Leitura imersiva: repassado ao `<ScrollView onScroll>` (a tela decide esconder o cromo). */
   onScroll?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  /** Leitura imersiva: altura da barra-overlay a limpar no topo (paddingTop do conteúdo). */
+  topInset?: number;
 }) {
   const theme = useTheme();
   // ADR-0067: a SUPERFÍCIE de leitura usa a paleta de LEITURA escolhida (claro/sépia/escuro),
@@ -150,7 +153,8 @@ export function ReaderChapterView({
       return;
     }
     pendingRef.current = null;
-    scrollRef.current?.scrollTo({ y: Math.max(y - ANCHOR_SCROLL_OFFSET, 0), animated: true });
+    // Leitura imersiva: desce a âncora ABAIXO da barra-overlay (offset já inclui o paddingTop).
+    scrollRef.current?.scrollTo({ y: Math.max(y - topInset - ANCHOR_SCROLL_OFFSET, 0), animated: true });
   };
 
   const onVerseLayout = (n: number, event: LayoutChangeEvent) => {
@@ -179,7 +183,10 @@ export function ReaderChapterView({
 
   if (passage.verses.length === 0) {
     return (
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, { paddingTop: theme.space.lg + topInset }]}
+      >
         <Text style={styles.empty}>{t('read.chapterNotFound')}</Text>
       </ScrollView>
     );
@@ -188,9 +195,10 @@ export function ReaderChapterView({
     <ScrollView
       ref={scrollRef}
       style={styles.scroll}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: theme.space.lg + topInset }]}
       onScroll={onScroll}
       scrollEventThrottle={16}
+      contentInsetAdjustmentBehavior="never"
     >
       {heading ? (
         <View style={styles.headingBlock}>
