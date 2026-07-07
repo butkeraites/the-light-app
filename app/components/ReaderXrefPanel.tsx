@@ -10,21 +10,12 @@
 // LICENÇA (ADR-0016): a string EXATA `Cross references courtesy of OpenBible.info
 // (CC-BY)` é REQUISITO de licença e aparece SEMPRE que xrefs são exibidas (rodapé).
 import { useMemo } from 'react';
-import {
-  ActivityIndicator,
-  Linking,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '../lib/i18n';
-import { useReaderModalA11y } from '../lib/useReaderModalA11y';
-import { useTheme, type ThemeColors } from '../lib/theme';
+import { useTheme, type ThemeContextValue } from '../lib/theme';
 import type { CrossRef } from '../web/reading';
+import { BottomSheet, ListRow } from './ui';
 
 /** Atribuição CC-BY OBRIGATÓRIA (ADR-0016) — string EXATA, não alterar/omitir. */
 export const XREF_ATTRIBUTION = 'Cross references courtesy of OpenBible.info (CC-BY)';
@@ -77,75 +68,59 @@ export function ReaderXrefPanel({
   onSelect: (ref: XrefReference) => void;
   onClose: () => void;
 }) {
-  const { colors } = useTheme();
+  const theme = useTheme();
+  const { colors } = theme;
   // F5.16: só o CROMO (título, fechar, estado-vazio, rótulo "votos") passa por `t()`. O
   // `{sourceLabel}` (nome do livro do store + cap:versículo) e os nomes de livro de destino
   // (`bookNameOf`) vêm do STORE — nunca via `t()` (anti-alucinação); a atribuição CC-BY é
   // VERBATIM (constante `XREF_ATTRIBUTION`, requisito de licença — não traduzida).
   const { t } = useI18n();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
-  // F5.21: ao abrir, foco do leitor de tela no título (ordem lógica + anúncio de abertura).
-  const titleRef = useReaderModalA11y(visible);
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable
-        style={styles.backdrop}
-        onPress={onClose}
-        testID="xref-backdrop"
-        accessibilityRole="button"
-        accessibilityLabel={t('common.close')}
-      />
-      <View style={styles.sheet} accessibilityViewIsModal>
-        <View style={styles.header}>
-          <Text ref={titleRef} accessibilityRole="header" style={styles.title}>
-            {t('xref.title', { source: sourceLabel })}
-          </Text>
-          <Pressable onPress={onClose} testID="xref-close" accessibilityRole="button" hitSlop={12}>
-            <Text style={styles.close}>{t('common.close')}</Text>
-          </Pressable>
+    <BottomSheet
+      visible={visible}
+      onClose={onClose}
+      title={t('xref.title', { source: sourceLabel })}
+      testIDPrefix="xref"
+      maxHeightPercent={70}
+    >
+      {loading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator color={colors.text} />
         </View>
+      ) : error ? (
+        <View style={styles.centered}>
+          <Text style={styles.error}>{error}</Text>
+        </View>
+      ) : refs.length === 0 ? (
+        <View style={styles.centered}>
+          <Text style={styles.empty}>{t('xref.empty')}</Text>
+        </View>
+      ) : (
+        <>
+          {/* Cada xref → uma ListRow do kit (um só interativo, chevron = navega). O nome do
+              livro de destino vem do STORE (`bookNameOf`), NUNCA via t() (anti-alucinação). */}
+          {refs.map((cr) => {
+            const verseLabel = formatVerses(cr.reference.verses);
+            const reference = `${bookNameOf(cr.reference.book)} ${cr.reference.chapter}${
+              verseLabel ? `:${verseLabel}` : ''
+            }`;
+            return (
+              <ListRow
+                key={keyOf(cr.reference)}
+                label={reference}
+                // `votes` é i64 → bigint no binding: String(...) é robusto a ambos.
+                value={t('xref.votes', { count: String(cr.votes) })}
+                onPress={() => onSelect(cr.reference)}
+                testID={`xref-${keyOf(cr.reference)}`}
+                accessibilityLabel={reference}
+              />
+            );
+          })}
 
-        {loading ? (
-          <View style={styles.centered}>
-            <ActivityIndicator color={colors.text} />
-          </View>
-        ) : error ? (
-          <View style={styles.centered}>
-            <Text style={styles.error}>{error}</Text>
-          </View>
-        ) : refs.length === 0 ? (
-          <View style={styles.centered}>
-            <Text style={styles.empty}>{t('xref.empty')}</Text>
-          </View>
-        ) : (
-          <ScrollView contentContainerStyle={styles.list}>
-            {refs.map((cr) => {
-              const verseLabel = formatVerses(cr.reference.verses);
-              const reference = `${bookNameOf(cr.reference.book)} ${cr.reference.chapter}${
-                verseLabel ? `:${verseLabel}` : ''
-              }`;
-              return (
-                <Pressable
-                  key={keyOf(cr.reference)}
-                  style={styles.row}
-                  onPress={() => onSelect(cr.reference)}
-                  testID={`xref-${keyOf(cr.reference)}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={reference}
-                >
-                  <Text style={styles.reference}>{reference}</Text>
-                  {/* `votes` é i64 → bigint no binding: String(...) é robusto a ambos. */}
-                  <Text style={styles.votes}>{t('xref.votes', { count: String(cr.votes) })}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        )}
-
-        {/* Atribuição CC-BY OBRIGATÓRIA (ADR-0016): exibida sempre que o painel
-            mostra xrefs. Requisito de licença — não omitir/alterar a string. */}
-        {refs.length > 0 ? (
+          {/* Atribuição CC-BY OBRIGATÓRIA (ADR-0016): exibida sempre que o painel
+              mostra xrefs. Requisito de licença — não omitir/alterar a string. */}
           <Pressable
             onPress={() => {
               Linking.openURL(XREF_SOURCE_URL).catch(() => {
@@ -159,54 +134,24 @@ export function ReaderXrefPanel({
           >
             <Text style={styles.attribution}>{XREF_ATTRIBUTION}</Text>
           </Pressable>
-        ) : null}
-      </View>
-    </Modal>
+        </>
+      )}
+    </BottomSheet>
   );
 }
 
-function makeStyles(colors: ThemeColors) {
+function makeStyles({ colors, type, space }: ThemeContextValue) {
   return StyleSheet.create({
-    backdrop: { flex: 1 },
-    sheet: {
-      maxHeight: '60%',
-      backgroundColor: colors.background,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-      paddingBottom: 16,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.divider,
-    },
-    title: { fontSize: 15, fontWeight: '700', color: colors.text, flexShrink: 1 },
-    close: { fontSize: 14, fontWeight: '600', color: colors.accent, paddingLeft: 12 },
-    centered: { padding: 24, alignItems: 'center', justifyContent: 'center' },
-    list: { paddingVertical: 4 },
-    row: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.divider,
-    },
-    reference: { fontSize: 15, fontWeight: '600', color: colors.accent },
-    votes: { fontSize: 13, color: colors.muted },
-    empty: { fontSize: 14, color: colors.muted, textAlign: 'center' },
-    error: { fontSize: 14, color: colors.error, textAlign: 'center' },
+    // Folha/cabeçalho agora no <BottomSheet>; linhas de xref na <ListRow> do kit. Aqui só
+    // os estados centrados (loading/erro/vazio) e a atribuição CC-BY.
+    centered: { paddingVertical: space.xl, alignItems: 'center', justifyContent: 'center' },
+    empty: { ...type.body, color: colors.muted, textAlign: 'center' },
+    error: { ...type.body, color: colors.error, textAlign: 'center' },
     attribution: {
-      fontSize: 12,
+      ...type.caption,
       color: colors.muted,
       textAlign: 'center',
-      paddingHorizontal: 16,
-      paddingTop: 12,
+      paddingTop: space.md,
     },
   });
 }
