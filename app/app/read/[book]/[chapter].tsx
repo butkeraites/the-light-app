@@ -13,9 +13,9 @@
 // ADR-0060 (deepening): todo o FETCHING de fronteira do capítulo (traduções, passagens,
 // xrefs, dbPath/dataDir, notas/highlights) vive na seam `useChapterReader`; esta tela retém
 // só estado de CONTROLE + apresentação. Os 4 painéis de IA compartilham um `activePanel`.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ReaderChapterView } from '../../../components/ReaderChapterView';
 import { ReaderParallelView } from '../../../components/ReaderParallelView';
@@ -35,6 +35,8 @@ import { Chip, IconButton } from '../../../components/ui';
 import { resolveHighlightColor } from '../../../lib/highlightColors';
 import { useI18n } from '../../../lib/i18n';
 import { useChapterReader } from '../../../lib/useChapterReader';
+import { useHideOnScroll } from '../../../lib/useHideOnScroll';
+import { useReducedMotion } from '../../../lib/useReducedMotion';
 import { useReadingPrefs } from '../../../lib/useReadingPrefs';
 import { studyScope, useStudyScope } from '../../../lib/useStudyScope';
 import { versesForChapter } from '../../../lib/studyScope';
@@ -102,6 +104,29 @@ function ChapterContent() {
   const [parallel, setParallel] = useState(false);
   // F1.9: versículo selecionado (dirige o carregamento de xref no hook).
   const [selectedVerse, setSelectedVerse] = useState<number | null>(null);
+
+  // LEITURA IMERSIVA: rolar PRA FRENTE esconde o cromo do topo (header nativo + versão +
+  // controles) → texto fullscreen; rolar PRA TRÁS o traz de volta. `chromeAnim` colapsa o cromo
+  // IN-SCREEN (altura+opacidade); o header nativo acompanha via `headerShown`. Respeita reduce-motion.
+  const { hidden: chromeHidden, onScroll: onReaderScroll } = useHideOnScroll();
+  const reduceMotion = useReducedMotion();
+  const chromeAnim = useRef(new Animated.Value(1)).current; // 1 = visível · 0 = escondido
+  const [chromeHeight, setChromeHeight] = useState(0);
+
+  // O header NATIVO esconde/mostra junto com o cromo in-screen.
+  useEffect(() => {
+    navigation.setOptions({ headerShown: !chromeHidden });
+  }, [navigation, chromeHidden]);
+
+  // Colapsa/expande o cromo in-screen; instantâneo sob reduce-motion (sem animação de movimento).
+  useEffect(() => {
+    const toValue = chromeHidden ? 0 : 1;
+    if (reduceMotion) {
+      chromeAnim.setValue(toValue);
+      return;
+    }
+    Animated.timing(chromeAnim, { toValue, duration: 200, useNativeDriver: false }).start();
+  }, [chromeHidden, reduceMotion, chromeAnim]);
 
   // Fase 2: versículos DESTE capítulo já no Escopo (realce multi-seleção) + handlers de gesto.
   const chapterScope = useMemo(
@@ -237,13 +262,33 @@ function ChapterContent() {
 
   return (
     <View style={styles.container}>
-      {translations.length > 0 ? (
-        <ReaderVersionPicker
-          translations={translations}
-          current={translation}
-          onChange={setTranslation}
-        />
-      ) : null}
+      {/* Leitura imersiva: o cromo (versão + controles) COLAPSA ao rolar pra frente e reaparece
+          ao rolar pra trás; a altura natural é medida uma vez (onLayout) p/ animar height+opacity. */}
+      <Animated.View
+        testID="reader-chrome"
+        style={[
+          styles.chrome,
+          chromeHeight > 0
+            ? {
+                height: chromeAnim.interpolate({ inputRange: [0, 1], outputRange: [0, chromeHeight] }),
+                opacity: chromeAnim,
+              }
+            : null,
+        ]}
+      >
+        <View
+          onLayout={(e) => {
+            const h = e.nativeEvent.layout.height;
+            if (h > 0 && h !== chromeHeight) setChromeHeight(h);
+          }}
+        >
+          {translations.length > 0 ? (
+            <ReaderVersionPicker
+              translations={translations}
+              current={translation}
+              onChange={setTranslation}
+            />
+          ) : null}
 
       <View style={styles.controls}>
         {canParallel ? (
@@ -271,14 +316,16 @@ function ChapterContent() {
         />
       </View>
 
-      {parallel && canParallel && secondTranslation ? (
-        <ReaderVersionPicker
-          translations={secondaryOptions}
-          current={secondTranslation}
-          onChange={setSecondTranslation}
-          testIDPrefix="version2"
-        />
-      ) : null}
+          {parallel && canParallel && secondTranslation ? (
+            <ReaderVersionPicker
+              translations={secondaryOptions}
+              current={secondTranslation}
+              onChange={setSecondTranslation}
+              testIDPrefix="version2"
+            />
+          ) : null}
+        </View>
+      </Animated.View>
 
       {error ? (
         <View style={styles.centered}>
@@ -313,6 +360,7 @@ function ChapterContent() {
           readingTheme={readingPrefs.readingTheme}
           readingFont={readingPrefs.readingFont}
           justify={readingPrefs.justify}
+          onScroll={onReaderScroll}
         />
       )}
 
@@ -503,6 +551,8 @@ function ChapterContent() {
 function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
+    // Leitura imersiva: recorta o cromo enquanto colapsa (height animada 0..natural).
+    chrome: { overflow: 'hidden' },
     controls: {
       flexDirection: 'row',
       alignItems: 'center',

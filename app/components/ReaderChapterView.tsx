@@ -5,7 +5,15 @@
 // Rust, nunca gerado/hardcodado na UI). Cores via TOKENS de tema (`useTheme`),
 // não mais hex hardcoded. Não faz I/O nem lógica de domínio.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 
 import { useI18n } from '../lib/i18n';
 import {
@@ -51,6 +59,7 @@ export function ReaderChapterView({
   readingTheme = null,
   readingFont = DEFAULT_READING_FONT,
   justify = false,
+  onScroll,
 }: {
   passage: Passage;
   /**
@@ -98,6 +107,8 @@ export function ReaderChapterView({
   readingTheme?: ReadingTheme | null;
   readingFont?: ReadingFont;
   justify?: boolean;
+  /** Leitura imersiva: repassado ao `<ScrollView onScroll>` (a tela decide esconder o cromo). */
+  onScroll?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
 }) {
   const theme = useTheme();
   // ADR-0067: a SUPERFÍCIE de leitura usa a paleta de LEITURA escolhida (claro/sépia/escuro),
@@ -174,7 +185,13 @@ export function ReaderChapterView({
     );
   }
   return (
-    <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content}>
+    <ScrollView
+      ref={scrollRef}
+      style={styles.scroll}
+      contentContainerStyle={styles.content}
+      onScroll={onScroll}
+      scrollEventThrottle={16}
+    >
       {heading ? (
         <View style={styles.headingBlock}>
           <Text style={styles.chapTitle} accessibilityRole="header">
