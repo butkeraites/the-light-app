@@ -7,8 +7,9 @@ import { useMemo } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '../lib/i18n';
-import { useTheme, type ThemeColors } from '../lib/theme';
+import { useTheme, type ThemeContextValue } from '../lib/theme';
 import type { Book } from '../web/reading';
+import { Icon } from './ui';
 
 export function ReaderBookList({
   books,
@@ -17,12 +18,13 @@ export function ReaderBookList({
   books: Book[];
   onSelect: (book: Book) => void;
 }) {
-  const { colors } = useTheme();
+  const theme = useTheme();
+  const { colors } = theme;
   // F5.8: `locale` só ESCOLHE o campo do nome do livro (namePt/nameEn) para o rótulo de
   // acessibilidade — o nome vem do STORE, NUNCA de `t()` (anti-alucinação). A linha exibe
   // ambos os nomes; o `t('a11y.openBook')` é apenas o CROMO do rótulo do gesto.
   const { locale, t } = useI18n();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   return (
     <FlatList
@@ -45,36 +47,36 @@ export function ReaderBookList({
             <Text style={styles.namePt}>{item.namePt}</Text>
             <Text style={styles.nameEn}>{item.nameEn}</Text>
           </View>
-          <Text style={styles.chevron}>›</Text>
+          <Icon name="chevron" size={18} color={colors.faint} />
         </Pressable>
       )}
     />
   );
 }
 
-function makeStyles(colors: ThemeColors) {
+function makeStyles({ colors, type, space }: ThemeContextValue) {
   return StyleSheet.create({
     container: { backgroundColor: colors.background },
-    list: { paddingVertical: 8 },
+    list: { paddingVertical: space.sm },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      gap: 12,
+      minHeight: 52,
+      paddingVertical: space.md,
+      paddingHorizontal: space.lg,
+      gap: space.md,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.divider,
     },
     number: {
       width: 28,
       textAlign: 'right',
-      fontSize: 13,
+      ...type.caption,
       color: colors.muted,
       fontVariant: ['tabular-nums'],
     },
     names: { flex: 1 },
-    namePt: { fontSize: 16, color: colors.text },
-    nameEn: { fontSize: 12, color: colors.muted },
-    chevron: { fontSize: 20, color: colors.faint },
+    namePt: { ...type.body, color: colors.text },
+    nameEn: { ...type.caption, color: colors.muted },
   });
 }

@@ -10,14 +10,16 @@
 // AÇÃO ("Mudar para Inglês"/"Switch to Portuguese"), então o leitor de tela anuncia p/ onde vai.
 // Acessível: `accessibilityRole='switch'`, `accessibilityState.checked` = inglês ativo.
 // Não faz I/O de domínio nem toca texto bíblico.
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { useI18n } from '../lib/i18n';
-import { useTheme } from '../lib/theme';
+import { useTheme, type ThemeContextValue } from '../lib/theme';
 
 export function LanguageToggleButton() {
   const { locale, setLocale, t } = useI18n();
-  const { colors } = useTheme();
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   // Idioma-ALVO ao tocar (p/ `setLocale`); o VISÍVEL é o idioma ATUAL (o que se lê agora).
   const target = locale === 'pt' ? 'en' : 'pt';
   const currentCode = locale.toUpperCase(); // 'PT' | 'EN' — idioma atual da UI
@@ -31,12 +33,14 @@ export function LanguageToggleButton() {
       accessibilityLabel={t('language.switchToOther')}
       style={styles.button}
     >
-      <Text style={[styles.code, { color: colors.text }]}>{currentCode}</Text>
+      <Text style={styles.code}>{currentCode}</Text>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  button: { paddingHorizontal: 12, paddingVertical: 4 },
-  code: { fontSize: 14, fontWeight: '700' },
-});
+function makeStyles({ colors, type, space }: ThemeContextValue) {
+  return StyleSheet.create({
+    button: { paddingHorizontal: space.md, paddingVertical: space.xs },
+    code: { ...type.button, color: colors.text },
+  });
+}

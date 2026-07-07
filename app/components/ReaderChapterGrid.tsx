@@ -8,7 +8,7 @@ import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '../lib/i18n';
-import { useTheme, type ThemeColors } from '../lib/theme';
+import { useTheme, type ThemeContextValue } from '../lib/theme';
 
 export function ReaderChapterGrid({
   count,
@@ -17,11 +17,11 @@ export function ReaderChapterGrid({
   count: number;
   onSelect: (chapter: number) => void;
 }) {
-  const { colors } = useTheme();
+  const theme = useTheme();
   // F5.8: cromo do estado-vazio + rótulo de acessibilidade da célula. O NÚMERO do capítulo
   // é DADO; só o cromo ("Nenhum capítulo…"/"Abrir o capítulo N") passa por `t()`.
   const { t } = useI18n();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   if (count <= 0) {
     return (
@@ -49,26 +49,26 @@ export function ReaderChapterGrid({
   );
 }
 
-function makeStyles(colors: ThemeColors) {
+function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
   return StyleSheet.create({
     container: { backgroundColor: colors.background },
     grid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 10,
-      padding: 16,
+      gap: space.sm,
+      padding: space.lg,
     },
     cell: {
       width: 52,
       height: 52,
-      borderRadius: 10,
+      borderRadius: radius.md,
       borderWidth: 1,
       borderColor: colors.border,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    cellText: { fontSize: 16, color: colors.text, fontVariant: ['tabular-nums'] },
-    empty: { padding: 24 },
-    emptyText: { fontSize: 14, color: colors.muted },
+    cellText: { ...type.body, color: colors.text, fontVariant: ['tabular-nums'] },
+    empty: { padding: space.xl },
+    emptyText: { ...type.body, color: colors.muted },
   });
 }
