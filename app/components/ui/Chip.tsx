@@ -9,6 +9,7 @@ import { useTheme, type ThemeContextValue } from '../../lib/theme';
 
 export function Chip({
   label,
+  badge,
   active = false,
   onPress,
   disabled = false,
@@ -16,6 +17,8 @@ export function Chip({
   accessibilityLabel,
 }: {
   label: string;
+  /** Legenda menor após o rótulo (ex.: idioma da versão, "BYOK"/"offline" do provedor). */
+  badge?: string;
   active?: boolean;
   onPress?: () => void;
   disabled?: boolean;
@@ -24,6 +27,7 @@ export function Chip({
 }) {
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const fg = active ? theme.colors.onAccent : theme.colors.chipText;
   return (
     <Pressable
       onPress={disabled ? undefined : onPress}
@@ -35,7 +39,10 @@ export function Chip({
       accessibilityState={{ selected: active, disabled }}
       accessibilityLabel={accessibilityLabel ?? label}
     >
-      <Text style={[styles.label, { color: active ? theme.colors.onAccent : theme.colors.chipText }]}>{label}</Text>
+      <Text style={[styles.label, { color: fg }]}>{label}</Text>
+      {badge ? (
+        <Text style={[styles.badge, { color: active ? theme.colors.onAccent : theme.colors.muted }]}>{badge}</Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -43,6 +50,9 @@ export function Chip({
 function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
   return StyleSheet.create({
     chip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.xs,
       paddingHorizontal: space.md,
       paddingVertical: space.sm,
       borderRadius: radius.pill,
@@ -52,5 +62,6 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
     inactive: { backgroundColor: colors.surface, borderColor: colors.border },
     disabled: { opacity: 0.5 },
     label: { ...type.caption, fontWeight: '600' },
+    badge: { ...type.caption, fontSize: 11, opacity: 0.8 },
   });
 }
