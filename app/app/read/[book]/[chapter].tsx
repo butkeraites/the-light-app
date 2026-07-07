@@ -88,18 +88,6 @@ function ChapterContent() {
   const verseParam = verseParamRaw != null ? Number(verseParamRaw) : NaN;
   const anchorVerse = Number.isFinite(verseParam) && verseParam > 0 ? verseParam : null;
 
-  // F5.11: nome do livro NO IDIOMA da UI, para o `sourceLabel` (cabeçalho) dos painéis de IA.
-  // Anti-alucinação: o nome vem SEMPRE do STORE (`namePt`/`nameEn`) — o `locale` só ESCOLHE o
-  // campo, NUNCA traduz via `t()`; o fallback (livro ausente do store) é cromo com `{number}`.
-  // A `reference` canônica passada às fronteiras permanece EN (`bookNameEn`), a âncora.
-  const bookLabel = useCallback(
-    (bookNum: number): string => {
-      const b = listBooks().find((x) => x.number === bookNum);
-      return b ? (locale === 'en' ? b.nameEn : b.namePt) : t('read.bookFallback', { number: bookNum });
-    },
-    [locale, t],
-  );
-
   // Estado de CONTROLE da tela (o fetching de fronteira vive no hook useChapterReader).
   const [translation, setTranslation] = useState(DEFAULT_TRANSLATION);
   // F1.4: modo lado a lado (a 2ª tradução é reconciliada pelo hook).
@@ -142,13 +130,31 @@ function ChapterContent() {
     selectedVerse,
   });
 
-  // Título = "<nome do livro> <capítulo>". O nome vem SEMPRE do STORE/core
-  // (namePt/nameEn) — nunca de `t()` (anti-alucinação): o `locale` só ESCOLHE o campo.
-  // O número do capítulo é DADO. Reativo ao idioma (deps `locale`/`t`).
+  // Fase 7 (follow-up): o nome do livro EXIBIDO segue o IDIOMA DA VERSÃO lida, não o `locale` da
+  // UI — lendo Almeida (pt) o header/painéis mostram "João" mesmo com a UI em inglês (e KJV → "John"
+  // mesmo com a UI em português). Cai no `locale` se a versão não declarar idioma conhecido. A
+  // `reference` CANÔNICA passada às fronteiras segue EN (`bookNameEn`, a âncora) — anti-alucinação.
+  const nameLang: 'pt' | 'en' = useMemo(() => {
+    const lang = translations.find((tr) => tr.id === translation)?.language;
+    return lang === 'en' || lang === 'pt' ? lang : locale === 'en' ? 'en' : 'pt';
+  }, [translations, translation, locale]);
+
+  // Nome do livro no IDIOMA DA VERSÃO, para o `sourceLabel` (cabeçalho) dos painéis de IA. O nome
+  // vem SEMPRE do STORE (`namePt`/`nameEn`) — `nameLang` só ESCOLHE o campo, NUNCA traduz via `t()`.
+  const bookLabel = useCallback(
+    (bookNum: number): string => {
+      const b = listBooks().find((x) => x.number === bookNum);
+      return b ? (nameLang === 'en' ? b.nameEn : b.namePt) : t('read.bookFallback', { number: bookNum });
+    },
+    [nameLang, t],
+  );
+
+  // Título = "<nome do livro> <capítulo>". O nome vem SEMPRE do STORE/core (namePt/nameEn) — nunca
+  // de `t()` (anti-alucinação): `nameLang` (idioma da VERSÃO) só ESCOLHE o campo. Reativo à versão.
   useEffect(() => {
     const b = listBooks().find((x) => x.number === bookNumber);
     const name = b
-      ? locale === 'en'
+      ? nameLang === 'en'
         ? b.nameEn
         : b.namePt
       : t('read.bookFallback', { number: bookNumber });
@@ -169,7 +175,7 @@ function ChapterContent() {
         </View>
       ),
     });
-  }, [navigation, bookNumber, chapterNumber, locale, t]);
+  }, [navigation, bookNumber, chapterNumber, nameLang, t]);
 
   // Resolve os nomes de cor (dado do usuário) p/ a amostra de fundo do tema corrente.
   const highlightedVerses = useMemo(() => {
