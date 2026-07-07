@@ -24,20 +24,13 @@
 // web, sem `expo-notifications` no bundle). Sem "native-only": a tela funciona nas duas.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { router, useNavigation } from 'expo-router';
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { WasmGate } from '../../components/WasmGate';
+import { Button, Chip, Surface } from '../../components/ui';
 import { ensureUserDataDir } from '../../lib/userdata';
 import { useI18n, type TranslateFn } from '../../lib/i18n';
-import { useTheme, type ThemeColors } from '../../lib/theme';
+import { useTheme, type ThemeColors, type ThemeContextValue } from '../../lib/theme';
 import {
   REMINDERS_SUPPORTED,
   disableReminder,
@@ -87,9 +80,10 @@ export default function PlansScreen() {
 
 function PlansContent() {
   const navigation = useNavigation();
-  const { colors } = useTheme();
+  const theme = useTheme();
+  const { colors } = theme;
   const { t } = useI18n();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   // Título de header reativo ao idioma (molde read/index).
   useEffect(() => {
@@ -226,14 +220,7 @@ function PlansContent() {
   // Sem plano ativo → lista de escolha.
   if (progress === null) {
     return (
-      <PlanChooser
-        plans={plans}
-        busy={busy}
-        onStart={startPlan}
-        styles={styles}
-        colors={colors}
-        t={t}
-      />
+      <PlanChooser plans={plans} busy={busy} onStart={startPlan} styles={styles} t={t} />
     );
   }
 
@@ -244,14 +231,12 @@ function PlansContent() {
     return (
       <View style={styles.centered}>
         <Text style={styles.hint}>{progress.planId}</Text>
-        <Pressable
+        <Button
+          title={t('plans.change')}
+          variant="secondary"
           onPress={clearPlan}
-          accessibilityRole="button"
           accessibilityLabel={t('a11y.changePlan')}
-          style={styles.secondaryButton}
-        >
-          <Text style={styles.secondaryButtonText}>{t('plans.change')}</Text>
-        </Pressable>
+        />
       </View>
     );
   }
@@ -280,10 +265,9 @@ function PlanChooser(props: {
   busy: boolean;
   onStart: (planId: string) => void;
   styles: Styles;
-  colors: ThemeColors;
   t: TranslateFn;
 }) {
-  const { plans, busy, onStart, styles, colors, t } = props;
+  const { plans, busy, onStart, styles, t } = props;
   if (plans.length === 0) {
     return (
       <View style={styles.centered}>
@@ -301,27 +285,21 @@ function PlanChooser(props: {
         keyExtractor={(p) => p.id}
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
-          <View style={styles.planCard}>
+          <Surface padded style={styles.planCard}>
             <View style={styles.planCardInfo}>
               {/* Nome do plano VERBATIM do CATALOG do core (PT) — nunca via t(). */}
               <Text style={styles.planName}>{item.name}</Text>
               <Text style={styles.planDays}>{t('plans.dayCount', { days: item.days })}</Text>
             </View>
-            <Pressable
+            <Button
+              title={t('plans.start')}
               onPress={() => onStart(item.id)}
+              loading={busy}
               disabled={busy}
-              accessibilityRole="button"
               accessibilityLabel={t('a11y.startPlan', { name: item.name })}
               testID={`start-plan-${item.id}`}
-              style={[styles.primaryButton, busy && styles.buttonDisabled]}
-            >
-              {busy ? (
-                <ActivityIndicator color={colors.chipActiveText} />
-              ) : (
-                <Text style={styles.primaryButtonText}>{t('plans.start')}</Text>
-              )}
-            </Pressable>
-          </View>
+            />
+          </Surface>
         )}
       />
     </View>
@@ -424,31 +402,25 @@ function ActivePlanView(props: {
 
       <View style={styles.actions}>
         {!allDone ? (
-          <Pressable
+          <Button
+            title={t('plans.markDone')}
             onPress={() => onMarkDone(len)}
+            loading={busy}
             disabled={busy}
-            accessibilityRole="button"
             accessibilityLabel={t('a11y.markDone')}
             testID="mark-day-done"
-            style={[styles.primaryButton, styles.actionButton, busy && styles.buttonDisabled]}
-          >
-            {busy ? (
-              <ActivityIndicator color={colors.chipActiveText} />
-            ) : (
-              <Text style={styles.primaryButtonText}>{t('plans.markDone')}</Text>
-            )}
-          </Pressable>
+            style={styles.actionButton}
+          />
         ) : null}
-        <Pressable
+        <Button
+          title={t('plans.change')}
+          variant="secondary"
           onPress={onClear}
           disabled={busy}
-          accessibilityRole="button"
           accessibilityLabel={t('a11y.changePlan')}
           testID="change-plan"
-          style={[styles.secondaryButton, styles.actionButton, busy && styles.buttonDisabled]}
-        >
-          <Text style={styles.secondaryButtonText}>{t('plans.change')}</Text>
-        </Pressable>
+          style={styles.actionButton}
+        />
       </View>
     </View>
   );
@@ -583,30 +555,17 @@ function ReminderControls(props: {
       {enabled ? (
         <View style={styles.reminderTimesRow}>
           <Text style={styles.reminderTimeLabel}>{t('plans.reminderTimeLabel')}</Text>
-          {REMINDER_TIME_PRESETS.map((preset) => {
-            const active = preset === time;
-            return (
-              <Pressable
-                key={preset}
-                onPress={() => onPickTime(preset)}
-                disabled={busy}
-                hitSlop={{ top: 8, bottom: 8 }}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={t('a11y.reminderTime', { time: preset })}
-                testID={`reminder-time-${preset}`}
-                style={[
-                  styles.reminderChip,
-                  active && styles.reminderChipActive,
-                  busy && styles.buttonDisabled,
-                ]}
-              >
-                <Text style={[styles.reminderChipText, active && styles.reminderChipTextActive]}>
-                  {preset}
-                </Text>
-              </Pressable>
-            );
-          })}
+          {REMINDER_TIME_PRESETS.map((preset) => (
+            <Chip
+              key={preset}
+              label={preset}
+              active={preset === time}
+              onPress={() => onPickTime(preset)}
+              disabled={busy}
+              accessibilityLabel={t('a11y.reminderTime', { time: preset })}
+              testID={`reminder-time-${preset}`}
+            />
+          ))}
         </View>
       ) : null}
       {permissionDenied ? (
@@ -622,140 +581,83 @@ const DAY_ROW_HEIGHT = 64;
 
 type Styles = ReturnType<typeof makeStyles>;
 
-function makeStyles(colors: ThemeColors) {
+// Botões via <Button>, chips de horário via <Chip>, cartões de plano via <Surface> (kit).
+function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     centered: {
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      padding: 24,
-      gap: 16,
+      padding: space.xl,
+      gap: space.lg,
       backgroundColor: colors.background,
     },
-    listContent: { paddingHorizontal: 16, paddingBottom: 16 },
-    title: { fontSize: 22, fontWeight: '700', color: colors.text },
-    hint: { fontSize: 14, color: colors.muted, textAlign: 'center' },
-    error: { fontSize: 14, color: colors.error, textAlign: 'center' },
-    header: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, gap: 8 },
-    progressLabel: { fontSize: 14, color: colors.muted },
-    progressTrack: {
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: colors.divider,
-      overflow: 'hidden',
-    },
+    listContent: { paddingHorizontal: space.lg, paddingBottom: space.lg },
+    title: { ...type.title, color: colors.text },
+    hint: { ...type.body, color: colors.muted, textAlign: 'center' },
+    error: { ...type.body, color: colors.error, textAlign: 'center' },
+    header: { paddingHorizontal: space.lg, paddingTop: space.lg, paddingBottom: space.sm, gap: space.sm },
+    progressLabel: { ...type.caption, color: colors.muted },
+    progressTrack: { height: 8, borderRadius: 4, backgroundColor: colors.divider, overflow: 'hidden' },
     progressFill: { height: 8, borderRadius: 4, backgroundColor: colors.accent },
-    completedAll: { fontSize: 15, fontWeight: '600', color: colors.accent },
-    // Cartão de plano (estado de escolha).
+    completedAll: { ...type.body, fontWeight: '600', color: colors.accent },
+    // Cartão de plano (estado de escolha): <Surface> traz fundo/borda/raio/padding; aqui só o layout.
     planCard: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingVertical: 14,
-      paddingHorizontal: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 10,
-      marginTop: 12,
-      gap: 12,
+      marginTop: space.md,
+      gap: space.md,
     },
-    planCardInfo: { flex: 1, gap: 4 },
-    planName: { fontSize: 17, fontWeight: '600', color: colors.text },
-    planDays: { fontSize: 13, color: colors.muted },
+    planCardInfo: { flex: 1, gap: space.xs },
+    planName: { ...type.body, fontWeight: '600', color: colors.text },
+    planDays: { ...type.caption, color: colors.muted },
     // Linha de dia (estado ativo).
     dayRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       height: DAY_ROW_HEIGHT,
-      paddingHorizontal: 12,
+      paddingHorizontal: space.md,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.divider,
-      gap: 12,
+      gap: space.md,
     },
-    dayRowToday: {
-      backgroundColor: colors.chipActiveBg,
-      borderRadius: 8,
-      borderBottomWidth: 0,
-    },
+    dayRowToday: { backgroundColor: colors.chipActiveBg, borderRadius: radius.md, borderBottomWidth: 0 },
     dayRowMain: { flex: 1, gap: 2 },
-    dayNumber: { fontSize: 13, fontWeight: '600', color: colors.accent },
+    dayNumber: { ...type.caption, fontWeight: '600', color: colors.accent },
     dayNumberToday: { color: colors.chipActiveText },
-    dayLabel: { fontSize: 15, color: colors.text },
+    dayLabel: { ...type.body, color: colors.text },
     doneBadge: {
-      paddingHorizontal: 8,
+      paddingHorizontal: space.sm,
       paddingVertical: 3,
-      borderRadius: 12,
+      borderRadius: radius.pill,
       backgroundColor: colors.accent,
     },
-    doneBadgeText: { fontSize: 11, fontWeight: '700', color: colors.chipActiveText },
+    doneBadgeText: { ...type.label, fontSize: 11, color: colors.chipActiveText },
     // Lembrete diário (F5.13).
     reminderSection: {
-      paddingHorizontal: 16,
-      paddingTop: 12,
-      paddingBottom: 4,
-      gap: 10,
+      paddingHorizontal: space.lg,
+      paddingTop: space.md,
+      paddingBottom: space.xs,
+      gap: space.sm,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.divider,
     },
-    reminderHeaderRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    reminderTitle: { fontSize: 16, fontWeight: '600', color: colors.text },
-    reminderTimesRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      alignItems: 'center',
-      gap: 8,
-    },
-    reminderTimeLabel: { fontSize: 13, color: colors.muted, marginRight: 4 },
-    reminderChip: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.background,
-    },
-    reminderChipActive: {
-      backgroundColor: colors.chipActiveBg,
-      borderColor: colors.chipActiveBg,
-    },
-    reminderChipText: { fontSize: 14, color: colors.text },
-    reminderChipTextActive: { color: colors.chipActiveText, fontWeight: '600' },
-    reminderHint: { fontSize: 13, color: colors.muted },
-    // Botões.
+    reminderHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    reminderTitle: { ...type.body, fontWeight: '600', color: colors.text },
+    reminderTimesRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm },
+    reminderTimeLabel: { ...type.caption, color: colors.muted, marginRight: space.xs },
+    reminderHint: { ...type.caption, color: colors.muted },
+    // Botões (via <Button>): aqui só o layout do contêiner de ações.
     actions: {
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      gap: 10,
+      paddingHorizontal: space.lg,
+      paddingVertical: space.md,
+      gap: space.sm,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.divider,
     },
     actionButton: { alignSelf: 'stretch' },
-    primaryButton: {
-      minWidth: 96,
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderRadius: 8,
-      backgroundColor: colors.chipActiveBg,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    primaryButtonText: { fontSize: 15, fontWeight: '700', color: colors.chipActiveText },
-    secondaryButton: {
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    secondaryButtonText: { fontSize: 15, fontWeight: '600', color: colors.text },
-    buttonDisabled: { opacity: 0.5 },
   });
 }

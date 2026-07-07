@@ -380,7 +380,11 @@ async function main() {
       while (re.exec(code) !== null) byTag[tag]++;
     }
   }
-  assert.ok(total >= 40, `GUARDA: varreu elementos interativos suficientes (${total}) — o scanner não está vazio`);
+  // Piso de sanidade ("o scanner não está vazio/quebrado"), NÃO um alvo de cobertura. Conforme o
+  // kit Vigil (ADR-0066/0068) é adotado, N usos de <Button>/<Chip>/<ListRow> colapsam no ÚNICO
+  // <Pressable> interno de cada primitiva (contado uma vez), então o total de interativos CRUS
+  // encolhe legitimamente. As checagens reais (role/label/alvo) seguem rodando em cada interativo.
+  assert.ok(total >= 25, `GUARDA: varreu elementos interativos suficientes (${total}) — o scanner não está vazio`);
 
   if (findings.length > 0) {
     const report = findings.map((v) => `  ${v.rel}:${v.line} <${v.tag}> [${v.kind}] ${v.detail}`).join('\n');
