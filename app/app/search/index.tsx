@@ -23,7 +23,7 @@ import { useI18n } from '../../lib/i18n';
 import { buildDidYouMean, type DidYouMean } from '../../lib/searchSuggest';
 import { suggestBooks, type BookSuggestion } from '../../lib/searchReferenceSuggest';
 import { getRecentSearches, pushRecentSearch } from '../../lib/recentSearches';
-import { suggestWords } from '../../lib/searchWordlist';
+import { suggestFuzzy, suggestWords } from '../../lib/searchWordlist';
 import { fold } from '../../lib/searchNormalize';
 import { useTheme, type ThemeContextValue } from '../../lib/theme';
 import { parseReference, type Reference } from '../../web/reference';
@@ -222,7 +222,16 @@ function SearchContent() {
             search(dbPath, cand, effectiveTranslation, undefined, 1)
               .then((r) => r.length)
               .catch(() => 0);
-          const dym = await buildDidYouMean({ query: term, locale, probe });
+          // ADR-0064 Fase C (typo): candidatos por edit-distance ≤2 do dicionário do corpus buscado
+          // ("eternidde" → "eternidade"). São palavras REAIS do corpus → sondam > 0; o typo original
+          // sonda 0 e é filtrado. Degrada a [] sem o asset de wordlist (busca segue intacta).
+          const fuzzy = await suggestFuzzy(term, searchLang, 6).catch(() => []);
+          const dym = await buildDidYouMean({
+            query: term,
+            locale,
+            probe,
+            extraCandidates: () => fuzzy,
+          });
           if (mySeq === seqRef.current) setSuggestions(dym);
         } else {
           setSuggestions([]);
@@ -237,7 +246,7 @@ function SearchContent() {
       }
     }, DEBOUNCE_MS);
     return () => clearTimeout(handle);
-  }, [query, effectiveTranslation, locale]);
+  }, [query, effectiveTranslation, locale, searchLang]);
 
   function openHit(hit: SearchHit) {
     void pushRecentSearch(term).then(refreshRecent);

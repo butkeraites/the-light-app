@@ -72,6 +72,8 @@ async function main() {
     suggestBooks,
     makeWordlist,
     prefixMatches,
+    fuzzyMatches,
+    boundedLevenshtein,
     getRecentSearches,
     pushRecentSearch,
     clearRecentSearches,
@@ -190,6 +192,19 @@ async function main() {
   assert.deepEqual(prefixMatches(wlFixture, 'a', 6), [], 'prefixo <2 letras → []');
   assert.equal(prefixMatches(wlFixture, 'eter', 2).length, 2, 'respeita o cap `max`');
   assert.deepEqual(prefixMatches(wlFixture, 'zzz', 6), [], 'prefixo sem casamento → []');
+
+  // ══ (7b) CORREÇÃO DE DIGITAÇÃO (fuzzy, edit-distance ≤2, Fase C) ══════════════════════
+  // Levenshtein LIMITADO: distância real se ≤ max, senão max+1.
+  assert.equal(boundedLevenshtein('eternidade', 'eternidade', 2), 0, 'iguais → 0');
+  assert.equal(boundedLevenshtein('eternidde', 'eternidade', 2), 1, 'omissão de 1 letra → 1');
+  assert.equal(boundedLevenshtein('eterrnidade', 'eternidade', 2), 1, 'inserção de 1 → 1');
+  assert.equal(boundedLevenshtein('armadura', 'espírito', 2), 3, 'muito distante → max+1 (não a real)');
+  // `fuzzyMatches`: typo → palavra REAL do corpus, por (distância asc, freq desc).
+  assert.deepEqual(fuzzyMatches(wlFixture, 'eternidde', 2, 6), ['eternidade'], 'typo "eternidde" (omissão) → eternidade');
+  assert.deepEqual(fuzzyMatches(wlFixture, 'armadora', 2, 6), ['armadura'], 'typo "armadora" (substituição o→u) → armadura');
+  assert.ok(!fuzzyMatches(wlFixture, 'eternidade', 2, 6).includes('eternidade'), 'a própria palavra (dobrada igual) não se auto-sugere');
+  assert.deepEqual(fuzzyMatches(wlFixture, 'xy', 2, 6), [], 'termo <3 letras → [] (evita ruído)');
+  assert.deepEqual(fuzzyMatches(wlFixture, 'zzzzzzzz', 2, 6), [], 'nada dentro de ≤2 → []');
 
   // Integração com o ASSET REAL gerado (se presente): prova a paridade fold gerador↔runtime.
   const ptAsset = join(__dirname, '..', '..', 'assets', 'data', 'wordlist.pt.json');

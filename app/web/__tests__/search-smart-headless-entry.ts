@@ -10,7 +10,7 @@ import { significantTerms, isStopword, STOPWORDS } from '../../lib/searchStopwor
 import { synonymsFor, conceptExpansions } from '../../lib/searchSynonyms';
 import { buildDidYouMean } from '../../lib/searchSuggest';
 import { suggestBooks } from '../../lib/searchReferenceSuggest';
-import { makeWordlist, prefixMatches } from '../../lib/searchWordlistIndex';
+import { makeWordlist, prefixMatches, fuzzyMatches, boundedLevenshtein } from '../../lib/searchWordlistIndex';
 import {
   getRecentSearches,
   pushRecentSearch,
@@ -31,6 +31,8 @@ export {
   suggestBooks,
   makeWordlist,
   prefixMatches,
+  fuzzyMatches,
+  boundedLevenshtein,
   getRecentSearches,
   pushRecentSearch,
   clearRecentSearches,

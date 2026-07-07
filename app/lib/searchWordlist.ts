@@ -8,7 +8,7 @@
 // DEGRADAÇÃO GRACIOSA: se o asset não existir (ex.: checkout sem o passo de build) ou falhar, o
 // autocomplete de termo simplesmente não aparece — os demais recursos de busca seguem intactos.
 
-import { makeWordlist, prefixMatches, type Wordlist, type WordEntry } from './searchWordlistIndex';
+import { fuzzyMatches, makeWordlist, prefixMatches, type Wordlist, type WordEntry } from './searchWordlistIndex';
 
 export type WordlistLang = 'pt' | 'en';
 
@@ -44,4 +44,13 @@ async function load(lang: WordlistLang): Promise<Wordlist | null> {
 export async function suggestWords(prefix: string, lang: WordlistLang, max = 6): Promise<string[]> {
   const wl = await load(lang);
   return wl ? prefixMatches(wl, prefix, max) : [];
+}
+
+/**
+ * Até `max` palavras do corpus dentro de edit-distance ≤ `maxDist` do `term` — CORREÇÃO DE
+ * DIGITAÇÃO p/ o "você quis dizer?" ("eternidde" → "eternidade"). Degrada a `[]` sem o asset.
+ */
+export async function suggestFuzzy(term: string, lang: WordlistLang, maxDist = 2, max = 6): Promise<string[]> {
+  const wl = await load(lang);
+  return wl ? fuzzyMatches(wl, term, maxDist, max) : [];
 }
