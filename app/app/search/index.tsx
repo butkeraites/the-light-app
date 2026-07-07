@@ -16,8 +16,12 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, Vi
 
 import { ReaderSearchResultItem } from '../../components/ReaderSearchResultItem';
 import { ReaderVersionPicker } from '../../components/ReaderVersionPicker';
+import { ReaderScopeBar } from '../../components/ReaderScopeBar';
+import { ScopeStudySheet } from '../../components/ScopeStudySheet';
 import { WasmGate } from '../../components/WasmGate';
 import { Chip, ListRow, Surface } from '../../components/ui';
+import { studyScope, useStudyScope } from '../../lib/useStudyScope';
+import { versesForChapter } from '../../lib/studyScope';
 import { ensureReadingDb } from '../../lib/db';
 import { useI18n } from '../../lib/i18n';
 import { buildDidYouMean, type DidYouMean } from '../../lib/searchSuggest';
@@ -73,6 +77,11 @@ function SearchContent() {
   const { colors } = theme;
   const { locale, t } = useI18n();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+
+  // Fase 4: Escopo de Estudo por TEMA — os resultados da busca ganham "+ Escopo"; a barra do
+  // escopo aparece aqui também (o store é global, persiste entre telas).
+  const scope = useStudyScope();
+  const [scopeSheetOpen, setScopeSheetOpen] = useState(false);
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchHit[]>([]);
@@ -405,16 +414,49 @@ function SearchContent() {
           data={results}
           keyExtractor={keyOf}
           keyboardShouldPersistTaps="handled"
-          renderItem={({ item }) => (
-            <ReaderSearchResultItem
-              hit={item}
-              bookName={bookNameOf(item.reference.book)}
-              onPress={() => openHit(item)}
-              testID={`hit-${keyOf(item)}`}
-            />
-          )}
+          renderItem={({ item }) => {
+            const v = verseOf(item);
+            const inScope =
+              v != null &&
+              (() => {
+                const s = versesForChapter(scope.chunks, item.reference.book, item.reference.chapter);
+                return s.whole || s.verses.has(v);
+              })();
+            return (
+              <ReaderSearchResultItem
+                hit={item}
+                bookName={bookNameOf(item.reference.book)}
+                onPress={() => openHit(item)}
+                onAddToScope={
+                  v != null ? () => studyScope.toggleVerse(item.reference.book, item.reference.chapter, v) : undefined
+                }
+                inScope={inScope}
+                testID={`hit-${keyOf(item)}`}
+              />
+            );
+          }}
         />
       )}
+
+      {/* Fase 4: barra-escopo + folha de estudo — o escopo montado por TEMA (aqui) ou por seleção
+          (no leitor) é o MESMO store global. Perguntar sobre a seleção funciona das duas telas. */}
+      {scope.chunks.length > 0 ? (
+        <ReaderScopeBar
+          chunks={scope.chunks}
+          bookLabelOf={bookNameOf}
+          onRemove={(key) => studyScope.removeChunk(key)}
+          onClear={() => studyScope.clear()}
+          onStudy={() => setScopeSheetOpen(true)}
+        />
+      ) : null}
+      <ScopeStudySheet
+        visible={scopeSheetOpen}
+        chunks={scope.chunks}
+        translation={effectiveTranslation}
+        lang={locale}
+        bookLabelOf={bookNameOf}
+        onClose={() => setScopeSheetOpen(false)}
+      />
     </View>
   );
 }

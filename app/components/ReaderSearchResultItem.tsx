@@ -9,11 +9,13 @@
 // `splitHighlighted` os consome. O nome do livro chega resolvido por prop
 // (`bookName`, de `listBooks()` na tela) — o item permanece puro/sem native call.
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { splitHighlighted } from '../lib/highlight';
+import { useI18n } from '../lib/i18n';
 import { useTheme, type ThemeContextValue } from '../lib/theme';
 import type { SearchHit } from '../web/reading';
+import { IconButton } from './ui';
 
 /** Formata o intervalo de versículos do hit (num hit de busca é sempre `Single`). */
 function formatVerses(verses: SearchHit['reference']['verses']): string {
@@ -33,13 +35,20 @@ export function ReaderSearchResultItem({
   hit,
   bookName,
   onPress,
+  onAddToScope,
+  inScope = false,
   testID,
 }: {
   hit: SearchHit;
   bookName: string;
   onPress: () => void;
+  /** Fase 4: adiciona/remove este versículo do Escopo de Estudo (entrada por TEMA). */
+  onAddToScope?: () => void;
+  /** Este versículo já está no Escopo (botão vira "✓"). */
+  inScope?: boolean;
   testID?: string;
 }) {
+  const { t } = useI18n();
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
@@ -51,40 +60,54 @@ export function ReaderSearchResultItem({
   const runs = useMemo(() => splitHighlighted(hit.highlighted), [hit.highlighted]);
 
   return (
-    <Pressable
-      style={styles.row}
-      onPress={onPress}
-      testID={testID}
-      accessibilityRole="button"
-      accessibilityLabel={reference}
-    >
-      <Text style={styles.reference}>{reference}</Text>
-      <Text style={styles.snippet}>
-        {runs.map((run, i) =>
-          run.matched ? (
-            <Text key={i} style={styles.matched}>
-              {run.text}
-            </Text>
-          ) : (
-            <Text key={i} style={styles.normal}>
-              {run.text}
-            </Text>
-          ),
-        )}
-      </Text>
-    </Pressable>
+    <View style={styles.row}>
+      <Pressable
+        style={styles.main}
+        onPress={onPress}
+        testID={testID}
+        accessibilityRole="button"
+        accessibilityLabel={reference}
+      >
+        <Text style={styles.reference}>{reference}</Text>
+        <Text style={styles.snippet}>
+          {runs.map((run, i) =>
+            run.matched ? (
+              <Text key={i} style={styles.matched}>
+                {run.text}
+              </Text>
+            ) : (
+              <Text key={i} style={styles.normal}>
+                {run.text}
+              </Text>
+            ),
+          )}
+        </Text>
+      </Pressable>
+      {onAddToScope ? (
+        <IconButton
+          name={inScope ? 'check' : 'plus'}
+          onPress={onAddToScope}
+          active={inScope}
+          accessibilityLabel={t(inScope ? 'a11y.scopeRemove' : 'a11y.scopeAdd', { ref: reference })}
+          testID={testID ? `${testID}-scope` : undefined}
+        />
+      ) : null}
+    </View>
   );
 }
 
 function makeStyles({ colors, type, space }: ThemeContextValue) {
   return StyleSheet.create({
     row: {
-      paddingVertical: space.md,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
       paddingHorizontal: space.lg,
-      gap: space.xs,
+      paddingVertical: space.sm,
+      gap: space.sm,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.divider,
     },
+    main: { flex: 1, gap: space.xs, paddingVertical: space.xs },
     reference: { ...type.caption, fontWeight: '700', color: colors.accent },
     // Snippet em SERIFA (mesma família do texto de leitura) — o versículo respira como Escritura.
     snippet: { ...type.verse, fontSize: 16, lineHeight: 24 },
