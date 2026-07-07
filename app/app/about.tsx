@@ -18,15 +18,16 @@
 // i18n/a11y/tema: TODO cromo via `t()` (PT/EN); interativos com role+label+alvo de toque;
 // cores por TOKENS de tema (zero hex).
 import { useCallback, useMemo, useState, type ComponentType } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useI18n } from '../lib/i18n';
-import { useTheme, type ThemeColors } from '../lib/theme';
+import { useTheme, type ThemeContextValue } from '../lib/theme';
+import { Button } from '../components/ui';
 
 export default function AboutScreen() {
   const { t } = useI18n();
-  const { colors } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   // Atalho de BACKUP/SINCRONIZAÇÃO: REUSA `SyncSettings` (F5.26), carregado SOB DEMANDA
   // (chunk async, fora do entry eager). Idêntico ao padrão da Home — não construímos outra
@@ -109,46 +110,40 @@ export default function AboutScreen() {
           {t('about.backupTitle')}
         </Text>
         <Text style={styles.hint}>{t('about.backupHint')}</Text>
-        <Pressable
+        <Button
+          title={t('home.syncBackup')}
+          variant="secondary"
           onPress={openSync}
-          style={styles.link}
           testID="about-open-sync"
-          accessibilityRole="button"
           accessibilityLabel={t('a11y.openSync')}
-        >
-          <Text style={styles.linkText}>{t('home.syncBackup')}</Text>
-        </Pressable>
+          style={styles.link}
+        />
       </View>
     </ScrollView>
   );
 }
 
-// Estilos derivados dos TOKENS de tema (zero hex hardcoded — molde SyncSettings).
-function makeStyles(colors: ThemeColors) {
+// Estilos derivados dos TOKENS de tema (zero hex). Botão de backup via <Button> do kit.
+function makeStyles({ colors, type, space }: ThemeContextValue) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    content: { padding: 20, gap: 16 },
-    title: { fontSize: 24, fontWeight: '700', color: colors.text },
-    intro: { fontSize: 15, color: colors.text, lineHeight: 22 },
+    content: { padding: space.xl, gap: space.lg },
+    title: { ...type.title, color: colors.text },
+    intro: { ...type.body, color: colors.text },
     section: {
-      gap: 6,
-      paddingTop: 14,
+      gap: space.xs,
+      paddingTop: space.md,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.divider,
     },
-    sectionTitle: { fontSize: 17, fontWeight: '700', color: colors.text },
-    sourceName: { fontSize: 15, fontWeight: '600', color: colors.text },
-    sourceGap: { marginTop: 8 },
-    license: { fontSize: 14, color: colors.muted, lineHeight: 20 },
+    sectionTitle: { ...type.heading, color: colors.text },
+    sourceName: { ...type.body, fontWeight: '600', color: colors.text },
+    sourceGap: { marginTop: space.sm },
+    license: { ...type.body, fontSize: 14, color: colors.muted, lineHeight: 20 },
     // Atribuição de licença (verbatim): mesmo tratamento visual dos rodapés dos painéis.
-    attribution: { fontSize: 13, color: colors.muted, lineHeight: 19 },
-    body: { fontSize: 14, color: colors.text, lineHeight: 21 },
-    hint: { fontSize: 13, color: colors.muted, lineHeight: 19 },
-    link: {
-      marginTop: 6,
-      // Alvo de toque ≥44 (padding vertical) p/ o atalho de backup.
-      paddingVertical: 10,
-    },
-    linkText: { fontSize: 16, fontWeight: '600', color: colors.accent },
+    attribution: { ...type.caption, color: colors.muted, lineHeight: 19 },
+    body: { ...type.body, fontSize: 14, color: colors.text, lineHeight: 21 },
+    hint: { ...type.caption, color: colors.muted, lineHeight: 19 },
+    link: { marginTop: space.xs, alignSelf: 'flex-start' },
   });
 }

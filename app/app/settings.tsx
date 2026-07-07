@@ -24,11 +24,12 @@
 // estruturalmente distintas, então a regra "só-nomes / secure-entry / nunca-vazar-valor" é
 // espelhada aqui em vez de extrair um componente que serviria mal os dois formatos.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useI18n, type MessageKey, type TranslateFn } from '../lib/i18n';
 import { deleteKey, listProviders, setKey, SUPPORTED_PROVIDERS } from '../lib/keystore';
-import { useTheme, type ThemeColors } from '../lib/theme';
+import { useTheme, type ThemeColors, type ThemeContextValue } from '../lib/theme';
+import { Button, Surface } from '../components/ui';
 
 // F6.8 (ADR-0058): rótulo HONESTO da capacidade de cada provedor no alvo CORRENTE. No WEB, os
 // provedores de nuvem (anthropic/openai/gemini) alcançam o navegador — a Anthropic via o header
@@ -44,8 +45,9 @@ function capabilityKey(provider: string): MessageKey {
 
 export default function SettingsScreen() {
   const { t } = useI18n();
-  const { colors } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   // NOMES dos provedores COM chave no cofre (nunca os valores) — só p/ o status por-linha.
   const [providersWithKey, setProvidersWithKey] = useState<string[]>([]);
@@ -89,9 +91,9 @@ export default function SettingsScreen() {
       <Text style={styles.intro}>{t('settings.intro')}</Text>
 
       {/* Realidade da chave (web só-sessão / nativo cofre) — EXPLÍCITA, via t() (ADR-0025). */}
-      <View style={styles.noteBox}>
+      <Surface elevated padded>
         <Text style={styles.note}>{t('settings.keyStorageNote')}</Text>
-      </View>
+      </Surface>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle} accessibilityRole="header">
@@ -179,7 +181,7 @@ function ProviderRow({
   }
 
   return (
-    <View style={styles.row} testID={`settings-provider-${provider}`}>
+    <Surface padded style={styles.row} testID={`settings-provider-${provider}`}>
       <View style={styles.rowHeader}>
         {/* Nome do provedor = id técnico (dado), não cromo traduzível. */}
         <Text style={styles.providerName}>{provider}</Text>
@@ -212,102 +214,64 @@ function ProviderRow({
       />
 
       <View style={styles.rowActions}>
-        <Pressable
-          style={[styles.btn, saveDisabled ? styles.btnDisabled : styles.btnPrimary]}
+        <Button
+          title={t('settings.saveKey')}
           onPress={onSave}
+          loading={busy}
           disabled={saveDisabled}
           testID={`settings-key-save-${provider}`}
-          accessibilityRole="button"
           accessibilityLabel={t('a11y.settingsSaveKey', { provider })}
-        >
-          {busy ? (
-            <ActivityIndicator color={colors.chipActiveText} />
-          ) : (
-            <Text style={styles.btnText}>{t('settings.saveKey')}</Text>
-          )}
-        </Pressable>
-
+        />
         {configured ? (
-          <Pressable
-            style={styles.btnGhost}
+          <Button
+            title={t('settings.removeKey')}
+            variant="danger"
             onPress={onRemove}
             disabled={busy}
             testID={`settings-key-remove-${provider}`}
-            accessibilityRole="button"
             accessibilityLabel={t('a11y.settingsRemoveKey', { provider })}
-          >
-            <Text style={styles.btnGhostText}>{t('settings.removeKey')}</Text>
-          </Pressable>
+          />
         ) : null}
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
-    </View>
+    </Surface>
   );
 }
 
-// Estilos derivados dos TOKENS de tema (zero hex hardcoded — molde about.tsx / ReaderAskPanel).
-function makeStyles(colors: ThemeColors) {
+// Estilos derivados dos TOKENS de tema (zero hex). Cartões via <Surface>, botões via <Button>.
+function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    content: { padding: 20, gap: 14 },
-    title: { fontSize: 24, fontWeight: '700', color: colors.text },
-    intro: { fontSize: 15, color: colors.text, lineHeight: 22 },
-    noteBox: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 8,
-      padding: 12,
-      backgroundColor: colors.headerBackground,
-    },
-    note: { fontSize: 13, color: colors.muted, lineHeight: 19 },
+    content: { padding: space.xl, gap: space.md },
+    title: { ...type.title, color: colors.text },
+    intro: { ...type.body, color: colors.text },
+    note: { ...type.caption, color: colors.muted, lineHeight: 19 },
     section: {
-      gap: 12,
-      paddingTop: 14,
+      gap: space.md,
+      paddingTop: space.md,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.divider,
     },
-    sectionTitle: { fontSize: 17, fontWeight: '700', color: colors.text },
-    row: {
-      gap: 8,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 10,
-      padding: 14,
-    },
+    sectionTitle: { ...type.heading, color: colors.text },
+    // <Surface> traz fundo/borda/raio/padding; aqui só o espaçamento interno entre linhas.
+    row: { gap: space.sm },
     rowHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    providerName: { fontSize: 16, fontWeight: '600', color: colors.text },
-    statusOn: { fontSize: 13, fontWeight: '600', color: colors.accent },
-    statusOff: { fontSize: 13, color: colors.muted },
-    capability: { fontSize: 12, color: colors.muted, lineHeight: 17 },
+    providerName: { ...type.body, fontWeight: '600', color: colors.text },
+    statusOn: { ...type.caption, fontWeight: '600', color: colors.accent },
+    statusOff: { ...type.caption, color: colors.muted },
+    capability: { ...type.caption, color: colors.muted, lineHeight: 17 },
     keyInput: {
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
+      borderRadius: radius.md,
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+      ...type.body,
       fontSize: 14,
       color: colors.verseText,
     },
-    rowActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    btn: {
-      paddingHorizontal: 16,
-      paddingVertical: 11,
-      borderRadius: 8,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    btnPrimary: { backgroundColor: colors.chipActiveBg },
-    btnDisabled: { backgroundColor: colors.divider, opacity: 0.6 },
-    btnText: { fontSize: 15, fontWeight: '700', color: colors.chipActiveText },
-    btnGhost: {
-      paddingHorizontal: 16,
-      paddingVertical: 11,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    btnGhostText: { fontSize: 15, fontWeight: '600', color: colors.error },
-    error: { fontSize: 13, color: colors.error, lineHeight: 18 },
+    rowActions: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+    error: { ...type.caption, color: colors.error, lineHeight: 18 },
   });
 }
