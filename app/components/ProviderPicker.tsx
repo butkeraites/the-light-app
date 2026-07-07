@@ -101,7 +101,7 @@ export function ProviderChips({
   provider: string;
   providersWithKey: string[];
   disabled: boolean;
-  testIdPrefix: 'ask' | 'chat' | 'study';
+  testIdPrefix: 'ask' | 'chat' | 'study' | 'scope';
   onSelect: (p: string) => void;
 }) {
   const { colors } = useTheme();

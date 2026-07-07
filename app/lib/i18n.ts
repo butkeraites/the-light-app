@@ -125,6 +125,10 @@ export type MessageKey =
   | 'scope.clear'
   | 'scope.done'
   | 'scope.study'
+  | 'scope.ask'
+  | 'scope.askHint'
+  | 'scope.independentAnswers'
+  | 'scope.preview'
   | 'a11y.scopeRemove'
   | 'a11y.scopeVerse'
   | 'reading.title'
@@ -486,6 +490,10 @@ const pt: Record<MessageKey, string> = {
   'scope.clear': 'Limpar',
   'scope.done': 'Concluir',
   'scope.study': 'Estudar seleção',
+  'scope.ask': 'Perguntar',
+  'scope.askHint': 'Pergunte sobre a seleção inteira. O texto citado vem do seu acervo local, verbatim.',
+  'scope.independentAnswers': '{count} passagens · respostas independentes',
+  'scope.preview': 'Passagem selecionada',
   'a11y.scopeRemove': 'Remover {ref} da seleção',
   'a11y.scopeVerse': 'Manter pressionado um versículo para selecionar vários',
   'reading.title': 'Leitura',
@@ -817,6 +825,10 @@ const en: Record<MessageKey, string> = {
   'scope.clear': 'Clear',
   'scope.done': 'Done',
   'scope.study': 'Study selection',
+  'scope.ask': 'Ask',
+  'scope.askHint': 'Ask about the whole selection. The cited text comes from your local library, verbatim.',
+  'scope.independentAnswers': '{count} passages · independent answers',
+  'scope.preview': 'Selected passage',
   'a11y.scopeRemove': 'Remove {ref} from the selection',
   'a11y.scopeVerse': 'Long-press a verse to select several',
   'reading.title': 'Reading',

@@ -485,6 +485,8 @@ function ChapterContent() {
         visible={scopeSheetOpen}
         chunks={scope.chunks}
         translation={translation}
+        lang={locale}
+        bookLabelOf={bookLabel}
         onClose={() => setScopeSheetOpen(false)}
       />
     </View>
