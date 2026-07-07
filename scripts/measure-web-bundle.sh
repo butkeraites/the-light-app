@@ -276,12 +276,24 @@ const BUDGET = {
   //   para uma seam profunda testavel. BYTES do entry re-centrados nos valores MEDIDOS (2 exports IDENTICOS
   //   -> deterministicos): raw 1.359.705 / gzip 345.110 / brotli 271.513 (a codigo do hook ~2,4 KB gzip
   //   estourou a banda antiga de gzip/brotli). Tolerancias INALTERADAS. Espelhado em web-bundle-budget.json.
+  //
+  // NOTA ADR-0068 Fase 5 (kit Vigil — icones reais) — re-baseline DELIBERADO/justificado:
+  //   ESTRUTURAL moduleCount 847 -> 911 (+64 modulos eager EXATOS): o `Icon` do kit deixou os glifos
+  //   Unicode (Fase 1) e passou a usar o set FEATHER de `@expo/vector-icons` (subpath import, so o
+  //   Feather — nao o barril com todos os sets). O Icon e importado por ListRow/Button/IconButton/
+  //   CitedText, eager nas rotas de leitura -> a infra do vector-icons (createIconSet + base Text-icon
+  //   do react-native-vector-icons + glyphMap Feather) entra no entry. NAO e regressao: e a feature
+  //   (icones profissionais no lugar de ›/❖/✧/⚇/☷). BYTES do entry re-centrados no MEDIDO (1 export;
+  //   moduleCount e EXATO/deterministico; bytes dentro do flutter): raw 1.359.705 -> 1.425.377
+  //   (+65.672, ~+64 KB); gzip 345.110 -> 366.056 (+20.946); brotli 271.513 -> 289.318 (+17.805).
+  //   Custo de 1º paint aceito (app local-first, download unico; icones sao upgrade visual central).
+  //   Tolerancias INALTERADAS. Espelhado em web-bundle-budget.json (noteADR0068Fase5).
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 847,
-    eagerBytes: { nominal: 1359705, tolerance: 1024 },
-    eagerGzipBytes: { nominal: 345110, tolerance: 2048 },
-    eagerBrotliBytes: { nominal: 271513, tolerance: 1024 },
+    moduleCount: 911,
+    eagerBytes: { nominal: 1425377, tolerance: 1024 },
+    eagerGzipBytes: { nominal: 366056, tolerance: 2048 },
+    eagerBrotliBytes: { nominal: 289318, tolerance: 1024 },
   },
 };
 
