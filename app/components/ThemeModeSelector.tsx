@@ -16,10 +16,12 @@ import { useTheme, type ThemeContextValue, type ThemeMode } from '../lib/theme';
 import { Chip } from './ui';
 
 // As TRÊS opções, em ordem canônica. `value` = argumento p/ `setMode` (null = seguir o sistema).
-// O glyph é DECORATIVO (BMP monocromático); o rótulo REAL (a11y) vem sempre de `t(labelKey)`.
+// O glyph é DECORATIVO (o rótulo REAL/a11y vem de `t(labelKey)`). O SELETOR DE VARIAÇÃO DE TEXTO
+// `︎` força apresentação MONOCROMÁTICA no iOS — sem ele, o iOS promove ☀/☾ a emoji COLORIDO
+// (o sol amarelo destoava do resto do chrome). ◐ (BMP não-emoji) já é monocromático.
 const OPTIONS: { value: ThemeMode | null; glyph: string; labelKey: MessageKey; testID: string }[] = [
-  { value: 'light', glyph: '☀', labelKey: 'theme.light', testID: 'theme-mode-light' },
-  { value: 'dark', glyph: '☾', labelKey: 'theme.dark', testID: 'theme-mode-dark' },
+  { value: 'light', glyph: '☀︎', labelKey: 'theme.light', testID: 'theme-mode-light' },
+  { value: 'dark', glyph: '☾︎', labelKey: 'theme.dark', testID: 'theme-mode-dark' },
   { value: null, glyph: '◐', labelKey: 'theme.system', testID: 'theme-mode-system' },
 ];
 
