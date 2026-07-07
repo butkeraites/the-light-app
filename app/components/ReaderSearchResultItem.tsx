@@ -12,7 +12,7 @@ import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { splitHighlighted } from '../lib/highlight';
-import { useTheme, type ThemeColors } from '../lib/theme';
+import { useTheme, type ThemeContextValue } from '../lib/theme';
 import type { SearchHit } from '../web/reading';
 
 /** Formata o intervalo de versículos do hit (num hit de busca é sempre `Single`). */
@@ -40,8 +40,8 @@ export function ReaderSearchResultItem({
   onPress: () => void;
   testID?: string;
 }) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const verseLabel = formatVerses(hit.reference.verses);
   const reference = `${bookName} ${hit.reference.chapter}${verseLabel ? `:${verseLabel}` : ''}`;
@@ -76,17 +76,18 @@ export function ReaderSearchResultItem({
   );
 }
 
-function makeStyles(colors: ThemeColors) {
+function makeStyles({ colors, type, space }: ThemeContextValue) {
   return StyleSheet.create({
     row: {
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      gap: 4,
+      paddingVertical: space.md,
+      paddingHorizontal: space.lg,
+      gap: space.xs,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.divider,
     },
-    reference: { fontSize: 13, fontWeight: '700', color: colors.accent },
-    snippet: { fontSize: 16, lineHeight: 24 },
+    reference: { ...type.caption, fontWeight: '700', color: colors.accent },
+    // Snippet em SERIFA (mesma família do texto de leitura) — o versículo respira como Escritura.
+    snippet: { ...type.verse, fontSize: 16, lineHeight: 24 },
     normal: { color: colors.verseText },
     // Termo casado: negrito + cor de destaque (token de tema, sem paleta nova).
     matched: { color: colors.accent, fontWeight: '700' },

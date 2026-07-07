@@ -17,6 +17,7 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, Vi
 import { ReaderSearchResultItem } from '../../components/ReaderSearchResultItem';
 import { ReaderVersionPicker } from '../../components/ReaderVersionPicker';
 import { WasmGate } from '../../components/WasmGate';
+import { Chip, ListRow, Surface } from '../../components/ui';
 import { ensureReadingDb } from '../../lib/db';
 import { useI18n } from '../../lib/i18n';
 import { buildDidYouMean, type DidYouMean } from '../../lib/searchSuggest';
@@ -304,49 +305,38 @@ function SearchContent() {
 
       {/* ADR-0064: AUTOCOMPLETE — referência (abrir livro/capítulo) + palavras do corpus. */}
       {term.length > 0 && (parsedRef || bookSuggestions.length > 0 || wordSuggestions.length > 0) ? (
-        <View style={styles.suggestBlock}>
+        <Surface style={styles.suggestBlock}>
           {parsedRef ? (
-            <Pressable
-              style={styles.refRow}
+            <ListRow
+              label={t('search.openReference', { ref: refLabel })}
               onPress={() => openRef(parsedRef)}
               testID="search-open-ref"
               accessibilityRole="link"
-              accessibilityLabel={t('search.openReference', { ref: refLabel })}
-            >
-              <Text style={styles.refText}>{t('search.openReference', { ref: refLabel })}</Text>
-              <Text style={styles.chevron}>›</Text>
-            </Pressable>
+            />
           ) : null}
           {bookSuggestions.map((b) => (
-            <Pressable
+            <ListRow
               key={b.book}
-              style={styles.refRow}
+              label={t('search.openBook', { book: b.label })}
               onPress={() => openBook(b.book)}
               testID={`search-book-${b.book}`}
               accessibilityRole="link"
-              accessibilityLabel={t('search.openBook', { book: b.label })}
-            >
-              <Text style={styles.refText}>{t('search.openBook', { book: b.label })}</Text>
-              <Text style={styles.chevron}>›</Text>
-            </Pressable>
+            />
           ))}
           {wordSuggestions.length > 0 ? (
             <View style={styles.wordChips}>
               {wordSuggestions.map((w) => (
-                <Pressable
+                <Chip
                   key={w}
-                  style={styles.wordChip}
+                  label={w}
                   onPress={() => runTerm(w)}
                   testID={`search-word-${w}`}
-                  accessibilityRole="button"
                   accessibilityLabel={t('search.didYouMeanItem', { term: w })}
-                >
-                  <Text style={styles.wordChipText}>{w}</Text>
-                </Pressable>
+                />
               ))}
             </View>
           ) : null}
-        </View>
+        </Surface>
       ) : null}
 
       {error ? (
@@ -389,16 +379,13 @@ function SearchContent() {
               <Text style={styles.sectionLabel}>{t('search.didYouMean')}</Text>
               <View style={styles.chipWrap}>
                 {suggestions.map((s) => (
-                  <Pressable
+                  <Chip
                     key={s.term}
-                    style={styles.dymChip}
+                    label={s.term}
                     onPress={() => runTerm(s.term)}
                     testID={`search-dym-${s.term}`}
-                    accessibilityRole="button"
                     accessibilityLabel={t('search.didYouMeanItem', { term: s.term })}
-                  >
-                    <Text style={styles.dymChipText}>{s.term}</Text>
-                  </Pressable>
+                  />
                 ))}
               </View>
             </View>
@@ -444,25 +431,8 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
     hint: { ...type.body, color: colors.muted, textAlign: 'center' },
     error: { ...type.body, color: colors.error, textAlign: 'center' },
 
-    // Autocomplete de referência (abrir livro/capítulo).
-    suggestBlock: {
-      marginHorizontal: space.lg,
-      marginBottom: space.sm,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-      overflow: 'hidden',
-    },
-    refRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      minHeight: 48,
-      paddingHorizontal: space.lg,
-      paddingVertical: space.md,
-    },
-    refText: { ...type.body, color: colors.accent, flex: 1, fontWeight: '600' },
-    chevron: { fontSize: 20, color: colors.muted },
+    // Autocomplete de referência: contêiner via <Surface>; aqui só as margens externas.
+    suggestBlock: { marginHorizontal: space.lg, marginBottom: space.sm },
 
     // Buscas recentes.
     recentBlock: { paddingHorizontal: space.lg, paddingTop: space.sm },
@@ -476,21 +446,10 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
     },
     recentText: { ...type.body, color: colors.text },
 
-    // "Você quis dizer?"
+    // "Você quis dizer?" — chips via <Chip> do kit; aqui só o layout.
     noResults: { flex: 1, alignItems: 'center', paddingTop: space.xxl, paddingHorizontal: space.xl },
     dymBlock: { marginTop: space.xl, alignSelf: 'stretch', alignItems: 'center' },
     chipWrap: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: space.sm },
-    dymChip: {
-      minHeight: 44,
-      justifyContent: 'center',
-      paddingHorizontal: space.lg,
-      paddingVertical: space.sm,
-      borderRadius: radius.pill,
-      borderWidth: 1,
-      borderColor: colors.accent,
-      backgroundColor: colors.selectionBg,
-    },
-    dymChipText: { ...type.button, color: colors.accent },
 
     // Autocomplete de TERMO do corpus (Fase B) — chips discretos abaixo das referências.
     wordChips: {
@@ -502,16 +461,5 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.divider,
     },
-    wordChip: {
-      minHeight: 44,
-      justifyContent: 'center',
-      paddingHorizontal: space.md,
-      paddingVertical: space.xs,
-      borderRadius: radius.pill,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surfaceElevated,
-    },
-    wordChipText: { ...type.body, color: colors.text },
   });
 }
