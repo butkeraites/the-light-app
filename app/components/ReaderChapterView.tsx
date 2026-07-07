@@ -248,9 +248,13 @@ function makeStyles({ type, space, radius }: ThemeContextValue, colors: ThemeCol
       borderTopRightRadius: radius.sm,
       borderBottomRightRadius: radius.sm,
     },
-    verseNumber: { ...type.verseNumber, color: colors.accent },
-    noteMark: { ...type.verseNumber, color: colors.accent },
-    verseText: { color: colors.verseText },
+    // iOS: `lineHeight` NÃO herda para <Text> aninhado (só no web/CSS). Como o número/marca/corpo
+    // são runs ANINHADOS dentro do <Text> do versículo, a entrelinha PRECISA vir em cada run —
+    // senão mudar a pref de espaçamento não muda nada no iOS (o `lineHeight` do pai não tem texto
+    // direto p/ aplicar). `verse.lineHeight` é a densidade escolhida (compacto/confortável/amplo).
+    verseNumber: { ...type.verseNumber, lineHeight: verse.lineHeight, color: colors.accent },
+    noteMark: { ...type.verseNumber, lineHeight: verse.lineHeight, color: colors.accent },
+    verseText: { color: colors.verseText, lineHeight: verse.lineHeight },
     empty: { ...type.body, color: colors.muted },
   });
 }
