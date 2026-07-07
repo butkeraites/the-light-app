@@ -138,3 +138,58 @@ export function explicitVerseCount(chunks: ScopeChunk[]): number {
 export function isSingleChunk(chunks: ScopeChunk[]): boolean {
   return chunks.length === 1;
 }
+
+// ── Persistência de SESSÃO (Fase 4b) ───────────────────────────────────────────────────
+// O escopo sobrevive a fechar/reabrir o app: é gravado no KV de prefs OFFLINE. Guardamos só
+// REFERÊNCIAS (book/chapter/from/to) — NUNCA texto bíblico (anti-alucinação). Serialização/parse
+// puros e testáveis; a fiação com o KV vive em `useStudyScope.ts`.
+
+/** Chave do KV de prefs onde a sessão de escopo é persistida (versionada p/ evoluir o formato). */
+export const STUDY_SCOPE_KEY = 'study.scope.v1';
+
+/** Serializa os trechos p/ o KV — só os 4 campos canônicos, na ordem já normalizada do escopo. */
+export function serializeChunks(chunks: ScopeChunk[]): string {
+  return JSON.stringify(
+    chunks.map((c) => ({ book: c.book, chapter: c.chapter, from: c.from, to: c.to })),
+  );
+}
+
+/**
+ * Re-hidrata trechos do KV. Tolerante: entrada nula/corrompida/inválida → `[]` (nunca lança —
+ * offline-first). Valida book/chapter inteiros positivos; `from/to` só entram se formarem faixa
+ * válida (ambos inteiros, `to >= from > 0`), senão o trecho vira capítulo inteiro. Dedup por chave.
+ */
+export function parseChunks(raw: string | null | undefined): ScopeChunk[] {
+  if (!raw) return [];
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(data)) return [];
+  const out: ScopeChunk[] = [];
+  const seen = new Set<string>();
+  for (const item of data) {
+    if (item == null || typeof item !== 'object') continue;
+    const rec = item as Record<string, unknown>;
+    const { book, chapter, from, to } = rec;
+    if (!Number.isInteger(book) || !Number.isInteger(chapter)) continue;
+    if ((book as number) <= 0 || (chapter as number) <= 0) continue;
+    const chunk: ScopeChunk = { book: book as number, chapter: chapter as number };
+    if (
+      Number.isInteger(from) &&
+      Number.isInteger(to) &&
+      (from as number) > 0 &&
+      (to as number) >= (from as number)
+    ) {
+      chunk.from = from as number;
+      chunk.to = to as number;
+    }
+    const key = chunkKey(chunk);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(chunk);
+  }
+  return out;
+}

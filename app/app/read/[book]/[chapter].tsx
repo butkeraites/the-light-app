@@ -372,6 +372,13 @@ function ChapterContent() {
             setSelectedVerse(null);
           }
         }}
+        onAddToScope={
+          // Fase 4b: junta este versículo ao Escopo (o painel segue aberto — dá p/ ir somando).
+          selectedVerse != null
+            ? () => studyScope.toggleVerse(bookNumber, chapterNumber, selectedVerse)
+            : undefined
+        }
+        inScope={selectedVerse != null && (chapterScope.whole || chapterScope.verses.has(selectedVerse))}
         onChanged={() => void refreshUserData()}
         onClose={() => setSelectedVerse(null)}
       />

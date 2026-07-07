@@ -304,6 +304,8 @@ export type MessageKey =
   | 'versePanel.chatButton'
   | 'versePanel.compareLabel'
   | 'versePanel.compareButton'
+  | 'versePanel.addToScope'
+  | 'versePanel.inScope'
   // ─── CROMO dos NOMES das cores de destaque (F5.28) ───────────────────────────────────
   // Nomes de EXIBIÇÃO das 4 cores da paleta de marcação (`highlightColors.ts`). São CROMO
   // puro (não texto bíblico): antes ficavam hardcoded em PT (`label: 'Amarelo'`) e vazavam
@@ -659,6 +661,8 @@ const pt: Record<MessageKey, string> = {
   'versePanel.chatButton': 'Conversa (IA)',
   'versePanel.compareLabel': 'Comparar respostas de várias IAs sobre esta passagem',
   'versePanel.compareButton': 'Comparar (IA)',
+  'versePanel.addToScope': 'Adicionar ao estudo',
+  'versePanel.inScope': 'No estudo',
   'highlight.yellow': 'Amarelo',
   'highlight.green': 'Verde',
   'highlight.blue': 'Azul',
@@ -995,6 +999,8 @@ const en: Record<MessageKey, string> = {
   'versePanel.chatButton': 'Chat (AI)',
   'versePanel.compareLabel': 'Compare answers from multiple AIs about this passage',
   'versePanel.compareButton': 'Compare (AI)',
+  'versePanel.addToScope': 'Add to study',
+  'versePanel.inScope': 'In study',
   'highlight.yellow': 'Yellow',
   'highlight.green': 'Green',
   'highlight.blue': 'Blue',
