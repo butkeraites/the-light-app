@@ -86,7 +86,10 @@ function RootNavigator() {
           STORE (namePt/nameEn), nunca de `t()` (anti-alucinação). */}
       <Stack.Screen name="read/index" options={{ title: t('nav.read'), ...screenChrome }} />
       <Stack.Screen name="read/[book]/index" options={{ title: t('nav.chapters'), ...screenChrome }} />
-      <Stack.Screen name="read/[book]/[chapter]" options={{ title: t('nav.reading'), ...screenChrome }} />
+      {/* Leitura imersiva: o header NATIVO é desligado SÓ nesta rota (estático, sem flash no
+          mount). O topo (voltar + título + versão + Aa + idioma + tema + controles) vira UMA
+          barra-overlay in-screen que desliza junto ao rolar — ver read/[book]/[chapter].tsx. */}
+      <Stack.Screen name="read/[book]/[chapter]" options={{ ...screenChrome, headerShown: false }} />
       {/* Fase 7: tela DEDICADA de passagem (lookup grande/múltiplo da home). O título é
           re-setado p/ a consulta digitada em `navigation.setOptions` na própria tela. */}
       <Stack.Screen name="passage" options={{ title: t('nav.passage'), ...screenChrome }} />

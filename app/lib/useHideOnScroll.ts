@@ -32,7 +32,7 @@ export function useHideOnScroll(opts: Partial<HideScrollOpts> = {}): {
       setHidden((prev) => (prev === next.hidden ? prev : next.hidden));
     },
     // `resolved` é recriado por render, mas seus campos são primitivos estáveis.
-    [resolved.threshold, resolved.topGuard],
+    [resolved.threshold, resolved.topGuard, resolved.hideThreshold, resolved.showThreshold],
   );
 
   const reset = useCallback(() => {

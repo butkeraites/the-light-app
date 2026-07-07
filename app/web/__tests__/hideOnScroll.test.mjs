@@ -72,6 +72,22 @@ assert.equal(H.reduceHideScroll({ hidden: true, lastY: 200, acc: 0 }, 10, opts).
   assert.equal(s.hidden, false, 'voltou a mostrar');
 }
 
+// ── (7) limiares ASSIMÉTRICOS: esconder deliberado, mostrar ágil ─────────────────────
+{
+  const asym = { threshold: 12, topGuard: 24, hideThreshold: 24, showThreshold: 8 };
+  // +20 acumulado pra frente NÃO esconde (< hideThreshold 24)
+  let s = { hidden: false, lastY: 100, acc: 0 };
+  s = H.reduceHideScroll(s, 120, asym); // +20
+  assert.equal(s.hidden, false, 'assimétrico: +20 não atinge hideThreshold(24) → não esconde');
+  // mais +10 (acc 30 ≥ 24) → esconde
+  s = H.reduceHideScroll(s, 130, asym);
+  assert.equal(s.hidden, true, 'assimétrico: acumular ≥24 esconde');
+  // pra trás só -8 já MOSTRA (showThreshold 8, ágil)
+  s = H.reduceHideScroll(s, 122, asym); // -8
+  assert.equal(s.hidden, false, 'assimétrico: -8 atinge showThreshold(8) → mostra (ágil)');
+}
+
 console.log('PASS — hideOnScroll (leitura imersiva) puro, headless:');
 console.log('  topo sempre visível; rolar pra frente esconde; pra trás mostra');
 console.log('  histerese (limiar) evita piscar; troca de direção reinicia o acumulador; ciclo completo');
+console.log('  limiares ASSIMÉTRICOS (esconder deliberado / mostrar ágil) com fallback p/ threshold');
