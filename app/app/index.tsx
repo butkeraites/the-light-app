@@ -4,8 +4,9 @@ import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, T
 
 import { PassageResultView } from '../components/PassageResultView';
 import { ReaderVersionPicker } from '../components/ReaderVersionPicker';
+import { Button } from '../components/ui/Button';
 import { ListRow } from '../components/ui/ListRow';
-import { resolvePassageQuery, type PassageResult } from '../lib/passageResolve';
+import { isLargePassage, resolvePassageQuery, type PassageResult } from '../lib/passageResolve';
 import { runReferenceSelfTest } from '../web/selftest';
 import { useI18n } from '../lib/i18n';
 import { useTheme, type ThemeContextValue } from '../lib/theme';
@@ -209,7 +210,26 @@ export default function HomeScreen() {
           {resolveError}
         </Text>
       ) : passageResult ? (
-        <PassageResultView result={passageResult} />
+        <>
+          <PassageResultView result={passageResult} />
+          {/* Fase 7: lookups GRANDES/MÚLTIPLOS (capítulo, intervalo longo, lista, truncado) abrem
+              numa tela de leitura DEDICADA; os pequenos ficam só no cartão inline acima. */}
+          {isLargePassage(passageResult) ? (
+            <Button
+              title={t('home.openFullPassage')}
+              icon="book"
+              variant="secondary"
+              onPress={() =>
+                router.push({
+                  pathname: '/passage',
+                  params: { q: submittedQuery, v: effectiveTranslation },
+                })
+              }
+              testID="open-full-passage"
+              style={styles.openFullBtn}
+            />
+          ) : null}
+        </>
       ) : (
         <Text testID="result" style={[styles.result, styles.resultIdle]} accessibilityRole="text">
           {t('home.resultPlaceholder')}
@@ -302,6 +322,7 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
     resultIdle: { color: colors.muted },
     resultError: { color: colors.error },
     resultLoading: { paddingVertical: space.lg, alignItems: 'flex-start' },
+    openFullBtn: { marginTop: space.sm, alignSelf: 'flex-start' },
     cta: {
       flexDirection: 'row',
       alignItems: 'center',

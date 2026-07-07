@@ -32,6 +32,18 @@ export type PassageResult = {
   invalid: number; // itens não reconhecidos / não resolvidos
 };
 
+/** Acima deste nº de versos (num único trecho) o lookup deixa de ser "pequeno" (inline). */
+export const INLINE_MAX_VERSES = 12;
+
+/**
+ * Fase 7 (follow-up): um resultado é "grande/múltiplo" (merece a tela DEDICADA de leitura em vez
+ * do cartão inline da home) quando abrange VÁRIOS trechos, MUITOS versos, ou foi TRUNCADO. Um único
+ * versículo ou um intervalo curto continua inline. Puro/derivado — sem I/O.
+ */
+export function isLargePassage(r: PassageResult): boolean {
+  return r.segments.length > 1 || r.verseCount > INLINE_MAX_VERSES || r.truncated;
+}
+
 export type ResolveDeps = {
   parseReference: (s: string) => Promise<Reference>;
   getChapter: (book: number, chapter: number) => Promise<Passage>;

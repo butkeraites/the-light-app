@@ -51,6 +51,7 @@ export type MessageKey =
   | 'home.inputPlaceholder'
   | 'home.passageNotFound'
   | 'home.passageTruncated'
+  | 'home.openFullPassage'
   | 'home.hint'
   | 'home.readBible'
   | 'home.searchBible'
@@ -77,6 +78,7 @@ export type MessageKey =
   // é a MARCA — idêntica nos dois idiomas de propósito.
   | 'nav.home'
   | 'nav.read'
+  | 'nav.passage'
   | 'nav.chapters'
   | 'nav.reading'
   | 'nav.search'
@@ -424,6 +426,7 @@ const pt: Record<MessageKey, string> = {
   'home.inputPlaceholder': 'Passagem, intervalo ou lista (ex.: João 3:16-18; Salmos 23)',
   'home.passageNotFound': 'Nada encontrado para “{input}”.',
   'home.passageTruncated': 'Seleção grande — mostrando os primeiros {count} versículos.',
+  'home.openFullPassage': 'Abrir como página',
   'home.hint': 'Pressione Enter para interpretar (via Rust/wasm).',
   'home.readBible': 'Ler a Bíblia',
   'home.searchBible': 'Buscar na Bíblia',
@@ -442,6 +445,7 @@ const pt: Record<MessageKey, string> = {
   'search.recentItem': 'Buscar novamente por {term}',
   'nav.home': 'The Light',
   'nav.read': 'Ler a Bíblia',
+  'nav.passage': 'Passagem',
   'nav.chapters': 'Capítulos',
   'nav.reading': 'Leitura',
   'nav.search': 'Buscar',
@@ -744,6 +748,7 @@ const en: Record<MessageKey, string> = {
   'home.inputPlaceholder': 'Passage, range or list (e.g., John 3:16-18; Psalm 23)',
   'home.passageNotFound': 'Nothing found for “{input}”.',
   'home.passageTruncated': 'Large selection — showing the first {count} verses.',
+  'home.openFullPassage': 'Open as a page',
   'home.hint': 'Press Enter to interpret (via Rust/wasm).',
   'home.readBible': 'Read the Bible',
   'home.searchBible': 'Search the Bible',
@@ -762,6 +767,7 @@ const en: Record<MessageKey, string> = {
   'search.recentItem': 'Search again for {term}',
   'nav.home': 'The Light',
   'nav.read': 'Read the Bible',
+  'nav.passage': 'Passage',
   'nav.chapters': 'Chapters',
   'nav.reading': 'Reading',
   'nav.search': 'Search',

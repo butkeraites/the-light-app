@@ -17,13 +17,15 @@ function verseNum(v: Segment['verses'][number]): number | null {
   return r.tag === 'Single' ? r.inner.verse : null;
 }
 
-export function PassageResultView({ result }: { result: PassageResult }) {
+export function PassageResultView({ result, full = false }: { result: PassageResult; full?: boolean }) {
   const { t } = useI18n();
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
+  // `full` (tela dedicada de passagem, Fase 7): sem borda/altura-máxima do cartão inline — o
+  // trecho ocupa a tela inteira e rola no scroll da própria tela.
   return (
-    <View style={styles.card} testID="result" accessibilityRole="summary">
+    <View style={[styles.card, full ? styles.cardFull : null]} testID="result" accessibilityRole="summary">
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -64,6 +66,8 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
       borderRadius: radius.lg,
       overflow: 'hidden',
     },
+    // Tela dedicada: ocupa tudo, sem borda/raio/altura-máxima do cartão inline.
+    cardFull: { flex: 1, maxHeight: undefined, borderWidth: 0, borderRadius: 0, backgroundColor: colors.background },
     scroll: {},
     content: { padding: space.lg, gap: space.lg },
     segment: { gap: space.xs },

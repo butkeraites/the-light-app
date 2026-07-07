@@ -87,6 +87,9 @@ function RootNavigator() {
       <Stack.Screen name="read/index" options={{ title: t('nav.read'), ...screenChrome }} />
       <Stack.Screen name="read/[book]/index" options={{ title: t('nav.chapters'), ...screenChrome }} />
       <Stack.Screen name="read/[book]/[chapter]" options={{ title: t('nav.reading'), ...screenChrome }} />
+      {/* Fase 7: tela DEDICADA de passagem (lookup grande/múltiplo da home). O título é
+          re-setado p/ a consulta digitada em `navigation.setOptions` na própria tela. */}
+      <Stack.Screen name="passage" options={{ title: t('nav.passage'), ...screenChrome }} />
       {/* F1.6: busca nativa (campo + resultados com referência clicável). Lê pela
           fronteira `search` (F1.5 → JSI → core); header temático + toggles. */}
       <Stack.Screen name="search/index" options={{ title: t('nav.search'), ...screenChrome }} />
