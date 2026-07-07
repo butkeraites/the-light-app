@@ -118,6 +118,15 @@ export type MessageKey =
   // (namePt/nameEn), NUNCA de `t()` (anti-alucinação).
   | 'read.parallel'
   | 'read.bookFallback'
+  | 'scope.title'
+  | 'scope.select'
+  | 'scope.chunkCount'
+  | 'scope.addChapter'
+  | 'scope.clear'
+  | 'scope.done'
+  | 'scope.study'
+  | 'a11y.scopeRemove'
+  | 'a11y.scopeVerse'
   | 'reading.title'
   | 'reading.size'
   | 'reading.smaller'
@@ -470,6 +479,15 @@ const pt: Record<MessageKey, string> = {
   'plans.reminderPermissionHint':
     'Permita notificações no aparelho para receber o lembrete diário (o lembrete é local, sem conta nem internet).',
   'read.parallel': 'Lado a lado',
+  'scope.title': 'Seleção de estudo',
+  'scope.select': 'Selecionar',
+  'scope.chunkCount': '{count} trecho(s)',
+  'scope.addChapter': '+ Capítulo',
+  'scope.clear': 'Limpar',
+  'scope.done': 'Concluir',
+  'scope.study': 'Estudar seleção',
+  'a11y.scopeRemove': 'Remover {ref} da seleção',
+  'a11y.scopeVerse': 'Manter pressionado um versículo para selecionar vários',
   'reading.title': 'Leitura',
   'reading.size': 'Tamanho do texto',
   'reading.smaller': 'Diminuir o texto',
@@ -792,6 +810,15 @@ const en: Record<MessageKey, string> = {
   'plans.reminderPermissionHint':
     'Allow notifications on your device to receive the daily reminder (the reminder is local, no account or internet).',
   'read.parallel': 'Side by side',
+  'scope.title': 'Study selection',
+  'scope.select': 'Select',
+  'scope.chunkCount': '{count} passage(s)',
+  'scope.addChapter': '+ Chapter',
+  'scope.clear': 'Clear',
+  'scope.done': 'Done',
+  'scope.study': 'Study selection',
+  'a11y.scopeRemove': 'Remove {ref} from the selection',
+  'a11y.scopeVerse': 'Long-press a verse to select several',
   'reading.title': 'Reading',
   'reading.size': 'Text size',
   'reading.smaller': 'Smaller text',

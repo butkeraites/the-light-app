@@ -27,13 +27,17 @@ import { ReaderStudyPanel } from '../../../components/ReaderStudyPanel';
 import { ReaderChatPanel } from '../../../components/ReaderChatPanel';
 import { ReaderComparePanel } from '../../../components/ReaderComparePanel';
 import { ReadingSettingsSheet } from '../../../components/ReadingSettingsSheet';
+import { ReaderScopeBar } from '../../../components/ReaderScopeBar';
+import { ScopeStudySheet } from '../../../components/ScopeStudySheet';
 import { LanguageToggleButton } from '../../../components/LanguageToggleButton';
 import { ThemeModeSelector } from '../../../components/ThemeModeSelector';
-import { IconButton } from '../../../components/ui';
+import { Chip, IconButton } from '../../../components/ui';
 import { resolveHighlightColor } from '../../../lib/highlightColors';
 import { useI18n } from '../../../lib/i18n';
 import { useChapterReader } from '../../../lib/useChapterReader';
 import { useReadingPrefs } from '../../../lib/useReadingPrefs';
+import { studyScope, useStudyScope } from '../../../lib/useStudyScope';
+import { versesForChapter } from '../../../lib/studyScope';
 import { useTheme, type ThemeColors } from '../../../lib/theme';
 import { listBooks, type CrossRef } from '../../../web/reading';
 
@@ -72,6 +76,10 @@ function ChapterContent() {
   // ADR-0067: preferências de leitura (tamanho/entrelinha/tema/família/just) + folha de ajustes.
   const readingPrefs = useReadingPrefs();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Fase 2: Escopo de Estudo (multi-seleção). O estado vive num store acima da rota (persiste ao
+  // navegar entre capítulos/livros). `scopeSheetOpen` abre a pré-visualização verbatim do escopo.
+  const scope = useStudyScope();
+  const [scopeSheetOpen, setScopeSheetOpen] = useState(false);
   const { book, chapter, verse } = useLocalSearchParams<{
     book: string;
     chapter: string;
@@ -94,6 +102,26 @@ function ChapterContent() {
   const [parallel, setParallel] = useState(false);
   // F1.9: versículo selecionado (dirige o carregamento de xref no hook).
   const [selectedVerse, setSelectedVerse] = useState<number | null>(null);
+
+  // Fase 2: versículos DESTE capítulo já no Escopo (realce multi-seleção) + handlers de gesto.
+  const chapterScope = useMemo(
+    () => versesForChapter(scope.chunks, bookNumber, chapterNumber),
+    [scope.chunks, bookNumber, chapterNumber],
+  );
+  // Toque num versículo: no MODO SELEÇÃO alterna o versículo no Escopo; senão abre o painel
+  // por-versículo de sempre (sem regressão).
+  const onVerse = (n: number) => {
+    if (scope.selecting) {
+      studyScope.toggleVerse(bookNumber, chapterNumber, n);
+    } else {
+      setSelectedVerse(n);
+    }
+  };
+  // Long-press: ENTRA no modo seleção e já adiciona o versículo (a entrada natural da multi-seleção).
+  const onVerseLong = (n: number) => {
+    studyScope.startSelecting();
+    studyScope.toggleVerse(bookNumber, chapterNumber, n);
+  };
 
   // F2.5/F3.5/F3.6/F3.7: qual painel de IA está aberto e em qual versículo. Colapsa os quatro
   // estados paralelos (ask/study/chat/compare) num só — só UM painel abre por vez (cada um é
@@ -217,8 +245,8 @@ function ChapterContent() {
         />
       ) : null}
 
-      {canParallel ? (
-        <View style={styles.controls}>
+      <View style={styles.controls}>
+        {canParallel ? (
           <Pressable
             style={[styles.toggle, parallel ? styles.toggleActive : null]}
             onPress={() => setParallel((v) => !v)}
@@ -232,8 +260,16 @@ function ChapterContent() {
               {t('read.parallel')}
             </Text>
           </Pressable>
-        </View>
-      ) : null}
+        ) : null}
+        {/* Fase 2: entrada da MULTI-SELEÇÃO — ativa o modo seleção (long-press num versículo também
+            entra). No modo, tocar versículos os acumula no Escopo; a barra-escopo aparece no rodapé. */}
+        <Chip
+          label={t('scope.select')}
+          active={scope.selecting}
+          onPress={() => studyScope.setSelecting(!scope.selecting)}
+          testID="scope-select-toggle"
+        />
+      </View>
 
       {parallel && canParallel && secondTranslation ? (
         <ReaderVersionPicker
@@ -264,8 +300,11 @@ function ChapterContent() {
         <ReaderChapterView
           passage={passage}
           heading={`${bookLabel(bookNumber)} ${chapterNumber}`}
-          onVersePress={setSelectedVerse}
+          onVersePress={onVerse}
+          onVerseLongPress={onVerseLong}
           selectedVerse={selectedVerse}
+          scopeVerses={chapterScope.verses}
+          scopeWhole={chapterScope.whole}
           highlightedVerses={highlightedVerses}
           notedVerses={notedVerses}
           anchorVerse={anchorVerse}
@@ -425,6 +464,28 @@ function ChapterContent() {
         visible={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         prefs={readingPrefs}
+      />
+
+      {/* Fase 2: BARRA-ESCOPO de multi-seleção — aparece no modo seleção ou com trechos no escopo.
+          Persiste ao navegar entre capítulos/livros (store acima da rota). Tocar "Estudar seleção"
+          abre a pré-visualização verbatim do escopo inteiro. */}
+      {scope.selecting || scope.chunks.length > 0 ? (
+        <ReaderScopeBar
+          chunks={scope.chunks}
+          bookLabelOf={bookLabel}
+          chapterWhole={chapterScope.whole}
+          onToggleChapter={() => studyScope.toggleWholeChapter(bookNumber, chapterNumber)}
+          onRemove={(key) => studyScope.removeChunk(key)}
+          onClear={() => studyScope.clear()}
+          onDone={() => studyScope.setSelecting(false)}
+          onStudy={() => setScopeSheetOpen(true)}
+        />
+      ) : null}
+      <ScopeStudySheet
+        visible={scopeSheetOpen}
+        chunks={scope.chunks}
+        translation={translation}
+        onClose={() => setScopeSheetOpen(false)}
       />
     </View>
   );

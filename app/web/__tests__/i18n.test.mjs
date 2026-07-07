@@ -406,6 +406,7 @@ async function main() {
     'nav',
     'read',
     'reading',
+    'scope',
     'plans',
     'ref',
     'a11y',

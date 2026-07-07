@@ -39,7 +39,10 @@ export function ReaderChapterView({
   passage,
   heading,
   onVersePress,
+  onVerseLongPress,
   selectedVerse,
+  scopeVerses,
+  scopeWhole = false,
   highlightedVerses,
   notedVerses,
   anchorVerse,
@@ -61,8 +64,14 @@ export function ReaderChapterView({
    * estático), preservando a retrocompatibilidade.
    */
   onVersePress?: (verse: number) => void;
+  /** Fase 2 (Escopo de Estudo): long-press num versículo — entra no modo seleção multi-trecho. */
+  onVerseLongPress?: (verse: number) => void;
   /** Versículo selecionado (realce por token); só usado com `onVersePress`. */
   selectedVerse?: number | null;
+  /** Fase 2: versículos DESTE capítulo já no Escopo de Estudo (realce de multi-seleção). */
+  scopeVerses?: Set<number>;
+  /** Fase 2: o capítulo inteiro está no Escopo → todos os versículos realçados. */
+  scopeWhole?: boolean;
   /**
    * F1.11: indicador de HIGHLIGHT do usuário — mapa `versículo → cor de fundo`
    * (hex já resolvido p/ o tema, a partir de `list_highlights`). OPCIONAL
@@ -177,7 +186,10 @@ export function ReaderChapterView({
       {passage.verses.map((v, i) => {
         const n = verseNumber(v.reference.verses);
         const selectable = onVersePress != null && n != null;
-        const isSelected = selectable && selectedVerse === n;
+        // Fase 2: um versículo é realçado se é o selecionado (painel), OU está no Escopo de Estudo
+        // (multi-seleção) — por faixa explícita (`scopeVerses`) ou por capítulo inteiro (`scopeWhole`).
+        const inScope = scopeWhole || (n != null && (scopeVerses?.has(n) ?? false));
+        const isSelected = selectable && (selectedVerse === n || inScope);
         // F5.32: realce TRANSITÓRIO do versículo-âncora (busca/xref). Reusa o visual
         // `verseSelected`; independe da seleção (não abre o painel).
         const isAnchored = n != null && flashVerse === n;
@@ -196,6 +208,7 @@ export function ReaderChapterView({
             testID={n != null ? `verse-${n}` : undefined}
             onLayout={n != null ? (event) => onVerseLayout(n, event) : undefined}
             onPress={selectable ? () => onVersePress!(n!) : undefined}
+            onLongPress={selectable && onVerseLongPress ? () => onVerseLongPress(n!) : undefined}
             accessibilityRole={selectable ? 'button' : undefined}
             accessibilityHint={selectable ? t('a11y.verseOptions') : undefined}
           >
