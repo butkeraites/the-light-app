@@ -23,10 +23,14 @@
 // por qualquer caminho (`index.web` só reexporta) — no browser o wasm já está
 // inicializado por `useWasmReady()`/`uniffiInitAsync` antes de `askAnchored` rodar.
 import {
+  aiMultiWebFinalize,
+  aiMultiWebPrepare,
   aiWebFinalize,
   aiWebPrepare,
   parseReference,
   type AiAnswer,
+  type AiAnswerMulti,
+  type AiPassageInput,
   type AiVerseInput,
   type AiWebRequest,
   type Reference,
@@ -808,6 +812,56 @@ export async function askAnchoredOnHandle(
   return aiWebFinalize(
     reference,
     request.citedText,
+    request.provider,
+    request.model,
+    interpretation,
+  );
+}
+
+/**
+ * PIPELINE web do estudo temático CONJUNTO sobre VÁRIOS trechos disjuntos — o mesmo
+ * `askAnchoredOnHandle`, porém resolvendo N passagens do store e montando UM prompt
+ * conjunto. Passos:
+ *   1) `hasTranslation` UMA vez (paridade com o nativo → `UnknownTranslation`);
+ *   2) para cada `reference`: `parseReference` (wasm) + `queryChapter` (SELECT existente)
+ *      + recorte → `verses` VERBATIM do store, montando um `AiPassageInput`;
+ *   3) `aiMultiWebPrepare` (wasm) → N `citedPassages` (store, numeradas) + `system`/`user`
+ *      EXATO do contexto CONJUNTO (mesma composição `multi_context` do nativo, ai-pure);
+ *   4) transporte TS (`fetch`) → `interpretation` (UMA, tecendo os trechos);
+ *   5) `aiMultiWebFinalize` (wasm) → `AiAnswerMulti` (citação anti-alucinação em Rust; as
+ *      N passagens do store SEPARADAS da interpretação).
+ * Anti-alucinação COM ZERO DRIFT: texto bíblico SEMPRE do store; prompt+citação do MESMO
+ * Rust `ai-pure` no web e no nativo. (Sem streaming: como o fan-out que substitui.)
+ */
+export async function askMultiAnchoredOnHandle(
+  handle: ReadingDb,
+  fetchImpl: AiFetch,
+  translation: string,
+  references: string[],
+  question: string,
+  provider: string,
+  key: string | undefined,
+  model: string | undefined,
+  lang: string,
+): Promise<AiAnswerMulti> {
+  if (references.length === 0) {
+    throw new Error('escopo de estudo vazio (nenhuma referência)');
+  }
+  if (!(await hasTranslation(handle, translation))) {
+    // Espelha `SourceError::UnknownTranslation` propagado pelo nativo.
+    throw new Error(`versão desconhecida: ${translation}`);
+  }
+  // Resolve cada trecho VERBATIM do store (a MESMA rota do single, N vezes).
+  const passages: AiPassageInput[] = [];
+  for (const reference of references) {
+    const ref = parseReference(reference);
+    const rows = await queryChapter(handle, translation, ref.book, ref.chapter);
+    passages.push({ reference, verses: versesForReference(ref, rows) });
+  }
+  const request = aiMultiWebPrepare(question, provider, model, lang, passages);
+  const interpretation = await webLlmTransport(fetchImpl, provider, key, request);
+  return aiMultiWebFinalize(
+    request.citedPassages,
     request.provider,
     request.model,
     interpretation,

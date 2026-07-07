@@ -127,7 +127,7 @@ export type MessageKey =
   | 'scope.study'
   | 'scope.ask'
   | 'scope.askHint'
-  | 'scope.independentAnswers'
+  | 'scope.synthesisTitle'
   | 'scope.preview'
   | 'a11y.scopeRemove'
   | 'a11y.scopeAdd'
@@ -495,7 +495,7 @@ const pt: Record<MessageKey, string> = {
   'scope.study': 'Estudar seleção',
   'scope.ask': 'Perguntar',
   'scope.askHint': 'Pergunte sobre a seleção inteira. O texto citado vem do seu acervo local, verbatim.',
-  'scope.independentAnswers': '{count} passagens · respostas independentes',
+  'scope.synthesisTitle': 'Síntese de {count} trechos',
   'scope.preview': 'Passagem selecionada',
   'a11y.scopeRemove': 'Remover {ref} da seleção',
   'a11y.scopeAdd': 'Adicionar {ref} à seleção de estudo',
@@ -833,7 +833,7 @@ const en: Record<MessageKey, string> = {
   'scope.study': 'Study selection',
   'scope.ask': 'Ask',
   'scope.askHint': 'Ask about the whole selection. The cited text comes from your local library, verbatim.',
-  'scope.independentAnswers': '{count} passages · independent answers',
+  'scope.synthesisTitle': 'Synthesis across {count} passages',
   'scope.preview': 'Selected passage',
   'a11y.scopeRemove': 'Remove {ref} from the selection',
   'a11y.scopeAdd': 'Add {ref} to the study selection',

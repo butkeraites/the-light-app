@@ -2149,6 +2149,41 @@ pub struct AiAnswer {
     pub model: String,
 }
 
+/// Um **trecho citado** de um estudo TEMÁTICO multi-passagem (saída de
+/// [`ask_multi_anchored`] / [`ai_multi_web_finalize`]).
+///
+/// Cada trecho carrega a sua referência canônica, um rótulo de exibição e o texto
+/// **numerado, verbatim do store** — mantido **separado** da interpretação. Anti-
+/// alucinação: o `cited_text` **nunca** vem do LLM. Record **puro**, em todos os alvos.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct CitedPassage {
+    /// Referência canônica do trecho (book/chapter/verses).
+    pub reference: Reference,
+    /// Rótulo canônico de exibição (ex.: `"João 3:16-18"`), via `format_reference`.
+    pub label: String,
+    /// Passagem **numerada, verbatim do store** (uma linha por versículo).
+    pub cited_text: String,
+}
+
+/// Resposta de um estudo **temático conjunto** sobre VÁRIOS trechos disjuntos
+/// (saída de [`ask_multi_anchored`]).
+///
+/// Diferente de [`AiAnswer`] (single-passagem), carrega **N** [`CitedPassage`] — cada
+/// uma verbatim do store, atribuível — e **UMA** interpretação que as **tece** num só
+/// texto. Anti-alucinação: as passagens citadas vêm do store; a `interpretation` é só
+/// do modelo. Record **puro**, em todos os alvos.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AiAnswerMulti {
+    /// Os N trechos do escopo, cada um verbatim do store (mesmo texto que a UI cita).
+    pub cited_passages: Vec<CitedPassage>,
+    /// Interpretação ÚNICA do **modelo** tecendo os trechos — texto do LLM, não bíblico.
+    pub interpretation: String,
+    /// Nome do provedor usado (ex.: `"mock"`), via `LlmProvider::name()`.
+    pub provider: String,
+    /// Modelo usado (ex.: `"mock-1"`), via `LlmProvider::model()`.
+    pub model: String,
+}
+
 /// **Pergunta ancorada** (`ask`) sobre uma passagem, delegando à camada de IA do
 /// `the-light-core` (RAG leve, BYOK).
 ///
@@ -2245,6 +2280,121 @@ pub fn ask_anchored(
             db_path,
             translation,
             reference,
+            question,
+            provider_name,
+            key,
+            model,
+            lang,
+        );
+        Err(CoreError::Generic {
+            message: "ai não disponível no alvo web (F2.7)".to_string(),
+        })
+    }
+}
+
+/// Monta o **contexto RAG CONJUNTO** de N trechos: um bloco `ai::ask_context` por
+/// passagem (rótulo + numerado), concatenados por linha em branco.
+///
+/// **Fonte única** do formato do prompt conjunto — chamada tanto pelo nativo
+/// ([`ask_multi_anchored`]) quanto pelo web ([`ai_multi_web_prepare`]), então nativo e
+/// web só podem **concordar** (zero drift). Puro (só a superfície `ai-pure`): **não**
+/// reimplementa prompt algum, apenas COMPÕE blocos que o `the-light-core::ai::ask_context`
+/// já monta. Cada bloco segue ancorado só no seu texto (anti-alucinação por construção).
+fn multi_context(blocks: &[(String, String)]) -> String {
+    blocks
+        .iter()
+        .map(|(label, cited)| the_light_core::ai::ask_context(label, cited, &[]))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+/// **Estudo temático conjunto** (`ask`) sobre VÁRIOS trechos disjuntos do Escopo de
+/// Estudo — resolve o verbatim de cada trecho do store e monta **UM** prompt conjunto,
+/// devolvendo N passagens citadas + UMA interpretação que as tece ([`AiAnswerMulti`]).
+///
+/// Pipeline no **nativo** (tudo delegado ao core — uma fonte da verdade): para cada
+/// `reference` (1) `parse_reference` canonicaliza; (2) `EmbeddedSource::passage` lê a
+/// passagem **verbatim do store** (mesma rota de [`ask_anchored`]); (3)
+/// `ai::numbered_passage` numera (o `cited_text`); (4) `format_reference` dá o rótulo.
+/// Os N blocos `(rótulo, numerado)` viram UM contexto por [`multi_context`], e então
+/// (5) `ai::build_provider` (BYOK) + (6) `ai::ask(provider, question, contexto_conjunto,
+/// lang)` **uma vez** → a interpretação tecida. Anti-alucinação: o texto vem **sempre
+/// do store** (verbatim, por trecho, exibido separado); o LLM só interpreta.
+///
+/// **Sem tocar o `the-light`:** reusa apenas a superfície `pub` já existente do core
+/// (`parse_reference`/`passage`/`numbered_passage`/`ask_context`/`ask`/`build_provider`);
+/// a única lógica app-side é a COMPOSIÇÃO dos blocos ([`multi_context`]), não prompt novo.
+///
+/// **Gating por alvo:** exportada em todos os alvos; o corpo que toca `ai`/store é
+/// `cfg(not(target_arch = "wasm32"))`; no **web** o caminho é o split-transport
+/// ([`ai_multi_web_prepare`] + `fetch` no TS + [`ai_multi_web_finalize`]), então aqui o
+/// wasm retorna [`CoreError`] (não arrasta `ai`/store para o grafo wasm).
+#[uniffi::export]
+#[allow(clippy::too_many_arguments)]
+pub fn ask_multi_anchored(
+    db_path: String,
+    translation: String,
+    references: Vec<String>,
+    question: String,
+    provider_name: String,
+    key: Option<String>,
+    model: Option<String>,
+    lang: String,
+) -> Result<AiAnswerMulti, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use the_light_core::source::BibleSource;
+
+        if references.is_empty() {
+            return Err(CoreError::Generic {
+                message: "escopo de estudo vazio (nenhuma referência)".to_string(),
+            });
+        }
+
+        let lang = parse_lang(&lang);
+        let store = the_light_core::store::Store::open(&db_path).map_err(core_err)?;
+        let source = the_light_core::source::EmbeddedSource::new(&store);
+        let translation_id = the_light_core::model::TranslationId::new(translation);
+
+        // Resolve cada trecho VERBATIM do store; guarda a citação (UI) e o bloco (prompt).
+        let mut cited_passages = Vec::with_capacity(references.len());
+        let mut blocks = Vec::with_capacity(references.len());
+        for reference in &references {
+            let reference =
+                the_light_core::reference::parse_reference(reference).map_err(core_err)?;
+            let passage = source
+                .passage(&reference, &translation_id)
+                .map_err(core_err)?;
+            let cited_text = the_light_core::ai::numbered_passage(&passage);
+            let label = the_light_core::reference::format_reference(&reference, lang);
+            blocks.push((label.clone(), cited_text.clone()));
+            cited_passages.push(CitedPassage {
+                reference: reference.into(),
+                label,
+                cited_text,
+            });
+        }
+
+        // UM contexto conjunto (fonte única) → UMA chamada ao provedor → UMA interpretação.
+        let context = multi_context(&blocks);
+        let provider =
+            the_light_core::ai::build_provider(&provider_name, key, model).map_err(core_err)?;
+        let interpretation = the_light_core::ai::ask(provider.as_ref(), &question, &context, lang)
+            .map_err(core_err)?;
+
+        Ok(AiAnswerMulti {
+            cited_passages,
+            interpretation,
+            provider: provider.name().to_string(),
+            model: provider.model().to_string(),
+        })
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (
+            db_path,
+            translation,
+            references,
             question,
             provider_name,
             key,
@@ -2564,6 +2714,135 @@ pub fn ai_web_finalize(
     Ok(AiAnswer {
         reference: reference.into(),
         cited_text,
+        interpretation,
+        provider,
+        model,
+    })
+}
+
+/// **Trecho de entrada** do preparo web multi-passagem ([`ai_multi_web_prepare`]):
+/// a referência (string, canonicalizada em Rust) + os versos **verbatim do store web**.
+///
+/// Os `verses` vêm do store web no TS (a fronteira web **não** lê DB no wasm) e são
+/// numerados pela **mesma** fn pura do nativo (`ai::numbered_verses`) — anti-alucinação
+/// com zero drift. Record **puro**, em todos os alvos.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AiPassageInput {
+    /// Referência do trecho (ex.: `"John 3:16-18"`); o Rust canonicaliza.
+    pub reference: String,
+    /// Versos do trecho, **verbatim** da tradução no store web.
+    pub verses: Vec<AiVerseInput>,
+}
+
+/// O **request preparado** de um estudo temático multi-passagem no web (saída de
+/// [`ai_multi_web_prepare`]).
+///
+/// Como [`AiWebRequest`], mas carrega **N** [`CitedPassage`] (verbatim do store, uma por
+/// trecho, exibidas pela UI) + o par `system`/`user` **EXATO** que o nativo enviaria
+/// (mesmo `ai::ask` sobre o contexto conjunto). Record **puro**, em todos os alvos.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AiMultiWebRequest {
+    /// Os N trechos citados, verbatim do store (mesmo texto que a UI exibe).
+    pub cited_passages: Vec<CitedPassage>,
+    /// System prompt EXATO do `ai-pure` (mesmo do nativo; anti-alucinação).
+    pub system: String,
+    /// User prompt EXATO do `ai-pure` (pergunta + contexto conjunto dos N trechos).
+    pub user: String,
+    /// Provedor a usar no transporte (ex.: `"gemini"`).
+    pub provider: String,
+    /// Modelo resolvido (default do provedor se `model` não informado).
+    pub model: String,
+}
+
+/// **Prepara** um estudo temático multi-passagem para o transporte web (`fetch`),
+/// espelhando [`ai_web_prepare`] para N trechos disjuntos — montagem de prompt/RAG
+/// delegada às partes **puras** do `ai` do `the-light-core` + à composição única
+/// [`multi_context`], logo **zero drift** com o nativo [`ask_multi_anchored`].
+///
+/// Pipeline (**cfg-free** — só `ai-pure`; sem store/`rusqlite`/`reqwest`): para cada
+/// trecho, `parse_reference` + `ai::numbered_verses` (verbatim do store web) +
+/// `format_reference`; os N blocos viram UM contexto por [`multi_context`]; o par
+/// `system`/`user` EXATO é capturado por um [`CaptureProvider`] dirigido por `ai::ask`
+/// (mesma rota pública do single, já que `ask_user_prompt` é privado). O transporte
+/// (`fetch` + corpo/parse do provedor) fica no TS. Sem rede aqui.
+#[uniffi::export]
+pub fn ai_multi_web_prepare(
+    question: String,
+    provider_name: String,
+    model: Option<String>,
+    lang: String,
+    passages: Vec<AiPassageInput>,
+) -> Result<AiMultiWebRequest, CoreError> {
+    if passages.is_empty() {
+        return Err(CoreError::Generic {
+            message: "escopo de estudo vazio (nenhuma referência)".to_string(),
+        });
+    }
+
+    let lang = parse_lang(&lang);
+
+    // Cada trecho: referência canônica + cited_text VERBATIM (numerado pela fn do nativo).
+    let mut cited_passages = Vec::with_capacity(passages.len());
+    let mut blocks = Vec::with_capacity(passages.len());
+    for p in &passages {
+        let reference =
+            the_light_core::reference::parse_reference(&p.reference).map_err(core_err)?;
+        let cited_text = the_light_core::ai::numbered_verses(
+            p.verses.iter().map(|v| (v.number, v.text.as_str())),
+        );
+        let label = the_light_core::reference::format_reference(&reference, lang);
+        blocks.push((label.clone(), cited_text.clone()));
+        cited_passages.push(CitedPassage {
+            reference: reference.into(),
+            label,
+            cited_text,
+        });
+    }
+
+    // UM contexto conjunto (mesma composição do nativo) → prompt EXATO via CaptureProvider.
+    let context = multi_context(&blocks);
+    let model = model
+        .filter(|m| !m.trim().is_empty())
+        .unwrap_or_else(|| the_light_core::ai::default_model(&provider_name).to_string());
+    let cap = CaptureProvider {
+        provider: provider_name.clone(),
+        model: model.clone(),
+        captured: std::cell::RefCell::new(None),
+    };
+    let _ = the_light_core::ai::ask(&cap, &question, &context, lang);
+    let (system, user) = cap
+        .captured
+        .into_inner()
+        .ok_or_else(|| CoreError::Generic {
+            message: "falha ao capturar o prompt conjunto (ai_multi_web_prepare)".to_string(),
+        })?;
+
+    Ok(AiMultiWebRequest {
+        cited_passages,
+        system,
+        user,
+        provider: provider_name,
+        model,
+    })
+}
+
+/// **Finaliza** um estudo temático multi-passagem no web: aplica a citação anti-
+/// alucinação em Rust (mesma impl do nativo, via `citation::rewrite_anchors`) sobre a
+/// `interpretation` do `fetch` e monta o [`AiAnswerMulti`], mantendo as N passagens
+/// citadas (store) **separadas** da interpretação (LLM). Espelha [`ai_web_finalize`].
+#[uniffi::export]
+pub fn ai_multi_web_finalize(
+    cited_passages: Vec<CitedPassage>,
+    provider: String,
+    model: String,
+    interpretation: String,
+) -> Result<AiAnswerMulti, CoreError> {
+    let interpretation = the_light_core::ai::citation::rewrite_anchors(
+        &interpretation,
+        &std::collections::HashSet::new(),
+    );
+    Ok(AiAnswerMulti {
+        cited_passages,
         interpretation,
         provider,
         model,
@@ -4648,6 +4927,102 @@ mod ai_tests {
             "en".to_string(),
         )
         .expect_err("provedor desconhecido deve falhar");
+        assert!(matches!(err, CoreError::Generic { .. }));
+    }
+
+    // ── Fase 5 (ADR-0069 Caminho A): síntese temática CONJUNTA multi-passagem ─────
+    // Prova, no nativo, que `ask_multi_anchored` resolve N trechos VERBATIM do store,
+    // devolve N `cited_passages` (cada uma numerada/atribuível) e UMA `interpretation`
+    // do mock (não bíblica). Anti-alucinação por construção; sem tocar o the-light.
+
+    #[test]
+    fn ask_multi_anchored_cites_each_store_verbatim_and_interprets_once() {
+        let db = build_kjv_fixture();
+
+        let answer = ask_multi_anchored(
+            db.path(),
+            "kjv".to_string(),
+            vec!["John 3:16".to_string(), "John 3:17".to_string()],
+            "What theme do these passages share?".to_string(),
+            "mock".to_string(),
+            None, // BYOK: sem chave (mock não faz rede)
+            None,
+            "en".to_string(),
+        )
+        .expect("ask_multi_anchored com o mock deve retornar Ok");
+
+        // ── N passagens citadas, cada uma VERBATIM do store, numerada. ────────────
+        assert_eq!(
+            answer.cited_passages.len(),
+            2,
+            "duas passagens citadas (uma por trecho)"
+        );
+        let p0 = &answer.cited_passages[0];
+        let p1 = &answer.cited_passages[1];
+        assert_eq!(
+            p0.cited_text,
+            format!("16 {JOHN_3_16_KJV}"),
+            "trecho 0 = João 3:16 verbatim"
+        );
+        assert_eq!(
+            p1.cited_text,
+            format!("17 {JOHN_3_17_KJV}"),
+            "trecho 1 = João 3:17 verbatim"
+        );
+        assert_eq!(p0.reference.book, 43, "trecho 0: João (43)");
+        assert_eq!(p0.reference.chapter, 3, "trecho 0: capítulo 3");
+        assert_eq!(
+            p0.reference.verses,
+            VerseRange::Single { verse: 16 },
+            "trecho 0: versículo 16"
+        );
+
+        // ── UMA interpretação, do MODELO (mock), tecendo os trechos (não bíblica). ─
+        assert_eq!(
+            answer.interpretation,
+            mock_fixed_response(),
+            "interpretation deve ser a resposta fixa do MockLlmProvider"
+        );
+        assert!(
+            !answer.interpretation.contains("For God so loved")
+                && !answer.interpretation.contains("For God sent not"),
+            "o LLM/mock NÃO reproduz texto bíblico na interpretation: {}",
+            answer.interpretation
+        );
+        assert_eq!(answer.provider, "mock", "provider deve ser 'mock'");
+        assert_eq!(answer.model, "mock-1", "modelo do mock do core");
+    }
+
+    #[test]
+    fn ask_multi_anchored_error_paths_do_not_panic() {
+        let db = build_kjv_fixture();
+
+        // Escopo vazio → CoreError (sem I/O, sem panic).
+        let err = ask_multi_anchored(
+            db.path(),
+            "kjv".to_string(),
+            vec![],
+            "?".to_string(),
+            "mock".to_string(),
+            None,
+            None,
+            "en".to_string(),
+        )
+        .expect_err("escopo vazio deve falhar");
+        assert!(matches!(err, CoreError::Generic { .. }));
+
+        // Uma referência inválida no meio → CoreError (parse falha), sem panic.
+        let err = ask_multi_anchored(
+            db.path(),
+            "kjv".to_string(),
+            vec!["John 3:16".to_string(), "isto nao e referencia".to_string()],
+            "?".to_string(),
+            "mock".to_string(),
+            None,
+            None,
+            "en".to_string(),
+        )
+        .expect_err("referência inválida deve falhar");
         assert!(matches!(err, CoreError::Generic { .. }));
     }
 

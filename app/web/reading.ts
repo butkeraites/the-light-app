@@ -25,6 +25,7 @@ import {
   listHighlights as listHighlightsNative,
   askAnchored as askAnchoredNative,
   askAnchoredStream as askAnchoredStreamNative,
+  askMultiAnchored as askMultiAnchoredNative,
   deepStudy as deepStudyNative,
   lexicalEntries as lexicalEntriesNative,
   askSessionAnchored as askSessionAnchoredNative,
@@ -45,6 +46,8 @@ import type {
   Note,
   Highlight,
   AiAnswer,
+  AiAnswerMulti,
+  CitedPassage,
   AiTokenCallback,
   StudyResultOut,
   StudySection,
@@ -72,6 +75,8 @@ export type {
   Note,
   Highlight,
   AiAnswer,
+  AiAnswerMulti,
+  CitedPassage,
   StudyResultOut,
   StudySection,
   StudyCitation,
@@ -245,6 +250,35 @@ export async function askAnchored(
   lang: string,
 ): Promise<AiAnswer> {
   return askAnchoredNative(dbPath, translation, reference, question, provider, key, model, lang);
+}
+
+/**
+ * Estudo temático CONJUNTO sobre VÁRIOS trechos disjuntos do Escopo de Estudo: o core
+ * resolve cada `reference` VERBATIM do store, monta UM contexto conjunto e devolve
+ * `AiAnswerMulti` (N `citedPassages` do store + UMA interpretação que as tece). Anti-
+ * alucinação: cada `citedText` vem do store; o LLM só interpreta. Delega ao binding
+ * gerado `askMultiAnchored`. `key`/`model` `undefined` no mock (o core usa o default).
+ */
+export async function askMultiAnchored(
+  dbPath: string,
+  translation: string,
+  references: string[],
+  question: string,
+  provider: string,
+  key: string | undefined,
+  model: string | undefined,
+  lang: string,
+): Promise<AiAnswerMulti> {
+  return askMultiAnchoredNative(
+    dbPath,
+    translation,
+    references,
+    question,
+    provider,
+    key,
+    model,
+    lang,
+  );
 }
 
 /**

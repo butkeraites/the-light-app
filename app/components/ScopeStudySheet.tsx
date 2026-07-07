@@ -3,15 +3,16 @@
 // Folha que abre da barra-escopo. Duas metades:
 //  1) ÂNCORA verbatim — o TEXTO do escopo inteiro, lido do store (resolvePassageQuery + PassageResultView),
 //     mostrado ANTES de qualquer IA ("é exatamente isto que será citado"). Anti-alucinação visível.
-//  2) PERGUNTAR sobre o escopo, com fidelidade ESCALONADA e HONESTA à fronteira (sem tocar o core):
-//     • 1 TRECHO (faixa contígua ou capítulo) → UMA chamada CONJUNTA real via `askAnchoredStream`
+//  2) PERGUNTAR sobre o escopo, com SÍNTESE CONJUNTA real (ADR-0069 Caminho A, app-side):
+//     • 1 TRECHO (faixa contígua ou capítulo) → UMA chamada via `askAnchoredStream`
 //       (o caminho reference-string aceita "João 3:16-18" / "João 3") — resposta única, em streaming.
-//     • VÁRIOS trechos (disjuntos/cross-capítulo/livro) → FAN-OUT: uma `askAnchored` por trecho,
-//       empilhadas num acordeão (cada bloco = CitedText verbatim daquele trecho + InterpretationBlock),
-//       rotulado "N passagens · respostas independentes". NÃO é síntese conjunta (isso é gate/core).
+//     • VÁRIOS trechos (disjuntos/cross-capítulo/livro) → `askMultiAnchored`: o core resolve os N
+//       trechos VERBATIM do store, monta UM prompt conjunto e devolve N passagens citadas + UMA
+//       interpretação que as TECE (`AiAnswerMulti`). É a síntese temática que o usuário pediu —
+//       "estudar o tema, não um texto". Sem tocar o `the-light`: reusa a superfície `pub` do core.
 //
 // BYOK/offline-first: provedor via o seam ADR-0059 (mock default offline; chave real lida sob demanda,
-// nunca logada). O citedText de cada resposta vem do core, do store, verbatim — o LLM só interpreta.
+// nunca logada). O citedText de cada trecho vem do core, do store, verbatim — o LLM só interpreta.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { router } from 'expo-router';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
@@ -19,19 +20,14 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { errMessage } from '../lib/errMessage';
 import { useI18n } from '../lib/i18n';
 import { resolvePassageQuery, type PassageResult } from '../lib/passageResolve';
-import { chunkKey, chunkLabel, chunkToReference, isSingleChunk, type ScopeChunk } from '../lib/studyScope';
+import { chunkKey, chunkLabel, chunkToReference, type ScopeChunk } from '../lib/studyScope';
 import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { parseReference } from '../web/reference';
-import { askAnchored, askAnchoredStream, type AiAnswer } from '../web/reading';
+import { askAnchoredStream, askMultiAnchored, type AiAnswer, type AiAnswerMulti } from '../web/reading';
 import { AiProviderNotice } from './AiProviderNotice';
 import { ProviderChips, useProviderSelection } from './ProviderPicker';
 import { PassageResultView } from './PassageResultView';
 import { BottomSheet, Button, CitedText, InterpretationBlock, SectionLabel } from './ui';
-
-/** Resultado de UM trecho no fan-out: resposta (com âncora verbatim) ou erro. */
-type ChunkAnswer =
-  | { chunk: ScopeChunk; kind: 'answer'; answer: AiAnswer }
-  | { chunk: ScopeChunk; kind: 'error'; message: string };
 
 export function ScopeStudySheet({
   visible,
@@ -62,7 +58,7 @@ export function ScopeStudySheet({
   const [busy, setBusy] = useState(false);
   const [streamed, setStreamed] = useState('');
   const [single, setSingle] = useState<AiAnswer | null>(null);
-  const [fanout, setFanout] = useState<ChunkAnswer[]>([]);
+  const [multi, setMulti] = useState<AiAnswerMulti | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Pré-visualização verbatim do escopo (a âncora), enquanto não há resposta.
@@ -71,7 +67,7 @@ export function ScopeStudySheet({
   // Ao trocar o escopo (ou fechar), limpa a resposta e re-resolve a pré-visualização.
   useEffect(() => {
     setSingle(null);
-    setFanout([]);
+    setMulti(null);
     setStreamed('');
     setError(null);
   }, [chunks, visible]);
@@ -124,7 +120,7 @@ export function ScopeStudySheet({
     setBusy(true);
     setError(null);
     setSingle(null);
-    setFanout([]);
+    setMulti(null);
     setStreamed('');
     try {
       const key = await loadKey();
@@ -150,19 +146,19 @@ export function ScopeStudySheet({
         );
         setSingle(answer);
       } else {
-        // VÁRIOS trechos → FAN-OUT: uma chamada por trecho (molde ReaderComparePanel), agregadas.
-        // Cada resposta traz SEU citedText verbatim; erro por trecho não derruba os outros.
-        const results = await Promise.all(
-          refs.map(async ({ chunk, ref }): Promise<ChunkAnswer> => {
-            try {
-              const answer = await askAnchored(dbPath, translation, ref, q, provider, key, undefined, lang);
-              return { chunk, kind: 'answer', answer };
-            } catch (err) {
-              return { chunk, kind: 'error', message: errMessage(err) };
-            }
-          }),
+        // VÁRIOS trechos → SÍNTESE CONJUNTA: o core resolve os N trechos verbatim do store,
+        // monta UM prompt conjunto e devolve N citações + UMA interpretação que as tece.
+        const answer = await askMultiAnchored(
+          dbPath,
+          translation,
+          refs.map((r) => r.ref),
+          q,
+          provider,
+          key,
+          undefined,
+          lang,
         );
-        setFanout(results);
+        setMulti(answer);
       }
     } catch (err) {
       setError(errMessage(err));
@@ -172,7 +168,7 @@ export function ScopeStudySheet({
   }, [askDisabled, question, chunks, translation, provider, lang, loadKey]);
 
   const interpretationText = single ? single.interpretation : streamed;
-  const hasResult = single != null || fanout.length > 0;
+  const hasResult = single != null || multi != null;
 
   return (
     <BottomSheet visible={visible} onClose={onClose} title={t('scope.title')} testIDPrefix="scope-sheet" maxHeightPercent={90}>
@@ -219,7 +215,8 @@ export function ScopeStudySheet({
       {isMock ? <Text style={styles.hint}>{t('ai.mockProviderNote')}</Text> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      {/* RESULTADO — 1 trecho: resposta conjunta; vários: fan-out (uma por trecho). */}
+      {/* RESULTADO — 1 trecho: resposta conjunta (streaming); vários: síntese conjunta
+          (N trechos citados verbatim + UMA interpretação que os tece). */}
       {single != null ? (
         <>
           <CitedText text={single.citedText} label={t('ai.citedTitle')} testID="scope-cited-text" />
@@ -233,25 +230,24 @@ export function ScopeStudySheet({
             {t('ai.meta', { provider: single.provider, model: single.model })}
           </Text>
         </>
-      ) : fanout.length > 0 ? (
-        <View testID="scope-fanout">
-          <Text style={styles.fanoutHead}>{t('scope.independentAnswers', { count: fanout.length })}</Text>
-          {fanout.map((r) => (
-            <View key={chunkKey(r.chunk)} style={styles.fanoutItem}>
-              {r.kind === 'answer' ? (
-                <>
-                  <CitedText text={r.answer.citedText} label={chunkLabel(r.chunk, bookLabelOf(r.chunk.book))} testID={`scope-fanout-cited-${chunkKey(r.chunk)}`} />
-                  <InterpretationBlock label={t('ai.interpTitle')}>
-                    <Text style={styles.interpText}>{r.answer.interpretation}</Text>
-                  </InterpretationBlock>
-                </>
-              ) : (
-                <InterpretationBlock label={chunkLabel(r.chunk, bookLabelOf(r.chunk.book))}>
-                  <Text style={styles.error}>{r.message}</Text>
-                </InterpretationBlock>
-              )}
-            </View>
-          ))}
+      ) : multi != null ? (
+        <View testID="scope-multi">
+          {/* As N passagens do escopo, cada uma VERBATIM do store (anti-alucinação). */}
+          {multi.citedPassages.map((cp, i) => {
+            const chunk = chunks[i];
+            const label = chunk ? chunkLabel(chunk, bookLabelOf(chunk.book)) : cp.label;
+            const key = chunk ? chunkKey(chunk) : String(i);
+            return <CitedText key={key} text={cp.citedText} label={label} testID={`scope-multi-cited-${key}`} />;
+          })}
+          {/* UMA síntese que TECE os trechos (interpretação do modelo, separada). */}
+          <InterpretationBlock label={t('scope.synthesisTitle', { count: multi.citedPassages.length })}>
+            <Text style={styles.interpText} testID="scope-multi-interpretation">
+              {multi.interpretation}
+            </Text>
+          </InterpretationBlock>
+          <Text style={styles.meta} testID="scope-multi-meta">
+            {t('ai.meta', { provider: multi.provider, model: multi.model })}
+          </Text>
         </View>
       ) : preview != null && !hasResult ? (
         <>
@@ -283,7 +279,5 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
     cursor: { color: colors.accent },
     meta: { ...type.caption, color: colors.muted, marginTop: space.md },
     error: { ...type.body, color: colors.error, marginTop: space.sm },
-    fanoutHead: { ...type.label, color: colors.muted, marginTop: space.lg },
-    fanoutItem: { marginTop: space.xs },
   });
 }
