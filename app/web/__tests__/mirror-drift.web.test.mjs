@@ -120,10 +120,18 @@ function main() {
   const rev = pinnedRev();
 
   if (!theLightAvailable(rev)) {
+    // Em CI o repo irmão DEVE estar presente (o workflow faz checkout do the-light em ../the-light no
+    // rev pinado). Se faltar em CI, é MISCONFIG → FALHA alta (não deixa a guarda de paridade mais forte
+    // passar em silêncio). Fora de CI (clone isolado do app), mantém o SKIP LOUD histórico.
+    if (process.env.CI) {
+      console.error('FAIL — mirror-drift em CI sem o repo irmão the-light em ../the-light.');
+      console.error(`  Pin (core/Cargo.toml): ${rev.slice(0, 10)}. O workflow deve fazer checkout do the-light.`);
+      process.exit(1);
+    }
     console.log('SKIP — mirror-drift: repo the-light indisponível em ../the-light (ou rev ausente).');
     console.log(`  Pin lido de core/Cargo.toml: ${rev.slice(0, 10)}`);
     console.log('  Esta guarda precisa do repo irmão the-light p/ comparar contra o Rust no rev exato.');
-    console.log('  (Guarda de drift ungated — ADR-0062; SKIP não é falha.)');
+    console.log('  (Guarda de drift ungated — ADR-0062; SKIP não é falha fora de CI.)');
     return;
   }
 
