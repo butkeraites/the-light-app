@@ -208,6 +208,57 @@ async function openChapter(ctx, { path: routePath, expected }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
+// Fluxo: NAVEGAÇÃO CAPÍTULO-A-CAPÍTULO — Anterior/Próximo, cruzando livros e parando nos extremos.
+// Usa os cabeçalhos ("Genesis 1"/"Genesis 2"/"Exodus 1", nome do livro do STORE) como sinal
+// anti-flake + a URL como prova definitiva da rota. Locale default do smoke = EN.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+/** `true` se o testID NÃO está no DOM (usado p/ provar que um botão de nav some no extremo). */
+async function isAbsent(page, sel) {
+  return page.evaluate((s) => document.querySelector(s) == null, sel);
+}
+
+async function runChapterNav(ctx) {
+  const { page } = ctx;
+
+  // Gênesis 1 (extremo inicial): NÃO tem "anterior" (nem no topo nem no rodapé); tem "próximo".
+  await goto(ctx, '/read/1/1');
+  await waitBodyIncludes(page, 'Genesis 1'); // heading = nome do livro (store) + capítulo
+  if (!(await isAbsent(page, q('reader-prev-chapter'))) || !(await isAbsent(page, q('reader-prev-chapter-top')))) {
+    throw new Error('chapter-nav: Gênesis 1 não deveria ter botão "anterior" (é o 1º capítulo do cânon)');
+  }
+  await waitSel(page, q('reader-next-chapter'), ACTION_TIMEOUT_MS);
+
+  // Próximo (rodapé, a affordance principal do fim-de-leitura) → Gênesis 2. clickSel rola até ele.
+  await clickSel(page, q('reader-next-chapter'));
+  await page.waitForFunction(() => /\/read\/1\/2(?:[/?#]|$)/.test(location.pathname + location.search), {
+    timeout: ACTION_TIMEOUT_MS,
+    polling: 200,
+  });
+  await waitBodyIncludes(page, 'Genesis 2');
+
+  // Cruzar fronteira de livro: Gênesis 50 (último) → Êxodo 1.
+  await goto(ctx, '/read/1/50');
+  await waitBodyIncludes(page, 'Genesis 50');
+  await clickSel(page, q('reader-next-chapter'));
+  await page.waitForFunction(() => /\/read\/2\/1(?:[/?#]|$)/.test(location.pathname + location.search), {
+    timeout: ACTION_TIMEOUT_MS,
+    polling: 200,
+  });
+  await waitBodyIncludes(page, 'Exodus 1');
+
+  // Extremo final: Apocalipse 22 (último do cânon) → NÃO tem "próximo".
+  await goto(ctx, '/read/66/22');
+  await waitBodyIncludes(page, 'Revelation 22');
+  if (!(await isAbsent(page, q('reader-next-chapter'))) || !(await isAbsent(page, q('reader-next-chapter-top')))) {
+    throw new Error('chapter-nav: Apocalipse 22 não deveria ter botão "próximo" (é o último capítulo do cânon)');
+  }
+
+  await assertNoForbidden(ctx, 'chapter-nav');
+  ctx.log('  [chapter-nav] Gên 1 (sem prev) → Gên 2; Gên 50 → Êx 1 (cruza livro); Apoc 22 (sem next)');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
 // Fluxo 1 (F6.2): PARALELO / 2ª TRADUÇÃO — "lado a lado" (KJV + Almeida) no MESMO capítulo.
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
@@ -1207,6 +1258,8 @@ export const flows = [
     },
   },
   { name: 'parallel', run: runParallel },
+  // Navegação capítulo-a-capítulo (Anterior/Próximo, cruza livros, para nos extremos).
+  { name: 'chapter-nav', run: runChapterNav },
   { name: 'search-xref', run: runSearchXref },
   { name: 'notes-persist', run: runNotesPersist },
   { name: 'plans-persist', run: runPlansPersist },

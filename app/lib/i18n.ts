@@ -123,6 +123,8 @@ export type MessageKey =
   // livro AUSENTE no store (edge-case) — os NOMES reais de livro vêm do store/core
   // (namePt/nameEn), NUNCA de `t()` (anti-alucinação).
   | 'read.parallel'
+  | 'read.nextChapter'
+  | 'read.prevChapter'
   | 'read.bookFallback'
   | 'scope.title'
   | 'scope.select'
@@ -173,6 +175,8 @@ export type MessageKey =
   | 'a11y.verseOptions'
   | 'a11y.readingSettings'
   | 'a11y.back'
+  | 'a11y.nextChapter'
+  | 'a11y.prevChapter'
   | 'language.switchToOther'
   // Rótulos de acessibilidade do SELETOR TRI-ESTADO de tema (F5.33): claro / escuro / seguir o sistema.
   | 'theme.light'
@@ -513,6 +517,8 @@ const pt: Record<MessageKey, string> = {
   'plans.reminderPermissionHint':
     'Permita notificações no aparelho para receber o lembrete diário (o lembrete é local, sem conta nem internet).',
   'read.parallel': 'Lado a lado',
+  'read.nextChapter': 'Próximo · {label}',
+  'read.prevChapter': 'Anterior · {label}',
   'scope.title': 'Seleção de estudo',
   'scope.select': 'Selecionar',
   'scope.chunkCount': '{count} trecho(s)',
@@ -558,6 +564,8 @@ const pt: Record<MessageKey, string> = {
   'a11y.verseOptions': 'Abrir opções do versículo',
   'a11y.readingSettings': 'Ajustes de leitura',
   'a11y.back': 'Voltar',
+  'a11y.nextChapter': 'Próximo capítulo: {label}',
+  'a11y.prevChapter': 'Capítulo anterior: {label}',
   'a11y.startPlan': 'Começar o plano {name}',
   'a11y.openDay': 'Abrir a leitura do dia {day}: {label}',
   'a11y.markDone': 'Marcar o dia de hoje como lido',
@@ -871,6 +879,8 @@ const en: Record<MessageKey, string> = {
   'plans.reminderPermissionHint':
     'Allow notifications on your device to receive the daily reminder (the reminder is local, no account or internet).',
   'read.parallel': 'Side by side',
+  'read.nextChapter': 'Next · {label}',
+  'read.prevChapter': 'Previous · {label}',
   'scope.title': 'Study selection',
   'scope.select': 'Select',
   'scope.chunkCount': '{count} passage(s)',
@@ -916,6 +926,8 @@ const en: Record<MessageKey, string> = {
   'a11y.verseOptions': 'Open verse options',
   'a11y.readingSettings': 'Reading settings',
   'a11y.back': 'Back',
+  'a11y.nextChapter': 'Next chapter: {label}',
+  'a11y.prevChapter': 'Previous chapter: {label}',
   'a11y.startPlan': 'Start the {name} plan',
   'a11y.openDay': 'Open the reading for day {day}: {label}',
   'a11y.markDone': "Mark today's day as read",

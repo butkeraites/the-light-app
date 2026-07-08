@@ -10,7 +10,7 @@
 // duas passagens. Se um número existir só em uma tradução (o cânon Almeida 1911
 // tem 1 versículo a menos em alguns capítulos), a outra coluna mostra um
 // placeholder atenuado. Cores via TOKENS de tema (`useTheme`), nunca hex literal.
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -47,6 +47,7 @@ export function ReaderParallelView({
   secondary,
   onScroll,
   topInset = 0,
+  footer,
 }: {
   primary: Passage;
   secondary: Passage;
@@ -54,6 +55,8 @@ export function ReaderParallelView({
   onScroll?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
   /** Leitura imersiva: altura da barra-overlay a limpar no topo. */
   topInset?: number;
+  /** Rodapé opcional ao fim da rolagem (navegação de capítulo) — paridade com o modo normal. */
+  footer?: ReactNode;
 }) {
   const { colors } = useTheme();
   // F5.16: só o CROMO (estado-vazio) passa por `t()`. O TEXTO dos versículos e os rótulos
@@ -117,6 +120,8 @@ export function ReaderParallelView({
           </View>
         );
       })}
+      {/* Rodapé (navegação de capítulo) ao fim — paridade com o modo normal. */}
+      {footer}
     </ScrollView>
   );
 }

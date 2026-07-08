@@ -30,6 +30,7 @@ const CI = [
   'test:web:mirror-drift',
   'test:web:verse-markers',
   'test:web:verse-of-day',
+  'test:web:chapter-nav',
   'test:web:reading-streak',
   'test:web:share-verse',
 ];

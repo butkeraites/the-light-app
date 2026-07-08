@@ -44,6 +44,7 @@ import { studyScope, useStudyScope } from '../../../lib/useStudyScope';
 import { versesForChapter } from '../../../lib/studyScope';
 import { useTheme, type ThemeContextValue } from '../../../lib/theme';
 import { listBooks, type CrossRef } from '../../../web/reading';
+import { chapterNav } from '../../../lib/chapterNav';
 
 const DEFAULT_TRANSLATION = 'kjv';
 
@@ -260,6 +261,62 @@ function ChapterContent() {
     });
   }
 
+  // Navegação CAPÍTULO-A-CAPÍTULO (leitura contínua): vizinhos canônicos do capítulo atual, cruzando
+  // livros (Gn 50 → Êx 1) e parando nos extremos (Gn 1 sem anterior; Ap 22 sem próximo). `listBooks()`
+  // é síncrono (wasm pré-aquecido no boot). Só decide a ROTA — o texto segue verbatim do store.
+  const adj = useMemo(() => chapterNav(listBooks(), bookNumber, chapterNumber), [bookNumber, chapterNumber]);
+
+  // Vai ao capítulo alvo: `replace` (não empilha uma leitura longa; back = sair). Sem `?verse` → topo;
+  // `resetChrome()` reexibe a barra ao chegar. O corpo remonta no topo (useChapterReader zera o passage).
+  const goToChapter = useCallback(
+    (target: { book: number; chapter: number }) => {
+      setSelectedVerse(null);
+      resetChrome();
+      router.replace({
+        pathname: '/read/[book]/[chapter]',
+        params: { book: String(target.book), chapter: String(target.chapter) },
+      });
+    },
+    [resetChrome],
+  );
+
+  // Rótulo curto do capítulo-alvo p/ os botões/a11y (nome do livro VERBATIM do store, nunca fabricado).
+  const chapterLabel = (r: { book: number; chapter: number }) => `${bookLabel(r.book)} ${r.chapter}`;
+
+  // Rodapé de fim-de-capítulo: Anterior (esq.) / Próximo (dir.), cada um só quando há adjacência.
+  // Montado UMA vez e passado aos dois corpos (normal + paralelo) → paridade sem duplicar lógica.
+  const readerFooter =
+    adj.prev || adj.next ? (
+      <View style={styles.chapterNavFooter}>
+        {adj.prev ? (
+          <Pressable
+            style={styles.chapterNavBtn}
+            onPress={() => goToChapter(adj.prev!)}
+            testID="reader-prev-chapter"
+            accessibilityRole="button"
+            accessibilityLabel={t('a11y.prevChapter', { label: chapterLabel(adj.prev) })}
+          >
+            <Text style={styles.chapterNavText}>{t('read.prevChapter', { label: chapterLabel(adj.prev) })}</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.chapterNavSpacer} />
+        )}
+        {adj.next ? (
+          <Pressable
+            style={[styles.chapterNavBtn, styles.chapterNavBtnEnd]}
+            onPress={() => goToChapter(adj.next!)}
+            testID="reader-next-chapter"
+            accessibilityRole="button"
+            accessibilityLabel={t('a11y.nextChapter', { label: chapterLabel(adj.next) })}
+          >
+            <Text style={styles.chapterNavText}>{t('read.nextChapter', { label: chapterLabel(adj.next) })}</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.chapterNavSpacer} />
+        )}
+      </View>
+    ) : null;
+
   // 2ª tradução só oferece versões DIFERENTES da primária.
   const secondaryOptions = translations.filter((tr) => tr.id !== translation);
   const canParallel = secondaryOptions.length > 0;
@@ -301,9 +358,26 @@ function ChapterContent() {
             accessibilityLabel={t('a11y.back')}
             testID="reader-back"
           />
+          {/* Setas de CAPÍTULO flanqueando o título (o botão SAIR fica à esquerda). Somem no extremo. */}
+          {adj.prev ? (
+            <IconButton
+              name="back"
+              onPress={() => goToChapter(adj.prev!)}
+              accessibilityLabel={t('a11y.prevChapter', { label: chapterLabel(adj.prev) })}
+              testID="reader-prev-chapter-top"
+            />
+          ) : null}
           <Text style={styles.navTitle} numberOfLines={1}>
             {`${bookLabel(bookNumber)} ${chapterNumber}`}
           </Text>
+          {adj.next ? (
+            <IconButton
+              name="chevron"
+              onPress={() => goToChapter(adj.next!)}
+              accessibilityLabel={t('a11y.nextChapter', { label: chapterLabel(adj.next) })}
+              testID="reader-next-chapter-top"
+            />
+          ) : null}
           <View style={styles.navRight}>
             <IconButton
               label="Aa"
@@ -378,6 +452,7 @@ function ChapterContent() {
             secondary={secondaryPassage}
             onScroll={onReaderScroll}
             topInset={barHeight}
+            footer={readerFooter}
           />
         )
       ) : (
@@ -399,6 +474,7 @@ function ChapterContent() {
           justify={readingPrefs.justify}
           onScroll={onReaderScroll}
           topInset={barHeight}
+          footer={readerFooter}
         />
       )}
 
@@ -637,6 +713,20 @@ function makeStyles({ colors, type, space }: ThemeContextValue) {
     },
     navTitle: { ...type.title, color: colors.text, flex: 1, marginHorizontal: space.sm },
     navRight: { flexDirection: 'row', alignItems: 'center' },
+    // Rodapé de navegação de capítulo (fim da leitura): Anterior à esquerda, Próximo à direita.
+    chapterNavFooter: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginTop: space.xl,
+      paddingTop: space.lg,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.divider,
+    },
+    chapterNavBtn: { minHeight: 44, justifyContent: 'center', paddingVertical: space.sm, paddingHorizontal: space.md, flexShrink: 1 },
+    chapterNavBtnEnd: { alignItems: 'flex-end' },
+    chapterNavSpacer: { flex: 1 },
+    chapterNavText: { ...type.body, color: colors.accent, fontWeight: '600' },
     controls: {
       flexDirection: 'row',
       alignItems: 'center',
