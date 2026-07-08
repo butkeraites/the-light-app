@@ -1076,6 +1076,38 @@ async function runWasmErrorUi(ctx) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
+// Fluxo (Rodada 4): VERSÍCULO DO DIA — devocional determinístico na Home. Prova que o cartão
+// aparece com TEXTO REAL do store (anti-alucinação: o texto vem de `getChapter`, não da UI) e leva
+// ao leitor. A REFERÊNCIA do dia é determinística, mas o smoke NÃO fixa a data — assevera o
+// invariante: cartão presente + texto não-vazio + referência com "cap:verso" + toque abre /read/.
+async function runVerseOfDayUi(ctx) {
+  const { page } = ctx;
+  await goto(ctx, '/');
+  // O cartão só aparece depois de abrir o store de leitura e buscar o texto → timeout de RENDER.
+  await waitSel(page, q('verse-of-day'), RENDER_TIMEOUT_MS);
+  await waitSel(page, q('verse-of-day-text'), ACTION_TIMEOUT_MS);
+  const info = await page.evaluate((textSel, cardSel) => {
+    const txt = document.querySelector(textSel);
+    const card = document.querySelector(cardSel);
+    return { text: txt ? (txt.textContent || '').trim() : '', card: card ? (card.textContent || '').trim() : '' };
+  }, q('verse-of-day-text'), q('verse-of-day'));
+  if (info.text.length < 8) {
+    throw new Error(`verse-of-day: texto do versículo vazio/curto (store não retornou?): "${info.text}"`);
+  }
+  if (!/\d+:\d+/.test(info.card)) {
+    throw new Error(`verse-of-day: referência "cap:verso" ausente no cartão: "${info.card.slice(0, 120)}"`);
+  }
+  // Toque → abre o versículo no leitor (rota /read/<book>/<chapter>).
+  await clickSel(page, q('verse-of-day'));
+  await page.waitForFunction(() => /\/read\/\d+\/\d+/.test(location.pathname + location.search + location.hash), {
+    timeout: ACTION_TIMEOUT_MS,
+    polling: 200,
+  });
+  await assertNoForbidden(ctx, 'verse-of-day');
+  ctx.log(`  [verse-of-day] cartão na Home com texto do store + referência; toque abriu o leitor`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
 // Fluxo (Rodada 2): INTERLINEAR — palavra-a-palavra na língua original. É o PRIMEIRO fluxo do
 // smoke que exercita o léxico on-demand REAL no browser (`lexicon-sample.sqlite` via OPFS, o
 // mesmo caminho da F5.15 do word-study). Abre João 3:16 → painel por-versículo → "Interlinear",
@@ -1147,6 +1179,8 @@ export const flows = [
   // F6.7: Study/Chat des-mockados — o seletor de provedor abre em ambos (mock default + BYOK).
   // Roda com goto fresco (offline, sem chave/rede); não envia — só prova o cromo do seletor.
   { name: 'study-chat-selector', run: runStudyChatSelector },
+  // Rodada 4: versículo do dia na Home — cartão com texto REAL do store + toque abre o leitor.
+  { name: 'verse-of-day', run: runVerseOfDayUi },
   // Rodada 2: modo interlinear — PRIMEIRO fluxo a baixar o léxico on-demand real (OPFS) no browser;
   // prova a grade palavra-a-palavra em grego (store) + STEP CC-BY. Antes do ai-reachability (chaves dummy).
   { name: 'interlinear', run: runInterlinearUi },

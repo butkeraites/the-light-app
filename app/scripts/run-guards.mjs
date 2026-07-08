@@ -29,6 +29,7 @@ const CI = [
   'test:web:reminders',
   'test:web:mirror-drift',
   'test:web:verse-markers',
+  'test:web:verse-of-day',
 ];
 
 // Guardas que precisam dos DBs sqlite / bindings gerados — rodam SÓ localmente (não em CI).
@@ -51,6 +52,7 @@ const EXTRA = [
   'test:web:research',
   'test:web:research-tavily',
   'test:web:coverage',
+  'test:web:verse-of-day-data',
   'test:web:passage-query',
   'test:web:snapshot',
   'test:web:syncui',
