@@ -1083,7 +1083,16 @@ async function runWasmErrorUi(ctx) {
 async function runVerseOfDayUi(ctx) {
   const { page } = ctx;
   await goto(ctx, '/');
-  // O cartão só aparece depois de abrir o store de leitura e buscar o texto → timeout de RENDER.
+  // Sequência de leitura (Rodada 4): abrir a Home registra hoje → o chip aparece com "1" na 1ª visita.
+  await waitSel(page, q('reading-streak'), RENDER_TIMEOUT_MS);
+  const streakText = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    return el ? (el.textContent || '').trim() : '';
+  }, q('reading-streak-count'));
+  if (!/\d/.test(streakText)) {
+    throw new Error(`verse-of-day: chip de sequência sem número (streak não registrou?): "${streakText}"`);
+  }
+  // O cartão do versículo só aparece depois de abrir o store de leitura e buscar o texto → RENDER.
   await waitSel(page, q('verse-of-day'), RENDER_TIMEOUT_MS);
   await waitSel(page, q('verse-of-day-text'), ACTION_TIMEOUT_MS);
   const info = await page.evaluate((textSel, cardSel) => {
@@ -1104,7 +1113,7 @@ async function runVerseOfDayUi(ctx) {
     polling: 200,
   });
   await assertNoForbidden(ctx, 'verse-of-day');
-  ctx.log(`  [verse-of-day] cartão na Home com texto do store + referência; toque abriu o leitor`);
+  ctx.log(`  [verse-of-day] chip de sequência (${streakText}) + cartão com texto do store; toque abriu o leitor`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════

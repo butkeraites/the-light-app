@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType }
 import { router } from 'expo-router';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { HomeStreak } from '../components/HomeStreak';
 import { HomeVerseOfDay } from '../components/HomeVerseOfDay';
 import { PassageResultView } from '../components/PassageResultView';
 import { ReaderVersionPicker } from '../components/ReaderVersionPicker';
@@ -170,6 +171,9 @@ export default function HomeScreen() {
         </Text>
         <View style={styles.rule} />
       </View>
+
+      {/* SEQUÊNCIA DE LEITURA (Rodada 4) — hábito diário local; some se ainda não há sequência. */}
+      <HomeStreak />
 
       {/* LOOKUP — passagem, intervalo ou lista (ex.: "João 3:16-18; Salmos 23"). */}
       <TextInput

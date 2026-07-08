@@ -55,6 +55,8 @@ export type MessageKey =
   | 'home.hint'
   | 'home.verseOfDay'
   | 'home.verseOfDayA11y'
+  | 'home.streakDay'
+  | 'home.streakDays'
   | 'home.readBible'
   | 'home.searchBible'
   | 'home.readingPlans'
@@ -460,6 +462,8 @@ const pt: Record<MessageKey, string> = {
   'home.hint': 'Pressione Enter para interpretar (via Rust/wasm).',
   'home.verseOfDay': 'Versículo do dia',
   'home.verseOfDayA11y': 'Versículo do dia: {reference}. Toque para abrir no leitor.',
+  'home.streakDay': '{count} dia seguido',
+  'home.streakDays': '{count} dias seguidos',
   'home.readBible': 'Ler a Bíblia',
   'home.searchBible': 'Buscar na Bíblia',
   'home.readingPlans': 'Planos de leitura',
@@ -810,6 +814,8 @@ const en: Record<MessageKey, string> = {
   'home.hint': 'Press Enter to interpret (via Rust/wasm).',
   'home.verseOfDay': 'Verse of the day',
   'home.verseOfDayA11y': 'Verse of the day: {reference}. Tap to open in the reader.',
+  'home.streakDay': '{count}-day streak',
+  'home.streakDays': '{count}-day streak',
   'home.readBible': 'Read the Bible',
   'home.searchBible': 'Search the Bible',
   'home.readingPlans': 'Reading plans',

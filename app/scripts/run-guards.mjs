@@ -30,6 +30,7 @@ const CI = [
   'test:web:mirror-drift',
   'test:web:verse-markers',
   'test:web:verse-of-day',
+  'test:web:reading-streak',
 ];
 
 // Guardas que precisam dos DBs sqlite / bindings gerados — rodam SÓ localmente (não em CI).
