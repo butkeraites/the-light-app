@@ -31,6 +31,7 @@ const CI = [
   'test:web:verse-markers',
   'test:web:verse-of-day',
   'test:web:reading-streak',
+  'test:web:share-verse',
 ];
 
 // Guardas que precisam dos DBs sqlite / bindings gerados — rodam SÓ localmente (não em CI).

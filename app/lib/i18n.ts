@@ -57,6 +57,8 @@ export type MessageKey =
   | 'home.verseOfDayA11y'
   | 'home.streakDay'
   | 'home.streakDays'
+  | 'home.shareVerseA11y'
+  | 'home.verseCopied'
   | 'home.readBible'
   | 'home.searchBible'
   | 'home.readingPlans'
@@ -464,6 +466,8 @@ const pt: Record<MessageKey, string> = {
   'home.verseOfDayA11y': 'Versículo do dia: {reference}. Toque para abrir no leitor.',
   'home.streakDay': '{count} dia seguido',
   'home.streakDays': '{count} dias seguidos',
+  'home.shareVerseA11y': 'Compartilhar o versículo {reference}',
+  'home.verseCopied': 'Versículo copiado',
   'home.readBible': 'Ler a Bíblia',
   'home.searchBible': 'Buscar na Bíblia',
   'home.readingPlans': 'Planos de leitura',
@@ -816,6 +820,8 @@ const en: Record<MessageKey, string> = {
   'home.verseOfDayA11y': 'Verse of the day: {reference}. Tap to open in the reader.',
   'home.streakDay': '{count}-day streak',
   'home.streakDays': '{count}-day streak',
+  'home.shareVerseA11y': 'Share the verse {reference}',
+  'home.verseCopied': 'Verse copied',
   'home.readBible': 'Read the Bible',
   'home.searchBible': 'Search the Bible',
   'home.readingPlans': 'Reading plans',
