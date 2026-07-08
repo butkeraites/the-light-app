@@ -80,8 +80,27 @@ mkdir -p "$ROOT/assets/data" "$SEED" "$SEED_SCHOLARLY" "$TARGET"
 # Roda o importador CANÔNICO do rev pinado. CARGO_TARGET_DIR fora do checkout +
 # --locked → nenhum artefato/lock é escrito no source do the-light.
 # (rede em build OK: baixa kjv ~8.4MB + alm1911 ~4MB para o seed-dir na 1ª vez.)
+# RESILIÊNCIA (deploy confiável): os importadores baixam de raw.githubusercontent.com, que às vezes
+# devolve 429 (Too Many Requests) em rajadas. Como cada download é CACHEADO no seed-dir, um retry
+# com backoff só re-baixa o que faltou → transiente de rede não derruba o deploy. Falha REAL (dado
+# incompleto, guarda de drift) ainda aborta (o xtask sai ≠0 e esgotamos as tentativas).
+retry() {
+  local n=1 max=4 delay=15
+  while true; do
+    if "$@"; then return 0; fi
+    if [ "$n" -ge "$max" ]; then
+      echo "gen-bible-db.sh: falhou após $max tentativas: $*" >&2
+      return 1
+    fi
+    echo "gen-bible-db.sh: tentativa $n/$max falhou (provável 429/rede transiente); aguardando ${delay}s…" >&2
+    sleep "$delay"
+    n=$((n + 1))
+    delay=$((delay * 2))
+  done
+}
+
 # shellcheck disable=SC2086
-CARGO_TARGET_DIR="$TARGET" cargo run --quiet --locked \
+retry env CARGO_TARGET_DIR="$TARGET" cargo run --quiet --locked \
   --manifest-path "$XTASK_MANIFEST" -- \
   import --version kjv,alm1911,bsb,blivre --db "$OUT" --seed-dir "$SEED" $EXTRA
 
@@ -94,7 +113,7 @@ CARGO_TARGET_DIR="$TARGET" cargo run --quiet --locked \
 # O xtask aborta se < 300.000 linhas válidas (guarda de drift; esperado ~344.799).
 # `import_rows` faz DELETE+reinsert → idempotente (reimportar mantém a contagem).
 # shellcheck disable=SC2086
-CARGO_TARGET_DIR="$TARGET" cargo run --quiet --locked \
+retry env CARGO_TARGET_DIR="$TARGET" cargo run --quiet --locked \
   --manifest-path "$XTASK_MANIFEST" -- \
   import-xref --db "$OUT" --seed-dir "$SEED" $EXTRA
 
@@ -110,7 +129,7 @@ CARGO_TARGET_DIR="$TARGET" cargo run --quiet --locked \
 # `import` (no core) faz DELETE+reinsert por conjunto → idempotente (reimportar mantém as
 # contagens). Seed-dir DEDICADO ($SEED_SCHOLARLY) p/ não misturar com os JSON de verses.
 # shellcheck disable=SC2086
-CARGO_TARGET_DIR="$TARGET" cargo run --quiet --locked \
+retry env CARGO_TARGET_DIR="$TARGET" cargo run --quiet --locked \
   --manifest-path "$XTASK_MANIFEST" -- \
   import-scholarly --db "$OUT" --seed-dir "$SEED_SCHOLARLY" $EXTRA
 
