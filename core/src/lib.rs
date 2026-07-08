@@ -1014,6 +1014,99 @@ pub fn lexical_entries(
     }
 }
 
+/// Um **token interlinear** (idioma original) na fronteira UniFFI. Espelha o tipo PURO
+/// `the_light_core::ai::InterlinearToken` (presente em todos os alvos, `ai-pure`); construído só
+/// via [`From`]. Anti-alucinação: os campos vêm SÓ do store, verbatim.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct InterlinearTokenOut {
+    /// A palavra na língua original (hebraico/grego), como impressa.
+    pub surface: String,
+    /// Transliteração.
+    pub translit: Option<String>,
+    /// Lema.
+    pub lemma: Option<String>,
+    /// Número de Strong (desambiguado), quando etiquetada.
+    pub strongs: Option<String>,
+    /// Código de morfologia VERBATIM (`morph_legend` ainda não decodifica — dado futuro).
+    pub morph_code: Option<String>,
+    /// Glosa breve (COALESCE `lexicon.gloss_pt` → `lexicon.gloss` → `original_tokens.gloss`).
+    pub gloss: Option<String>,
+    /// Posição da palavra no versículo (0-based).
+    pub word_index: u32,
+    /// Testamento (`"OT"` hebraico | `"NT"` grego).
+    pub testament: String,
+}
+
+/// Tokens interlineares de UM versículo + fontes (atribuição CC-BY obrigatória), na fronteira.
+/// Espelha `the_light_core::ai::InterlinearVerse` (puro). Construído só via [`From`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct InterlinearVerseOut {
+    /// Palavras na ordem de leitura (`word_index`). Vazio = versículo sem cobertura no acervo.
+    pub tokens: Vec<InterlinearTokenOut>,
+    /// Atribuições verbatim das fontes (STEP Bible CC-BY) — a UI exibe obrigatoriamente.
+    pub sources: Vec<String>,
+}
+
+impl From<the_light_core::ai::InterlinearToken> for InterlinearTokenOut {
+    fn from(t: the_light_core::ai::InterlinearToken) -> Self {
+        InterlinearTokenOut {
+            surface: t.surface,
+            translit: t.translit,
+            lemma: t.lemma,
+            strongs: t.strongs,
+            morph_code: t.morph_code,
+            gloss: t.gloss,
+            word_index: t.word_index,
+            testament: t.testament,
+        }
+    }
+}
+
+impl From<the_light_core::ai::InterlinearVerse> for InterlinearVerseOut {
+    fn from(v: the_light_core::ai::InterlinearVerse) -> Self {
+        InterlinearVerseOut {
+            tokens: v
+                .tokens
+                .into_iter()
+                .map(InterlinearTokenOut::from)
+                .collect(),
+            sources: v.sources,
+        }
+    }
+}
+
+/// Tokens **INTERLINEARES** de um versículo (idioma original, na ordem de leitura) do store SQLite
+/// local, delegando a `the_light_core::ai::interlinear_tokens` — SEM reimplementar SQL/JOIN aqui
+/// (fonte única no core; o web espelha em TS, guardado por mirror-drift). Independente de tradução
+/// (chaveado por book/chapter/verse). `interlinear_tokens` é infalível (best-effort) → o único erro
+/// é `Store::open`. Anti-alucinação: campos verbatim do store; `sources` = atribuição CC-BY (STEP).
+///
+/// **Gating por alvo:** exportada em todos os alvos; o corpo que abre o store é
+/// `cfg(not(wasm32))`; no web um stub retorna [`CoreError`] (interlinear web = espelho TS).
+#[uniffi::export]
+pub fn interlinear_verse(
+    db_path: String,
+    book: u8,
+    chapter: u16,
+    verse: u16,
+) -> Result<InterlinearVerseOut, CoreError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        with_store(&db_path, |store| {
+            Ok(InterlinearVerseOut::from(
+                the_light_core::ai::interlinear_tokens(store.conn(), book, chapter, verse),
+            ))
+        })
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (db_path, book, chapter, verse);
+        Err(CoreError::Generic {
+            message: "interlinear indisponível no alvo web (espelho TS)".to_string(),
+        })
+    }
+}
+
 /// **Modo** de estudo (molda estrutura/tom da saída), na fronteira UniFFI.
 ///
 /// Espelha `the_light_core::ai::StudyMode` (enum **puro** /`ai-pure`, presente em todos

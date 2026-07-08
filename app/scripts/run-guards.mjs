@@ -44,6 +44,7 @@ const EXTRA = [
   'test:web:ai-multiprovider',
   'test:web:study',
   'test:web:lexicon',
+  'test:web:interlinear',
   'test:web:export',
   'test:web:session',
   'test:web:compare',

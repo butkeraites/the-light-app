@@ -28,7 +28,12 @@
 // usa um VFS de memória sobre os bytes de `assets/data/lexicon-sample.sqlite`.
 import * as SQLite from 'wa-sqlite';
 
-import type { LexEntry, VerifiedLexiconOut } from './generated/the_light_app_core';
+import type {
+  InterlinearTokenOut,
+  InterlinearVerseOut,
+  LexEntry,
+  VerifiedLexiconOut,
+} from './generated/the_light_app_core';
 import type { ReadingDb } from './sqlite-reading.web';
 
 /** Limite padrão de entradas (espelha `DEFAULT_LEXICON_LIMIT = 32` do core). */
@@ -59,6 +64,19 @@ const LEXICON_SELECT_BASE =
  * de um `source_id` usado. `scholarly_sources.attribution` é a string exigida (STEP).
  */
 const ATTRIBUTION_SELECT = 'SELECT attribution FROM scholarly_sources WHERE id = ?';
+
+/**
+ * SELECT espelhado de `interlinear_tokens` (lexicon.rs): tokens de idioma original de UM versículo,
+ * na ordem de leitura (`word_index`), SEM agregar e SEM filtro de Strong (partículas incluídas).
+ * `LEFT JOIN lexicon` traz a glosa PT (COALESCE). Guardado contra o Rust por `mirror-drift`.
+ */
+const INTERLINEAR_SELECT =
+  'SELECT t.surface, t.translit, t.lemma, t.strongs, t.morph_code, ' +
+  'COALESCE(l.gloss_pt, l.gloss, t.gloss) AS gloss, t.word_index, t.testament, t.source_id ' +
+  'FROM original_tokens t ' +
+  'LEFT JOIN lexicon l ON l.strongs = t.strongs ' +
+  'WHERE t.book_number = ? AND t.chapter = ? AND t.verse = ? ' +
+  'ORDER BY t.word_index';
 
 /** Uma linha bruta do SELECT de léxico (apenas infra; o domínio é agregado adiante). */
 interface TokenRow {
@@ -207,4 +225,42 @@ export async function queryAttributions(handle: ReadingDb, ids: string[]): Promi
     }
   }
   return out;
+}
+
+/**
+ * Roda o SELECT INTERLINEAR (um versículo) e devolve os tokens na ordem de `word_index` +
+ * as atribuições CC-BY — ESPELHANDO `interlinear_tokens` do core. SEM agregação (uma linha por
+ * palavra). ISOLADA do VFS (OPFS no browser / memória na prova node). Anti-alucinação: campos
+ * verbatim do store.
+ */
+export async function queryInterlinearVerse(
+  handle: ReadingDb,
+  book: number,
+  chapter: number,
+  verse: number,
+): Promise<InterlinearVerseOut> {
+  const { sqlite3, db } = handle;
+  const tokens: InterlinearTokenOut[] = [];
+  const sourceIds = new Set<string>();
+  for await (const stmt of sqlite3.statements(db, INTERLINEAR_SELECT)) {
+    sqlite3.bind(stmt, 1, book);
+    sqlite3.bind(stmt, 2, chapter);
+    sqlite3.bind(stmt, 3, verse);
+    while ((await sqlite3.step(stmt)) === SQLite.SQLITE_ROW) {
+      const src = textOrUndef(sqlite3, stmt, 8);
+      if (src != null) sourceIds.add(src);
+      tokens.push({
+        surface: sqlite3.column_text(stmt, 0),
+        translit: textOrUndef(sqlite3, stmt, 1),
+        lemma: textOrUndef(sqlite3, stmt, 2),
+        strongs: textOrUndef(sqlite3, stmt, 3),
+        morphCode: textOrUndef(sqlite3, stmt, 4),
+        gloss: textOrUndef(sqlite3, stmt, 5),
+        wordIndex: sqlite3.column_int(stmt, 6),
+        testament: sqlite3.column_text(stmt, 7),
+      });
+    }
+  }
+  const sources = await queryAttributions(handle, Array.from(sourceIds).sort());
+  return { tokens, sources };
 }

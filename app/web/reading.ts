@@ -29,6 +29,7 @@ import {
   estimateCostUsd as estimateCostUsdNative,
   deepStudy as deepStudyNative,
   lexicalEntries as lexicalEntriesNative,
+  interlinearVerse as interlinearVerseNative,
   askSessionAnchored as askSessionAnchoredNative,
   listReadingPlans as listReadingPlansNative,
   readingPlanDay as readingPlanDayNative,
@@ -54,6 +55,8 @@ import type {
   StudySection,
   StudyCitation,
   VerifiedLexiconOut,
+  InterlinearVerseOut,
+  InterlinearTokenOut,
   LexEntry,
   ChatTurn,
   ReadingPlanSummary,
@@ -82,6 +85,8 @@ export type {
   StudySection,
   StudyCitation,
   VerifiedLexiconOut,
+  InterlinearVerseOut,
+  InterlinearTokenOut,
   LexEntry,
   ChatTurn,
   ReadingPlanSummary,
@@ -415,6 +420,20 @@ export async function lexicalEntries(
   limit: number | undefined,
 ): Promise<VerifiedLexiconOut> {
   return lexicalEntriesNative(dbPath, book, chapter, verse, lang, limit);
+}
+
+/**
+ * Tokens INTERLINEARES (idioma original, ordem de leitura) de um versículo, do store local via
+ * `interlinear_verse`. Independente de tradução. Anti-alucinação: campos verbatim do store;
+ * `sources` = atribuição CC-BY (STEP). Delega ao binding gerado.
+ */
+export async function interlinearVerse(
+  dbPath: string,
+  book: number,
+  chapter: number,
+  verse: number,
+): Promise<InterlinearVerseOut> {
+  return interlinearVerseNative(dbPath, book, chapter, verse);
 }
 
 // ── CONVERSA/FOLLOW-UP ANCORADO (ask_session_anchored) — F3.6, fronteira F3.4 ────────

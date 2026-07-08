@@ -56,6 +56,8 @@ import type {
   StudySection,
   StudyCitation,
   VerifiedLexiconOut,
+  InterlinearVerseOut,
+  InterlinearTokenOut,
   LexEntry,
   ChatTurn,
   ReadingPlanSummary,
@@ -90,6 +92,8 @@ export type {
   StudySection,
   StudyCitation,
   VerifiedLexiconOut,
+  InterlinearVerseOut,
+  InterlinearTokenOut,
   LexEntry,
   ChatTurn,
   ReadingPlanSummary,
@@ -570,6 +574,29 @@ export async function lexicalEntries(
   const lexHandle = await openLexiconDbWeb();
   try {
     return await lexicalEntriesOnHandle(lexHandle, book, chapter, verse, limit);
+  } finally {
+    await lexHandle.close();
+  }
+}
+
+/**
+ * Tokens INTERLINEARES (idioma original) de um versículo no web: abre o store de léxico on-demand
+ * (`lexicon-sample.sqlite`, mesmo caminho da F5.15) e delega ao `interlinearVerseOnHandle` (espelho
+ * TS do SELECT). `_dbPath` aceito por paridade com o nativo.
+ */
+export async function interlinearVerse(
+  _dbPath: string,
+  book: number,
+  chapter: number,
+  verse: number,
+): Promise<InterlinearVerseOut> {
+  const [{ openLexiconDbWeb }, { interlinearVerseOnHandle }] = await Promise.all([
+    import('./sqlite-lexicon-opfs.web'),
+    import('./study.web'),
+  ]);
+  const lexHandle = await openLexiconDbWeb();
+  try {
+    return await interlinearVerseOnHandle(lexHandle, book, chapter, verse);
   } finally {
     await lexHandle.close();
   }

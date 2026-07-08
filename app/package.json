@@ -38,6 +38,7 @@
     "test:web:ai-multiprovider": "node web/__tests__/multiProvider.web.test.mjs",
     "test:web:study": "node web/__tests__/deepStudy.web.test.mjs",
     "test:web:lexicon": "node web/__tests__/lexicalEntries.web.test.mjs",
+    "test:web:interlinear": "node web/__tests__/interlinear.web.test.mjs",
     "test:web:export": "node web/__tests__/export.web.test.mjs",
     "test:web:session": "node web/__tests__/askSession.web.test.mjs",
     "test:web:research": "node web/__tests__/research.web.test.mjs",
