@@ -117,8 +117,8 @@ function ChapterContent() {
   const [barHeight, setBarHeight] = useState(0);
   const { hidden: chromeHidden, onScroll: onReaderScroll, reset: resetChrome } = useHideOnScroll({
     topGuard: barHeight || 24, // dobra como "mínimo antes de esconder": nunca descobre um vão
-    hideThreshold: 24,
-    showThreshold: 8,
+    hideThreshold: 18, // afiado: responde um pouco antes ao intento de esconder (sem ficar twitchy)
+    showThreshold: 6, // afiado: reaparece com um toque a menos de scroll ("acompanha" mais colado)
   });
   const chromeAnim = useRef(new Animated.Value(1)).current; // 1 = visível · 0 = escondido
   // `chromeGone`: barra TOTALMENTE escondida → sai do FLUXO/FOCO/a11y (display:none). Some só ao FIM
@@ -137,7 +137,7 @@ function ChapterContent() {
     }
     const anim = Animated.timing(chromeAnim, {
       toValue,
-      duration: chromeHidden ? 190 : 240,
+      duration: chromeHidden ? 150 : 190, // afiado: saída/volta mais curtas = mais snappy
       easing: chromeHidden ? Easing.bezier(0.3, 0, 1, 1) : Easing.out(Easing.cubic),
       useNativeDriver: true,
     });
