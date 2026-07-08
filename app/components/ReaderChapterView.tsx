@@ -4,7 +4,7 @@
 // TEXTO VERBATIM do store (anti-alucinação — o texto vem do `get_chapter` do
 // Rust, nunca gerado/hardcodado na UI). Cores via TOKENS de tema (`useTheme`),
 // não mais hex hardcoded. Não faz I/O nem lógica de domínio.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -61,6 +61,7 @@ export function ReaderChapterView({
   justify = false,
   onScroll,
   topInset = 0,
+  footer,
 }: {
   passage: Passage;
   /**
@@ -112,6 +113,8 @@ export function ReaderChapterView({
   onScroll?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
   /** Leitura imersiva: altura da barra-overlay a limpar no topo (paddingTop do conteúdo). */
   topInset?: number;
+  /** Rodapé opcional renderizado ao FIM da rolagem (ex.: navegação Anterior/Próximo capítulo). */
+  footer?: ReactNode;
 }) {
   const theme = useTheme();
   // ADR-0067: a SUPERFÍCIE de leitura usa a paleta de LEITURA escolhida (claro/sépia/escuro),
@@ -243,6 +246,8 @@ export function ReaderChapterView({
           </Text>
         );
       })}
+      {/* Rodapé (navegação de capítulo) ao FIM da leitura — só no render normal, não no vazio. */}
+      {footer}
     </ScrollView>
   );
 }

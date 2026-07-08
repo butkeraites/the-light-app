@@ -56,6 +56,7 @@
     "test:web:study-scope": "node web/__tests__/studyScope.test.mjs",
     "test:web:hide-on-scroll": "node web/__tests__/hideOnScroll.test.mjs",
     "test:web:verse-of-day": "node web/__tests__/verseOfDay.test.mjs",
+    "test:web:chapter-nav": "node web/__tests__/chapterNav.test.mjs",
     "test:web:reading-streak": "node web/__tests__/readingStreak.test.mjs",
     "test:web:share-verse": "node web/__tests__/shareVerse.test.mjs",
     "test:web:verse-of-day-data": "node web/__tests__/verseOfDayResolves.web.test.mjs",
