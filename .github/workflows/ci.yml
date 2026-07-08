@@ -83,12 +83,18 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: app/package-lock.json
-      - name: npm ci
+          cache-dependency-path: |
+            app/package-lock.json
+            package-lock.json
+      - name: npm ci (app)
         working-directory: app
         run: npm ci
+      # A RAIZ é a RN turbo-module library (ADR-0008): tem seu PRÓPRIO package.json com o `ubrn`
+      # (uniffi-bindgen-react-native), que as gen scripts chamam de `$ROOT/node_modules/.bin/ubrn`.
+      - name: npm ci (raiz — ferramenta ubrn p/ gen)
+        run: npm ci
       # Gera SÓ o que o tsc precisa da fronteira UniFFI (host jsi + web wasm; nada de iOS/Android).
-      # O `ubrn` vem do npm ci; o wasm-bindgen-cli é auto-instalado (versão casada ao Cargo.lock).
+      # O `ubrn` vem do npm ci da raiz; o wasm-bindgen-cli é auto-instalado (versão casada ao Cargo.lock).
       - name: gerar bindings TS (host + web)
         run: bash scripts/gen-bindings-ts.sh
       - name: tsc --noEmit
