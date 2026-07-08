@@ -1111,6 +1111,28 @@ async function runVerseOfDayUi(ctx) {
   if (!/\d+:\d+/.test(info.card)) {
     throw new Error(`verse-of-day: referência "cap:verso" ausente no cartão: "${info.card.slice(0, 120)}"`);
   }
+  // Melhoria: o versículo do dia MOSTRA a versão citada E ACOMPANHA o seletor. Lê a versão atual
+  // (não-vazia), troca p/ BSB no seletor e assevera que o rótulo vira "Berean…" E o texto muda.
+  const versionBefore = await page.evaluate(
+    (sel) => (document.querySelector(sel)?.textContent || '').trim(),
+    q('verse-of-day-version'),
+  );
+  if (versionBefore.length < 2) {
+    throw new Error(`verse-of-day: nome da versão citada ausente no cartão: "${versionBefore}"`);
+  }
+  await clickSel(page, q('home-version-bsb')); // escolhe Berean Standard Bible (en)
+  await page.waitForFunction(
+    (vSel, tSel, prevText) => {
+      const v = (document.querySelector(vSel)?.textContent || '').trim();
+      const txt = (document.querySelector(tSel)?.textContent || '').trim();
+      return /Berean/i.test(v) && txt.length > 4 && txt !== prevText;
+    },
+    { timeout: ACTION_TIMEOUT_MS, polling: 300 },
+    q('verse-of-day-version'),
+    q('verse-of-day-text'),
+    info.text,
+  );
+  ctx.log(`  [verse-of-day] cita a versão ("${versionBefore}") e ACOMPANHA o seletor → Berean Standard Bible`);
   // Compartilhar (Rodada 4): o botão existe e clicar NÃO quebra — no Chrome headless não há Web Share
   // API nem clipboard permitido, então o helper devolve 'unavailable' graciosamente (sem pageerror).
   await waitSel(page, q('verse-of-day-share'), ACTION_TIMEOUT_MS);
