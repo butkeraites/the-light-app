@@ -35,11 +35,12 @@ import {
   type StudyMode,
   type StudyWebSourceInput,
   type VerifiedLexiconOut,
+  type InterlinearVerseOut,
   type AiVerseInput,
 } from './generated/the_light_app_core';
 import { webLlmTransport, type AiFetch } from './ai-anchored.web';
 import { hasTranslation, queryChapter, type ChapterRow, type ReadingDb } from './sqlite-reading.web';
-import { DEFAULT_LEXICON_LIMIT, queryVerifiedLexicon } from './sqlite-lexicon.web';
+import { DEFAULT_LEXICON_LIMIT, queryInterlinearVerse, queryVerifiedLexicon } from './sqlite-lexicon.web';
 import {
   DEFAULT_TAVILY_LIMIT,
   DEFAULT_WIKIPEDIA_LIMIT,
@@ -117,6 +118,16 @@ export async function lexicalEntriesOnHandle(
   limit: number | undefined,
 ): Promise<VerifiedLexiconOut> {
   return queryVerifiedLexicon(lexHandle, book, chapter, verse, limit ?? DEFAULT_LEXICON_LIMIT);
+}
+
+/** Tokens INTERLINEARES de um versículo — espelho web de `interlinear_verse` (delega ao SELECT). */
+export async function interlinearVerseOnHandle(
+  lexHandle: ReadingDb,
+  book: number,
+  chapter: number,
+  verse: number,
+): Promise<InterlinearVerseOut> {
+  return queryInterlinearVerse(lexHandle, book, chapter, verse);
 }
 
 /**

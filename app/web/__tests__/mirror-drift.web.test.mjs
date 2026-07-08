@@ -105,6 +105,7 @@ const SELECTS = [
   { name: 'chapter whole', rustFile: 'source/embedded.rs', include: ['verse, text from verses', 'order by verse'], exclude: ['verse = ?', 'between'], tsFile: 'app/web/sqlite-reading.web.ts', tsConst: 'CHAPTER_SELECT_WHOLE' },
   { name: 'passage single', rustFile: 'source/embedded.rs', include: ['verse, text from verses', 'verse = ?'], exclude: ['between'], tsFile: 'app/web/sqlite.web.ts', tsConst: 'PASSAGE_SELECT_SINGLE' },
   { name: 'search base', rustFile: 'search.rs', include: ['verses_fts match'], tsFile: 'app/web/sqlite-search.web.ts', tsConst: 'SEARCH_SELECT_BASE' },
+  { name: 'interlinear tokens', rustFile: 'ai/lexicon.rs', include: ['from original_tokens', 'order by t.word_index'], tsFile: 'app/web/sqlite-lexicon.web.ts', tsConst: 'INTERLINEAR_SELECT' },
 ];
 
 function theLightAvailable(rev) {

@@ -1569,7 +1569,7 @@ dependencies = [
 [[package]]
 name = "the-light-core"
 version = "1.2.0"
-source = "git+https://github.com/butkeraites/the-light?rev=225b8c929cf388e29dc148fec3975bf05a884b07#225b8c929cf388e29dc148fec3975bf05a884b07"
+source = "git+https://github.com/butkeraites/the-light?rev=fb096311072e37f8fc38398b67c02c1a744175a9#fb096311072e37f8fc38398b67c02c1a744175a9"
 dependencies = [
  "chrono",
  "directories",
