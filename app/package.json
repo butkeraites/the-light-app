@@ -59,6 +59,7 @@
     "test:web:reading-streak": "node web/__tests__/readingStreak.test.mjs",
     "test:web:share-verse": "node web/__tests__/shareVerse.test.mjs",
     "test:web:verse-of-day-data": "node web/__tests__/verseOfDayResolves.web.test.mjs",
+    "test:web:translations-data": "node web/__tests__/translationsResolve.web.test.mjs",
     "test:ci": "node scripts/run-guards.mjs ci",
     "test:all": "node scripts/run-guards.mjs all"
   },

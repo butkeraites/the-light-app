@@ -1,5 +1,6 @@
 #!/usr/bin/env sh
-# gen-bible-db.sh — (re)gera assets/data/bible.sqlite (corpus COMPLETO: KJV + Almeida 1911
+# gen-bible-db.sh — (re)gera assets/data/bible.sqlite (corpus COMPLETO: KJV + Almeida 1911 +
+# BSB + Bíblia Livre, ADR-0012
 # + referências cruzadas OpenBible/TSK + dados de LÉXICO STEPBible) de forma REPRODUTÍVEL
 # e IDEMPOTENTE, rodando os IMPORTADORES CANÔNICOS (`xtask import` + `xtask import-xref` +
 # `xtask import-scholarly`) do `the-light` no rev PINADO c8ecb2f (ADR-0002) — SEM
@@ -50,7 +51,9 @@ TARGET="$ROOT/.cache/xtask-target"          # CARGO_TARGET_DIR fora do checkout 
 # c8ecb2f (rev do app) p/ um pipeline único: verses + xref + léxico no MESMO rev pinado.
 # `import`/`import-xref` são byte-idênticos a 8f66004; c8ecb2f acrescenta
 # `import-scholarly` (dados de léxico STEP). Ver ADR-0026.
-REV="c8ecb2f"
+# Rodada 3 (ADR-0012): bump p/ 76636af — o rev que registra BSB + BLIVRE no SPECS do xtask,
+# convergido com o pin do core/Cargo.toml (mesmo rev; the-light-core é byte-idêntico ao fb09631).
+REV="76636af"
 XTASK_MANIFEST="$HOME/.cargo/git/checkouts/the-light-9eb8809a6d68281a/$REV/xtask/Cargo.toml"
 
 # Repasse seletivo de flags conhecidas do `xtask import` (não aceita arbitrário).
@@ -80,7 +83,7 @@ mkdir -p "$ROOT/assets/data" "$SEED" "$SEED_SCHOLARLY" "$TARGET"
 # shellcheck disable=SC2086
 CARGO_TARGET_DIR="$TARGET" cargo run --quiet --locked \
   --manifest-path "$XTASK_MANIFEST" -- \
-  import --version kjv,alm1911 --db "$OUT" --seed-dir "$SEED" $EXTRA
+  import --version kjv,alm1911,bsb,blivre --db "$OUT" --seed-dir "$SEED" $EXTRA
 
 # Pipeline ÚNICO: APÓS popular verses+FTS, popula `cross_references` no MESMO --db com o
 # subcomando DEDICADO `import-xref` (≠ `import --xref`) do MESMO rev pinado. Mesmo padrão

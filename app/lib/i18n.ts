@@ -398,6 +398,9 @@ export type MessageKey =
   | 'about.sourcesTitle'
   | 'about.kjvTitle'
   | 'about.almeidaTitle'
+  | 'about.bsbTitle'
+  | 'about.blivreTitle'
+  | 'about.blivreAttribution'
   | 'about.publicDomain'
   | 'about.xrefTitle'
   | 'about.xrefAttribution'
@@ -756,6 +759,10 @@ const pt: Record<MessageKey, string> = {
   'about.sourcesTitle': 'Fontes e licenças',
   'about.kjvTitle': 'Texto bíblico — King James Version (KJV)',
   'about.almeidaTitle': 'Texto bíblico — Almeida (1911)',
+  'about.bsbTitle': 'Texto bíblico — Berean Standard Bible (BSB)',
+  'about.blivreTitle': 'Texto bíblico — Bíblia Livre (BLIVRE)',
+  'about.blivreAttribution':
+    'Bíblia Livre (BLIVRE), © Diego Santos, Mario Sérgio e Marco Teles — CC-BY (Brasil), fonte: github.com/blivre/BibliaLivre',
   'about.publicDomain': 'Domínio público.',
   'about.xrefTitle': 'Referências cruzadas — OpenBible.info',
   // VERBATIM (identificador de licença) — cópia byte-a-byte de XREF_ATTRIBUTION; idêntico em pt/en.
@@ -1110,6 +1117,10 @@ const en: Record<MessageKey, string> = {
   'about.sourcesTitle': 'Sources & licenses',
   'about.kjvTitle': 'Bible text — King James Version (KJV)',
   'about.almeidaTitle': 'Bible text — Almeida (1911)',
+  'about.bsbTitle': 'Bible text — Berean Standard Bible (BSB)',
+  'about.blivreTitle': 'Bible text — Bíblia Livre (BLIVRE)',
+  'about.blivreAttribution':
+    'Bíblia Livre (BLIVRE), © Diego Santos, Mario Sérgio e Marco Teles — CC-BY (Brasil), fonte: github.com/blivre/BibliaLivre',
   'about.publicDomain': 'Public domain.',
   'about.xrefTitle': 'Cross references — OpenBible.info',
   // VERBATIM (license identifier) — byte-for-byte copy of XREF_ATTRIBUTION; identical in pt/en.
