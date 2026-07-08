@@ -9,6 +9,16 @@
 // (api.anthropic.com, api.openai.com, …) e ao Google Drive são CROSS-ORIGIN — passam DIRETO, sem
 // interceptar, sem cachear (nunca guardamos requisição/resposta com chave ou dado do usuário).
 const CACHE = 'thelight-v1';
+// Caminho da RAIZ do escopo do SW — na hospedagem em subpasta (GitHub Pages: /the-light-app/) é a
+// subpasta; na raiz é "/". Usado como app-shell de fallback offline p/ navegações. Derivado do
+// próprio registro (o SW não recebe o baseUrl do build).
+const SCOPE_PATH = (() => {
+  try {
+    return new URL(self.registration.scope).pathname || '/';
+  } catch {
+    return '/';
+  }
+})();
 
 self.addEventListener('install', () => {
   // Ativa imediatamente (não espera abas antigas fecharem) — 1ª instalação já vale.
@@ -55,7 +65,7 @@ self.addEventListener('fetch', (event) => {
           // offline → tenta cache (best-effort); se o cache também falhar, erro honesto (offline real).
           try {
             const c = await caches.open(CACHE);
-            return (await c.match(req)) || (await c.match('/')) || Response.error();
+            return (await c.match(req)) || (await c.match(SCOPE_PATH)) || Response.error();
           } catch {
             return Response.error();
           }
