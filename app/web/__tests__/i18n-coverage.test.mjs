@@ -361,7 +361,11 @@ async function main() {
 
   // ══ (2)+(3) VARREDURA REAL dos arquivos cobertos ═══════════════════════════════════════
   const componentFiles = (await listTsx(COMPONENTS_DIR)).filter((f) => f.endsWith('.tsx'));
-  const appFiles = await listTsx(APP_DIR);
+  // `app/+html.tsx` é o SHELL HTML do export estático web (PWA): <title>/meta/manifest, renderizado
+  // no BUILD, SEM runtime de i18n (não há Provider nem `t()` no documento). Suas strings (nome de
+  // instalação / descrição do app) são cromo de DOCUMENTO single-language de propósito — isentas da
+  // varredura de cromo hardcoded (não é UI do app em runtime).
+  const appFiles = (await listTsx(APP_DIR)).filter((f) => !f.endsWith('/+html.tsx'));
   const covered = [...componentFiles, ...appFiles].sort();
   assert.ok(covered.length >= 15, `GUARDA: encontrou arquivos cobertos suficientes (${covered.length})`);
 
