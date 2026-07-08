@@ -24,6 +24,15 @@ import { useI18n } from '../lib/i18n';
 import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { Button } from '../components/ui';
 
+/**
+ * Atribuição CC-BY CANÔNICA da Bíblia Livre (ADR-0012, Rodada 3) — string VERBATIM (CC BY 3.0
+ * Brasil, atribuição OBRIGATÓRIA). Fonte da verdade, espelhada em `about.blivreAttribution`
+ * (pt==en) e travada contra drift pelo guard `test:about-attr` — mesmo molde de
+ * `XREF_ATTRIBUTION`/`STEP_ATTRIBUTION`. NÃO alterar/omitir sem revisar a licença.
+ */
+export const BLIVRE_ATTRIBUTION =
+  'Bíblia Livre (BLIVRE), © Diego Santos, Mario Sérgio e Marco Teles — CC-BY (Brasil), fonte: github.com/blivre/BibliaLivre';
+
 export default function AboutScreen() {
   const { t } = useI18n();
   const theme = useTheme();
@@ -65,6 +74,14 @@ export default function AboutScreen() {
 
         <Text style={[styles.sourceName, styles.sourceGap]}>{t('about.almeidaTitle')}</Text>
         <Text style={styles.license}>{t('about.publicDomain')}</Text>
+
+        {/* Rodada 3 (ADR-0012): 2ª versão EN (BSB, domínio público) + 2ª versão PT (BLIVRE, CC-BY). */}
+        <Text style={[styles.sourceName, styles.sourceGap]}>{t('about.bsbTitle')}</Text>
+        <Text style={styles.license}>{t('about.publicDomain')}</Text>
+
+        <Text style={[styles.sourceName, styles.sourceGap]}>{t('about.blivreTitle')}</Text>
+        {/* Atribuição CC-BY VERBATIM (Bíblia Livre) — idêntica em pt/en; requisito de licença. */}
+        <Text style={styles.attribution}>{t('about.blivreAttribution')}</Text>
 
         <Text style={[styles.sourceName, styles.sourceGap]}>{t('about.xrefTitle')}</Text>
         {/* Atribuição CC-BY VERBATIM (OpenBible) — idêntica em pt/en; requisito de licença. */}

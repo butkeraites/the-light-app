@@ -55,6 +55,7 @@ const EXTRA = [
   'test:web:research-tavily',
   'test:web:coverage',
   'test:web:verse-of-day-data',
+  'test:web:translations-data',
   'test:web:passage-query',
   'test:web:snapshot',
   'test:web:syncui',

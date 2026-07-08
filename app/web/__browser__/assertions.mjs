@@ -1092,6 +1092,11 @@ async function runVerseOfDayUi(ctx) {
   if (!/\d/.test(streakText)) {
     throw new Error(`verse-of-day: chip de sequência sem número (streak não registrou?): "${streakText}"`);
   }
+  // Rodada 3 (ADR-0012): o seletor de versão da Home deve oferecer as 4 versões embarcadas —
+  // prova que BSB (en) e Bíblia Livre (pt) chegaram ao seletor (listTranslations agnóstico).
+  await waitSel(page, q('home-version-bsb'), RENDER_TIMEOUT_MS);
+  await waitSel(page, q('home-version-blivre'), ACTION_TIMEOUT_MS);
+  ctx.log('  [verse-of-day] seletor da Home oferece as 4 versões (kjv/alm1911/bsb/blivre)');
   // O cartão do versículo só aparece depois de abrir o store de leitura e buscar o texto → RENDER.
   await waitSel(page, q('verse-of-day'), RENDER_TIMEOUT_MS);
   await waitSel(page, q('verse-of-day-text'), ACTION_TIMEOUT_MS);

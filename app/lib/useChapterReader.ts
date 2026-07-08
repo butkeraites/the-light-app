@@ -96,7 +96,12 @@ export function useChapterReader(input: ChapterReaderInput): ChapterReader {
       if (prev && prev !== translation && translations.some((tr) => tr.id === prev)) {
         return prev;
       }
-      return translations.find((tr) => tr.id !== translation)?.id ?? null;
+      // Rodada 3 (ADR-0012): com 4 versões, prefere uma 2ª tradução em OUTRO IDIOMA — o paralelo
+      // cross-língua é o mais útil (ex.: KJV en × Almeida pt), não KJV × BSB (ambas en). Cai p/
+      // qualquer outra versão se todas forem do mesmo idioma da primária.
+      const primaryLang = translations.find((tr) => tr.id === translation)?.language;
+      const crossLang = translations.find((tr) => tr.id !== translation && tr.language !== primaryLang);
+      return (crossLang ?? translations.find((tr) => tr.id !== translation))?.id ?? null;
     });
   }, [translations, translation]);
 

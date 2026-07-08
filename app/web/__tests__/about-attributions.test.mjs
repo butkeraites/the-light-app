@@ -23,6 +23,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = join(__dirname, '..', '..'); // .../app
 const XREF_PANEL = join(APP_ROOT, 'components', 'ReaderXrefPanel.tsx');
 const STEP_PANEL = join(APP_ROOT, 'components', 'ReaderStudyPanel.tsx');
+const ABOUT_SCREEN = join(APP_ROOT, 'app', 'about.tsx'); // Rodada 3: BLIVRE_ATTRIBUTION (CC-BY BLIVRE)
 const I18N = join(APP_ROOT, 'lib', 'i18n.ts');
 
 /** Lê um literal de string JS a partir de `fromIdx` (pula espaços; aspas simples OU duplas). */
@@ -82,8 +83,11 @@ async function main() {
   // ══ (2) FONTES DA VERDADE (constantes dos painéis) ═════════════════════════════════════
   const xrefSrc = await readFile(XREF_PANEL, 'utf8');
   const stepSrc = await readFile(STEP_PANEL, 'utf8');
+  const aboutSrc = await readFile(ABOUT_SCREEN, 'utf8');
   const xrefConst = extractAfter(xrefSrc, /export const XREF_ATTRIBUTION\s*=/);
   const stepConst = extractAfter(stepSrc, /export const STEP_ATTRIBUTION\s*=/);
+  const blivreConst = extractAfter(aboutSrc, /export const BLIVRE_ATTRIBUTION\s*=/);
+  assert.ok(blivreConst.includes('BLIVRE') && blivreConst.includes('CC-BY'), 'BLIVRE_ATTRIBUTION e a atribuicao Biblia Livre CC-BY');
   assert.ok(xrefConst.includes('OpenBible') && xrefConst.includes('CC-BY'), 'XREF_ATTRIBUTION é a atribuição OpenBible CC-BY');
   assert.ok(stepConst.includes('STEP Bible') && stepConst.includes('CC BY 4.0'), 'STEP_ATTRIBUTION é a atribuição STEP CC BY 4.0');
 
@@ -91,6 +95,12 @@ async function main() {
   const i18nSrc = await readFile(I18N, 'utf8');
   const xrefCatalog = extractAll(i18nSrc, /'about\.xrefAttribution':/);
   const stepCatalog = extractAll(i18nSrc, /'about\.stepAttribution':/);
+  const blivreCatalog = extractAll(i18nSrc, /'about\.blivreAttribution':/);
+  assert.equal(blivreCatalog.length, 2, 'about.blivreAttribution aparece em pt E en (2x)');
+  for (const [i, v] of blivreCatalog.entries()) {
+    assert.equal(v, blivreConst, `about.blivreAttribution[${i}] == BLIVRE_ATTRIBUTION (byte-a-byte)`);
+  }
+  assert.equal(blivreCatalog[0], blivreCatalog[1], 'about.blivreAttribution identico pt/en (identificador de licenca)');
   assert.equal(xrefCatalog.length, 2, "about.xrefAttribution aparece em pt E en (2 ocorrências)");
   assert.equal(stepCatalog.length, 2, "about.stepAttribution aparece em pt E en (2 ocorrências)");
 
