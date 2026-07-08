@@ -4,13 +4,20 @@
 // TEXTO VERBATIM do store (fronteira `getChapter` na tradução default do idioma) — anti-alucinação:
 // a UI NUNCA gera/hardcoda texto bíblico. Toca → abre o versículo no leitor (ancorado). Offline: se
 // o store não carregar, o cartão simplesmente NÃO aparece (a Home nunca quebra por causa disto).
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 
 import { useI18n } from '../lib/i18n';
+import { shareVerse } from '../lib/shareVerse';
 import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { verseOfDayRef } from '../lib/verseOfDay';
+import { IconButton } from './ui';
+
+/** Rótulo curto da versão default por idioma (nome próprio da tradução; não é cromo traduzível). */
+function translationLabelFor(locale: 'pt' | 'en'): string {
+  return locale === 'pt' ? 'Almeida 1911' : 'KJV';
+}
 
 /** Tradução default do lookup por idioma (mesma regra da Home) — o texto casa o idioma da UI. */
 function defaultTranslationFor(locale: 'pt' | 'en'): string {
@@ -27,6 +34,9 @@ export function HomeVerseOfDay() {
   // A referência do dia é determinística (data → referência). Calculada UMA vez no mount.
   const ref = useMemo(() => verseOfDayRef(new Date()), []);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  // Confirmação transitória "copiado" (fallback web sem Web Share API). Limpa sozinha.
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -56,23 +66,64 @@ export function HomeVerseOfDay() {
     };
   }, [locale, ref]);
 
+  // Limpa o timer da confirmação ao desmontar.
+  useEffect(() => () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+  }, []);
+
   if (!loaded) return null;
 
+  async function onShare() {
+    if (!loaded) return;
+    try {
+      const res = await shareVerse(loaded.text, loaded.label, translationLabelFor(locale));
+      if (res === 'copied') {
+        setCopied(true);
+        if (copiedTimer.current) clearTimeout(copiedTimer.current);
+        copiedTimer.current = setTimeout(() => setCopied(false), 2200);
+      }
+    } catch {
+      /* compartilhar falhou/cancelou → silencioso (não é erro de app) */
+    }
+  }
+
   return (
-    <Pressable
-      style={styles.card}
-      onPress={() => router.push({ pathname: '/read/[book]/[chapter]', params: { book: String(loaded.book), chapter: String(loaded.chapter), verse: String(loaded.verse) } })}
-      testID="verse-of-day"
-      accessibilityRole="link"
-      accessibilityLabel={t('home.verseOfDayA11y', { reference: loaded.label })}
-    >
-      <Text style={styles.eyebrow}>{t('home.verseOfDay')}</Text>
-      {/* Texto bíblico VERBATIM do store — serifa de leitura, distinto do cromo. */}
-      <Text style={styles.verseText} testID="verse-of-day-text">
-        {loaded.text}
-      </Text>
-      <Text style={styles.reference}>{loaded.label}</Text>
-    </Pressable>
+    <View style={styles.card}>
+      {/* Área tocável → abre o versículo no leitor. Separada do botão de compartilhar (sem
+          aninhar touchables): no RN o responder mais interno vence, mas manter em Views distintas
+          é mais previsível no web (RNW). */}
+      <Pressable
+        style={styles.tap}
+        onPress={() =>
+          router.push({
+            pathname: '/read/[book]/[chapter]',
+            params: { book: String(loaded.book), chapter: String(loaded.chapter), verse: String(loaded.verse) },
+          })
+        }
+        testID="verse-of-day"
+        accessibilityRole="link"
+        accessibilityLabel={t('home.verseOfDayA11y', { reference: loaded.label })}
+      >
+        <Text style={styles.eyebrow}>{t('home.verseOfDay')}</Text>
+        {/* Texto bíblico VERBATIM do store — serifa de leitura, distinto do cromo. */}
+        <Text style={styles.verseText} testID="verse-of-day-text">
+          {loaded.text}
+        </Text>
+        <Text style={styles.reference}>{loaded.label}</Text>
+      </Pressable>
+      <View style={styles.footer}>
+        {/* Confirmação "copiado" (só aparece no fallback web sem Web Share API). */}
+        <Text style={styles.copied} testID="verse-of-day-copied">
+          {copied ? t('home.verseCopied') : ''}
+        </Text>
+        <IconButton
+          name="share"
+          onPress={onShare}
+          testID="verse-of-day-share"
+          accessibilityLabel={t('home.shareVerseA11y', { reference: loaded.label })}
+        />
+      </View>
+    </View>
   );
 }
 
@@ -89,8 +140,11 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
       borderLeftWidth: 3,
       borderLeftColor: colors.accent,
     },
+    tap: { gap: space.sm, minHeight: 44 },
     eyebrow: { ...type.label, color: colors.accent, letterSpacing: 1 },
     verseText: { ...type.verse, color: colors.verseText },
     reference: { ...type.caption, color: colors.muted },
+    footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.xs },
+    copied: { ...type.caption, color: colors.accent, flexShrink: 1 },
   });
 }

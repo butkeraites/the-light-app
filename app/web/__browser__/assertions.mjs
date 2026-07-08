@@ -1106,6 +1106,11 @@ async function runVerseOfDayUi(ctx) {
   if (!/\d+:\d+/.test(info.card)) {
     throw new Error(`verse-of-day: referência "cap:verso" ausente no cartão: "${info.card.slice(0, 120)}"`);
   }
+  // Compartilhar (Rodada 4): o botão existe e clicar NÃO quebra — no Chrome headless não há Web Share
+  // API nem clipboard permitido, então o helper devolve 'unavailable' graciosamente (sem pageerror).
+  await waitSel(page, q('verse-of-day-share'), ACTION_TIMEOUT_MS);
+  await clickSel(page, q('verse-of-day-share'));
+  await assertNoForbidden(ctx, 'verse-of-day/share');
   // Toque → abre o versículo no leitor (rota /read/<book>/<chapter>).
   await clickSel(page, q('verse-of-day'));
   await page.waitForFunction(() => /\/read\/\d+\/\d+/.test(location.pathname + location.search + location.hash), {
