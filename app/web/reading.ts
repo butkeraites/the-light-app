@@ -26,6 +26,7 @@ import {
   askAnchored as askAnchoredNative,
   askAnchoredStream as askAnchoredStreamNative,
   askMultiAnchored as askMultiAnchoredNative,
+  estimateCostUsd as estimateCostUsdNative,
   deepStudy as deepStudyNative,
   lexicalEntries as lexicalEntriesNative,
   askSessionAnchored as askSessionAnchoredNative,
@@ -250,6 +251,19 @@ export async function askAnchored(
   lang: string,
 ): Promise<AiAnswer> {
   return askAnchoredNative(dbPath, translation, reference, question, provider, key, model, lang);
+}
+
+/**
+ * Estimativa de custo (US$) de uma chamada BYOK — reusa a TABELA DE PREÇOS do core (fonte única).
+ * `undefined` = modelo sem preço tabelado; `0` = local/grátis (ollama/mock); `>0` = estimado.
+ * Tokens são APROXIMADOS pelo app (a fronteira não devolve uso real). Nativo: chamada síncrona.
+ */
+export function estimateCostUsd(
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+): number | undefined {
+  return estimateCostUsdNative(model, inputTokens, outputTokens);
 }
 
 /**

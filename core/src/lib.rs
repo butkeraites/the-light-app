@@ -2184,6 +2184,18 @@ pub struct AiAnswerMulti {
     pub model: String,
 }
 
+/// **Estimativa de custo (US$)** de uma chamada BYOK, reusando a **tabela de preços do core**
+/// (`ai::estimate_cost_usd`) — fonte única, nada de duplicar preços no app.
+///
+/// `None` = modelo desconhecido (sem preço tabelado → o app mostra só a contagem de tokens);
+/// `Some(0.0)` = local/grátis (ex.: `ollama`/`mock`); `Some(x>0)` = custo estimado. Os tokens são
+/// **aproximados pelo app** (a fronteira não devolve uso real), então isto é uma ESTIMATIVA. Pura
+/// (só aritmética + tabela), definida em **todos** os alvos (`ai::estimate_cost_usd` é `ai-pure`).
+#[uniffi::export]
+pub fn estimate_cost_usd(model: String, input_tokens: u32, output_tokens: u32) -> Option<f64> {
+    the_light_core::ai::estimate_cost_usd(&model, input_tokens as usize, output_tokens as usize)
+}
+
 /// **Pergunta ancorada** (`ask`) sobre uma passagem, delegando à camada de IA do
 /// `the-light-core` (RAG leve, BYOK).
 ///
@@ -5024,6 +5036,25 @@ mod ai_tests {
         )
         .expect_err("referência inválida deve falhar");
         assert!(matches!(err, CoreError::Generic { .. }));
+    }
+
+    // ── Custo BYOK (Rodada 1): a fronteira delega à tabela de preços do core ──────
+    #[test]
+    fn estimate_cost_usd_delegates_to_core_price_table() {
+        // Local/grátis (ollama) → 0.0; desconhecido → None; pago → > 0. Mesma tabela do core.
+        assert_eq!(
+            estimate_cost_usd("llama3".to_string(), 1000, 1000),
+            Some(0.0)
+        );
+        assert_eq!(
+            estimate_cost_usd("modelo-desconhecido".to_string(), 1, 1),
+            None
+        );
+        let paid = estimate_cost_usd("claude-opus-4-8".to_string(), 1_000_000, 1_000_000);
+        assert!(
+            paid.map(|c| c > 0.0).unwrap_or(false),
+            "modelo pago deve ter custo > 0, veio {paid:?}"
+        );
     }
 
     // ── F2.7b: fronteira web de IA (ai_web_prepare/ai_web_finalize) ──────────────

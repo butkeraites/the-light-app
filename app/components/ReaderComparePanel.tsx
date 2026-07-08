@@ -46,6 +46,7 @@ import { getKey } from '../lib/keystore';
 import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { askAnchored, type AiAnswer } from '../web/reading';
 import { AiProviderNotice, useConfiguredAiProviders } from './AiProviderNotice';
+import { AiCostMeta } from './AiCostMeta';
 import { BottomSheet, Button, Chip, CitedText, InterpretationBlock, SectionLabel } from './ui';
 // Default sensato: ≥2 provedores DISTINTOS (superfície de comparação). `mock` responde
 // offline; `anthropic` demonstra o caminho BYOK ("sem chave — F3.10" até haver chave).
@@ -283,11 +284,20 @@ export function ReaderComparePanel({
           {columns.map((col, i) => (
             <View key={`${col.provider}-${i}`} style={styles.column}>
               {col.kind === 'answer' ? (
-                <InterpretationBlock label={`${col.answer.provider} · ${col.answer.model}`}>
-                  <Text style={styles.interpretationText} testID={`compare-interp-${col.provider}`}>
-                    {col.answer.interpretation}
-                  </Text>
-                </InterpretationBlock>
+                <>
+                  <InterpretationBlock label={`${col.answer.provider} · ${col.answer.model}`}>
+                    <Text style={styles.interpretationText} testID={`compare-interp-${col.provider}`}>
+                      {col.answer.interpretation}
+                    </Text>
+                  </InterpretationBlock>
+                  <AiCostMeta
+                    model={col.answer.model}
+                    promptText={`${question} ${col.answer.citedText}`}
+                    interpretation={col.answer.interpretation}
+                    style={styles.columnNote}
+                    testID={`compare-cost-${col.provider}`}
+                  />
+                </>
               ) : col.kind === 'no-key' ? (
                 <InterpretationBlock label={col.provider}>
                   <Text style={styles.columnNote} testID={`compare-nokey-${col.provider}`}>

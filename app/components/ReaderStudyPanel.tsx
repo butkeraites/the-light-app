@@ -34,6 +34,7 @@ import { buildStudyExport } from '../lib/studyExport';
 import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { AiProviderNotice } from './AiProviderNotice';
 import { ProviderChips, useProviderSelection } from './ProviderPicker';
+import { AiCostMeta } from './AiCostMeta';
 import { BottomSheet, Button, Chip, CitedText, InterpretationBlock, SectionLabel } from './ui';
 import {
   deepStudy,
@@ -517,6 +518,13 @@ export function ReaderStudyPanel({
           <Text style={styles.metaText} testID="study-meta">
             {t('ai.meta', { provider: result.provider, model: result.model })}
           </Text>
+          <AiCostMeta
+            model={result.model}
+            promptText={result.passageText}
+            interpretation={result.interpretation}
+            style={styles.metaText}
+            testID="study-cost"
+          />
           <Text style={styles.disclaimer}>{t('study.disclaimer')}</Text>
         </View>
       ) : null}

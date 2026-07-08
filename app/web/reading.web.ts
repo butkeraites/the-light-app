@@ -376,6 +376,20 @@ export async function askAnchored(
 }
 
 /**
+ * Estimativa de custo (US$) via a tabela de preços do core (fonte única). Import DINÂMICO da
+ * fronteira wasm p/ NÃO puxar `generated` ao grafo estático (só carrega ao estimar — pós-resposta,
+ * quando o wasm já está inicializado). `undefined`=sem preço; `0`=local/grátis; `>0`=estimado.
+ */
+export async function estimateCostUsd(
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+): Promise<number | undefined> {
+  const mod = await import('./generated/the_light_app_core');
+  return mod.estimateCostUsd(model, inputTokens, outputTokens);
+}
+
+/**
  * Estudo temático CONJUNTO no web sobre VÁRIOS trechos disjuntos: abre o store web e
  * delega ao pipeline `askMultiAnchoredOnHandle` (wasm `ai-pure` + `fetch`). `_dbPath` é
  * aceito por paridade com o nativo. O `AiAnswerMulti` traz N `citedPassages` (store,

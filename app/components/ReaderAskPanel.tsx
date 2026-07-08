@@ -26,12 +26,8 @@ import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { askAnchoredStream, type AiAnswer } from '../web/reading';
 import { AiProviderNotice } from './AiProviderNotice';
 import { ProviderChips, useProviderSelection } from './ProviderPicker';
+import { AiCostMeta } from './AiCostMeta';
 import { BottomSheet, Button, CitedText, InterpretationBlock, SectionLabel } from './ui';
-
-/** Estimativa de custo SIMPLIFICADA (a fronteira não expõe custo): ~4 chars/token. */
-function approxTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
 
 export function ReaderAskPanel({
   visible,
@@ -252,7 +248,13 @@ export function ReaderAskPanel({
           <Text style={styles.metaText} testID="ask-meta">
             {t('ai.meta', { provider: answer.provider, model: answer.model })}
           </Text>
-          <Text style={styles.metaText}>{t('ask.estimate', { tokens: approxTokens(answer.interpretation) })}</Text>
+          <AiCostMeta
+            model={answer.model}
+            promptText={`${question} ${answer.citedText}`}
+            interpretation={answer.interpretation}
+            style={styles.metaText}
+            testID="ask-cost"
+          />
           <Text style={styles.disclaimer}>{t('ask.disclaimer')}</Text>
         </View>
       ) : null}

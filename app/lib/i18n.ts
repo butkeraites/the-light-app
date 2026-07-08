@@ -185,6 +185,8 @@ export type MessageKey =
   | 'ai.citedTitle'
   | 'ai.interpTitle'
   | 'ai.meta'
+  | 'ai.costEstimate'
+  | 'ai.costLocal'
   | 'ai.questionSection'
   | 'ai.questionPlaceholder'
   | 'ai.mockProviderNote'
@@ -547,6 +549,8 @@ const pt: Record<MessageKey, string> = {
   'ai.citedTitle': 'Passagem (texto bíblico)',
   'ai.interpTitle': 'Interpretação (IA) — confira nas Escrituras',
   'ai.meta': 'Provedor: {provider} · Modelo: {model}',
+  'ai.costEstimate': 'Custo estimado: ~US$ {usd} (aproximado)',
+  'ai.costLocal': 'Modelo local/grátis — sem custo de API',
   'ai.questionSection': 'Pergunta',
   'ai.questionPlaceholder': 'O que você quer entender sobre esta passagem?',
   'ai.mockProviderNote': 'Provedor: mock (demonstração offline, sem chave nem rede).',
@@ -886,6 +890,8 @@ const en: Record<MessageKey, string> = {
   'ai.citedTitle': 'Passage (biblical text)',
   'ai.interpTitle': 'Interpretation (AI) — verify against Scripture',
   'ai.meta': 'Provider: {provider} · Model: {model}',
+  'ai.costEstimate': 'Estimated cost: ~US$ {usd} (approx.)',
+  'ai.costLocal': 'Local/free model — no API cost',
   'ai.questionSection': 'Question',
   'ai.questionPlaceholder': 'What would you like to understand about this passage?',
   'ai.mockProviderNote': 'Provider: mock (offline demo, no key or network).',
