@@ -25,6 +25,7 @@ import { ReaderVersionPicker } from '../../../components/ReaderVersionPicker';
 import { ReaderVersePanel } from '../../../components/ReaderVersePanel';
 import { ReaderAskPanel } from '../../../components/ReaderAskPanel';
 import { ReaderStudyPanel } from '../../../components/ReaderStudyPanel';
+import { ReaderInterlinearPanel } from '../../../components/ReaderInterlinearPanel';
 import { ReaderChatPanel } from '../../../components/ReaderChatPanel';
 import { ReaderComparePanel } from '../../../components/ReaderComparePanel';
 import { ReadingSettingsSheet } from '../../../components/ReadingSettingsSheet';
@@ -179,7 +180,7 @@ function ChapterContent() {
   // estados paralelos (ask/study/chat/compare) num só — só UM painel abre por vez (cada um é
   // aberto pelo painel por-versículo, que fecha antes). A âncora não se perde ao fechar o
   // painel por-versículo porque vive aqui, SEPARADA de `selectedVerse`.
-  type PanelKind = 'ask' | 'study' | 'chat' | 'compare';
+  type PanelKind = 'ask' | 'study' | 'chat' | 'compare' | 'interlinear';
   type ActivePanel = { kind: PanelKind; verse: number } | null;
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const panelVerse = (kind: PanelKind): number | null =>
@@ -457,6 +458,14 @@ function ChapterContent() {
             setSelectedVerse(null);
           }
         }}
+        onInterlinear={() => {
+          // Rodada 2: abre o interlinear (palavra-a-palavra, língua original) ancorado na MESMA
+          // passagem; fecha o painel por-versículo preservando a âncora no `activePanel`.
+          if (selectedVerse != null) {
+            setActivePanel({ kind: 'interlinear', verse: selectedVerse });
+            setSelectedVerse(null);
+          }
+        }}
         onAddToScope={
           // Fase 4b: junta este versículo ao Escopo (o painel segue aberto — dá p/ ir somando).
           selectedVerse != null
@@ -547,6 +556,24 @@ function ChapterContent() {
         dbPath={dbPath}
         translation={translation}
         lang={locale}
+        onClose={() => setActivePanel(null)}
+      />
+
+      {/* Rodada 2: INTERLINEAR (palavra-a-palavra na língua original) ancorado na passagem. Os
+          tokens (superfície/translit/glosa/Strong) vêm VERBATIM do store via a fronteira
+          `interlinearVerse` (dado embarcado; NT + Gênesis + Salmos) — nunca de IA (anti-alucinação),
+          com a ATRIBUIÇÃO STEP CC-BY obrigatória. Livro sem cobertura → estado-vazio honesto. */}
+      <ReaderInterlinearPanel
+        visible={panelVerse('interlinear') != null}
+        sourceLabel={
+          panelVerse('interlinear') != null
+            ? `${bookLabel(bookNumber)} ${chapterNumber}:${panelVerse('interlinear')}`
+            : ''
+        }
+        book={bookNumber}
+        chapter={chapterNumber}
+        verse={panelVerse('interlinear')}
+        dbPath={dbPath}
         onClose={() => setActivePanel(null)}
       />
 

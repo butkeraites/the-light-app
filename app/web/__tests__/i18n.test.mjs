@@ -436,6 +436,10 @@ async function main() {
     // F6.6: cromo da tela de AJUSTES / chaves BYOK — título, rótulos por-provedor, salvar/
     // remover, status (só-nomes) e o aviso web-só-sessão (ADR-0025). Nenhuma chave/valor.
     'settings',
+    // Rodada 2: CROMO do painel INTERLINEAR (seção/loading/empty/nota anti-alucinação). O TEXTO
+    // original (surface/translit/glosa/Strong) vem do STORE via `interlinearVerse` — nunca destas
+    // strings. Só rótulos de UI aqui.
+    'interlinear',
   ]);
   for (const key of MESSAGE_KEYS) {
     const ns = key.split('.')[0];

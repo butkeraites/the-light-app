@@ -1076,6 +1076,53 @@ async function runWasmErrorUi(ctx) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
+// Fluxo (Rodada 2): INTERLINEAR — palavra-a-palavra na língua original. É o PRIMEIRO fluxo do
+// smoke que exercita o léxico on-demand REAL no browser (`lexicon-sample.sqlite` via OPFS, o
+// mesmo caminho da F5.15 do word-study). Abre João 3:16 → painel por-versículo → "Interlinear",
+// e assevera que a grade renderiza tokens em GREGO (o texto original vem do STORE, nunca da UI/
+// IA — anti-alucinação) + a atribuição STEP CC-BY obrigatória. Spinner infinito / grade vazia em
+// livro COBERTO (João) = regressão (o timeout de render É a falha).
+async function runInterlinearUi(ctx) {
+  const { page } = ctx;
+  await goto(ctx, '/read/43/3');
+  await waitBodyIncludes(page, KJV_JOHN_3_16); // leitura renderizou (texto verbatim)
+  await clickSel(page, q('verse-16'));
+  await waitSel(page, q('verse-interlinear'));
+  await clickSel(page, q('verse-interlinear')); // abre o ReaderInterlinearPanel
+  // A grade só aparece após o léxico ON-DEMAND (~9 MB) baixar via OPFS → timeout de RENDER. A grade
+  // só é montada com tokens (branch `tokens.length > 0`), então esperar o SCRIPT GREGO nela cobre
+  // tanto o download quanto a pintura das células — sem depender do índice-base do `wordIndex`.
+  await page.waitForFunction(
+    (sel) => {
+      const grid = document.querySelector(sel);
+      return grid != null && /[Ͱ-Ͽ]/.test(grid.textContent || '');
+    },
+    { timeout: RENDER_TIMEOUT_MS, polling: 300 },
+    q('interlinear-grid'),
+  );
+  // O texto original é GREGO (João = NT) — o dado vem do store; a UI não inventa. Também exige a
+  // atribuição STEP CC-BY (ADR-0026).
+  const gridInfo = await page.evaluate((sel) => {
+    const grid = document.querySelector(sel);
+    const attr = document.querySelector('[data-testid="interlinear-attribution"]');
+    return {
+      gridText: grid ? grid.textContent || '' : '',
+      attrText: attr ? attr.textContent || '' : '',
+    };
+  }, q('interlinear-grid'));
+  if (!/[Ͱ-Ͽ]/.test(gridInfo.gridText)) {
+    throw new Error(
+      `interlinear: a grade de João 3:16 NÃO trouxe texto grego (língua original ausente).\n  grid[0..160]="${gridInfo.gridText.slice(0, 160)}"`,
+    );
+  }
+  if (!/STEP Bible/.test(gridInfo.attrText)) {
+    throw new Error(`interlinear: atribuição STEP CC-BY ausente.\n  attr="${gridInfo.attrText.slice(0, 200)}"`);
+  }
+  await assertNoForbidden(ctx, 'interlinear-ui');
+  ctx.log('  [interlinear] João 3:16 → grade palavra-a-palavra em GREGO (store) + STEP CC-BY');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
 
 export const flows = [
   {
@@ -1100,6 +1147,9 @@ export const flows = [
   // F6.7: Study/Chat des-mockados — o seletor de provedor abre em ambos (mock default + BYOK).
   // Roda com goto fresco (offline, sem chave/rede); não envia — só prova o cromo do seletor.
   { name: 'study-chat-selector', run: runStudyChatSelector },
+  // Rodada 2: modo interlinear — PRIMEIRO fluxo a baixar o léxico on-demand real (OPFS) no browser;
+  // prova a grade palavra-a-palavra em grego (store) + STEP CC-BY. Antes do ai-reachability (chaves dummy).
+  { name: 'interlinear', run: runInterlinearUi },
   { name: 'ai-reachability', run: runAiReachability },
   // F6.3: roda SÓ sob SMOKE_WASM_WRONG_MIME=1 (dist) — o driver filtra os fluxos (ver
   // smoke.browser.mjs). Sob o flag, ESTE é o ÚNICO fluxo; sem o flag, ele é EXCLUÍDO.
