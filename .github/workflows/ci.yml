@@ -1,0 +1,66 @@
+# CI do the-light-app (Rodada 1 — prontidão de release).
+#
+# Cobre o que roda num runner LIMPO (sem os DBs sqlite grandes gitignored nem os bindings gerados):
+#   • rust   — fmt + clippy(-D warnings) + test do crate de fronteira `core/` (o the-light-core é git dep).
+#   • guards — as 18 guardas SOURCE-LEVEL (a11y, i18n, paridade, tema, contraste, libs puras) via
+#              `npm run test:ci`; faz checkout do repo irmão `the-light` p/ a guarda mirror-drift rodar
+#              DE VERDADE (não SKIP) contra o Rust no rev pinado.
+#
+# FORA do CI (rodam localmente, `npm run test:all`, porque precisam dos DBs sqlite/bindings gerados):
+#   as guardas de leitura/IA/busca/xref/notas/planos/etc. (ver app/scripts/run-guards.mjs). Um job de
+#   `tsc --noEmit` (que exige gerar os bindings host+web) é follow-up desta rodada.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  rust:
+    name: rust (fmt + clippy + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - name: cargo fmt --check
+        run: cargo fmt --manifest-path core/Cargo.toml --all --check
+      - name: cargo clippy -D warnings
+        run: cargo clippy --manifest-path core/Cargo.toml --all-targets -- -D warnings
+      - name: cargo test
+        run: cargo test --manifest-path core/Cargo.toml
+
+  guards:
+    name: guards (source-level, sem DB/bindings)
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout the-light-app
+        uses: actions/checkout@v4
+        with:
+          path: the-light-app
+      - name: checkout the-light (repo irmão p/ mirror-drift)
+        uses: actions/checkout@v4
+        with:
+          repository: butkeraites/the-light
+          path: the-light
+          fetch-depth: 0 # histórico completo → `git show <rev-pinado>` resolve
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: the-light-app/app/package-lock.json
+      - name: npm ci
+        working-directory: the-light-app/app
+        run: npm ci
+      - name: test:ci (guardas source-level)
+        working-directory: the-light-app/app
+        run: npm run test:ci
