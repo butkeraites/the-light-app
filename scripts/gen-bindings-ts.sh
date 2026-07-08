@@ -25,13 +25,21 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-echo "==> [1/3] bindings host (jsi) — scripts/gen-bindings.sh"
+echo "==> [1/4] bindings host (jsi) — scripts/gen-bindings.sh"
 bash "$ROOT/scripts/gen-bindings.sh"
 
-# ── [2/3] Espelha o glue JS p/ native-generated (Metro/tsc), como no gen-bindings-ios.sh,
-# mas SEM construir o xcframework. `src/` (barrel) é VERSIONADO; `bindings/*.ts` é gerado.
+# ── [1b/4] Glue do TURBO MODULE (src/index.tsx + NativeTheLightAppCore.ts). No fluxo iOS/Android
+# esses arquivos saem do `ubrn build ios/android --and-generate` (que EXIGE Xcode/NDK). Aqui usamos
+# o subcomando `generate jsi turbo-module` — a MESMA geração, mas SEM build de plataforma (roda em
+# ubuntu). `src/` é gerado-ignorado (.gitignore `/src/`), então NÃO existe num checkout limpo.
+echo "==> [2/4] turbo-module glue (src/) — ubrn generate jsi turbo-module"
+"$ROOT/node_modules/.bin/ubrn" generate jsi turbo-module --config "$ROOT/ubrn.config.yaml" the_light_app_core
+[ -f "$ROOT/src/index.tsx" ] || { echo "ERRO: src/index.tsx (turbo-module) não gerado" >&2; exit 1; }
+
+# ── [3/4] Espelha o glue JS p/ native-generated (Metro/tsc), como no gen-bindings-ios.sh,
+# mas SEM construir o xcframework. `src/` (barrel) e `bindings/*.ts` são ambos gerados acima.
 NATIVE_JS_DIR="$ROOT/app/web/native-generated"
-echo "==> [2/3] Copiando glue JS p/ $NATIVE_JS_DIR (tsc)"
+echo "==> [3/4] Copiando glue JS p/ $NATIVE_JS_DIR (tsc)"
 rm -rf "$NATIVE_JS_DIR"
 mkdir -p "$NATIVE_JS_DIR/src" "$NATIVE_JS_DIR/bindings"
 cp "$ROOT/src/"*.tsx "$ROOT/src/"*.ts "$NATIVE_JS_DIR/src/" 2>/dev/null || true
@@ -40,12 +48,12 @@ cp "$ROOT/bindings/"*.ts "$NATIVE_JS_DIR/bindings/"
 [ -f "$NATIVE_JS_DIR/bindings/the_light_app_core.ts" ] || { echo "ERRO: cópia dos bindings falhou" >&2; exit 1; }
 
 # Saneia JSDoc gerado `**/` → `** /` (ver nota extensa em gen-bindings-ios.sh).
-echo "==> [2/3] Saneando JSDoc gerado (**/ -> ** /)"
+echo "==> [3/4] Saneando JSDoc gerado (**/ -> ** /)"
 find "$NATIVE_JS_DIR" -name '*.ts' -type f -print0 | xargs -0 perl -i -pe 's{\*\*/}{** /}g'
 grep -qF '**/' "$NATIVE_JS_DIR/bindings/the_light_app_core.ts" \
   && { echo "ERRO: saneamento de JSDoc (**/) falhou nos bindings" >&2; exit 1; } || true
 
-echo "==> [3/3] bindings web (wasm) — scripts/gen-bindings-web.sh"
+echo "==> [4/4] bindings web (wasm) — scripts/gen-bindings-web.sh"
 bash "$ROOT/scripts/gen-bindings-web.sh"
 
 echo "==> OK — bindings TS (host + web) gerados; pronto p/ tsc --noEmit"
