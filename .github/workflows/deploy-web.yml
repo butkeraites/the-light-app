@@ -1,0 +1,90 @@
+# deploy-web.yml — publica o The Light (PWA estático) no GitHub Pages, DE GRAÇA.
+#
+# Distribuição confiável e sem custo: a CDN do GitHub serve o export estático; nenhum servidor
+# nosso. Roda o pipeline REPRODUTÍVEL do app (mesmos scripts do dev): gera bindings + assets sqlite
+# (4 traduções + xref + léxico) do the-light PINADO, faz `expo export --platform web` e publica.
+#
+# ATIVAÇÃO (uma vez, por você — não dá pra automatizar): repositório PÚBLICO + Settings → Pages →
+# Source: "GitHub Actions". Depois, Actions → "deploy-web" → "Run workflow". O app fica em
+# https://<user>.github.io/the-light-app/ (subpasta = `experiments.baseUrl` no app.json).
+#
+# Fica em `workflow_dispatch` (manual) DE PROPÓSITO: não falha em cada push antes do Pages existir.
+# Depois do 1º deploy verde, dá pra somar um gatilho `push: [main]` se quiser deploy contínuo.
+name: deploy-web
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Um deploy por vez.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build (assets + expo export web)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            app/package-lock.json
+            package-lock.json
+      - name: sqlite3 (CLI p/ o split reading-lite/léxico — F5.15)
+        run: sudo apt-get update && sudo apt-get install -y sqlite3
+      - name: npm ci (app)
+        working-directory: app
+        run: npm ci
+      - name: npm ci (raiz — ferramenta ubrn dos bindings)
+        run: npm ci
+      # Bindings da fronteira UniFFI (host jsi + web wasm) — necessários p/ o build web.
+      - name: gerar bindings TS (host + web)
+        run: bash scripts/gen-bindings-ts.sh
+      # Assets sqlite: importa KJV/Almeida/BSB/Bíblia Livre + xref + léxico do the-light pinado
+      # (rede de build OK; nenhuma versão protegida — allowlist do SPECS), depois o split web.
+      - name: gerar assets sqlite (4 traduções + xref + léxico)
+        run: |
+          bash scripts/gen-bible-db.sh
+          bash scripts/gen-reading-sample-db.sh
+      # DEPLOY_BASE_URL liga o `experiments.baseUrl` (via app.config.js) SÓ aqui → assets/links com o
+      # prefixo /the-light-app/ (project-site do GitHub Pages). Dev/smoke NÃO usam isto (servem na raiz).
+      - name: expo export (web estático, subpasta)
+        working-directory: app
+        env:
+          DEPLOY_BASE_URL: /the-light-app
+        run: npx expo export --platform web --output-dir dist
+      # GitHub Pages: (1) `.nojekyll` impede o Jekyll de IGNORAR `_expo/` (dirs com `_`); (2) `404.html`
+      # = cópia do index → fallback SPA p/ rotas dinâmicas (ex.: /read/43/3) não pré-renderizadas.
+      - name: GitHub Pages — .nojekyll + fallback 404 (SPA)
+        working-directory: app/dist
+        run: |
+          touch .nojekyll
+          cp index.html 404.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: app/dist
+
+  deploy:
+    name: deploy (GitHub Pages)
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

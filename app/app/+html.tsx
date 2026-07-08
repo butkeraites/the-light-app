@@ -14,6 +14,12 @@ import { type PropsWithChildren } from 'react';
 const DESCRIPTION =
   'Leitura bíblica offline-first, com estudo por IA (traga sua chave), interlinear e privacidade. Sem conta, sem servidor.';
 
+// Prefixo de hospedagem em SUBPASTA (GitHub Pages project-site: /the-light-app/). Vem do
+// `experiments.baseUrl` do app.json, exposto pelo Expo em `EXPO_BASE_URL` no build. Sem baseUrl
+// (dev / hospedagem na raiz) → string vazia → caminhos absolutos `/...` normais. Os assets do
+// `public/` (manifest, ícones, sw.js) vão para a raiz do dist = a raiz da subpasta no deploy.
+const BASE = process.env.EXPO_BASE_URL ?? '';
+
 export default function Root({ children }: PropsWithChildren) {
   return (
     <html lang="pt-BR">
@@ -27,13 +33,13 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="description" content={DESCRIPTION} />
 
         {/* PWA: manifest + cor do tema (barra do navegador / splash no dark-first "Vigil"). */}
-        <link rel="manifest" href="/manifest.webmanifest" />
+        <link rel="manifest" href={`${BASE}/manifest.webmanifest`} />
         <meta name="theme-color" content="#0b0b0f" />
 
         {/* Ícones: favicon (aba) + SVG escalável + apple-touch (tela de início do iOS). */}
-        <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
-        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="icon" href={`${BASE}/favicon.png`} type="image/png" sizes="32x32" />
+        <link rel="icon" href={`${BASE}/icon.svg`} type="image/svg+xml" />
+        <link rel="apple-touch-icon" href={`${BASE}/apple-touch-icon.png`} />
 
         {/* iOS: instala em tela cheia pelo Safari ("Adicionar à Tela de Início") — sem App Store. */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -47,11 +53,11 @@ export default function Root({ children }: PropsWithChildren) {
       <body>
         {children}
         {/* Registra o service worker (offline confiável após o 1º load). Best-effort: falha em
-            silêncio onde SW não é suportado (ex.: http inseguro). Só same-origin é cacheado (ver sw.js). */}
+            silêncio onde SW não é suportado (ex.: http inseguro). Só same-origin é cacheado (ver sw.js).
+            O SW é servido em `${BASE}/sw.js` com escopo `${BASE}/` — casa a subpasta do deploy. */}
         <script
           dangerouslySetInnerHTML={{
-            __html:
-              "if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){});});}",
+            __html: `if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('${BASE}/sw.js',{scope:'${BASE}/'}).catch(function(){});});}`,
           }}
         />
       </body>
