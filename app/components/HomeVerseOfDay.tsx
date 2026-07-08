@@ -12,24 +12,32 @@ import { useI18n } from '../lib/i18n';
 import { shareVerse } from '../lib/shareVerse';
 import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { verseOfDayRef } from '../lib/verseOfDay';
+import type { Translation } from '../web/reading';
 import { IconButton } from './ui';
 
-/** Rótulo curto da versão default por idioma (nome próprio da tradução; não é cromo traduzível). */
-function translationLabelFor(locale: 'pt' | 'en'): string {
-  return locale === 'pt' ? 'Almeida 1911' : 'KJV';
-}
-
-/** Tradução default do lookup por idioma (mesma regra da Home) — o texto casa o idioma da UI. */
+/** Tradução default do lookup por idioma (fallback se o seletor ainda não resolveu uma versão). */
 function defaultTranslationFor(locale: 'pt' | 'en'): string {
   return locale === 'pt' ? 'alm1911' : 'kjv';
 }
 
-type Loaded = { label: string; text: string; book: number; chapter: number; verse: number };
+type Loaded = { label: string; text: string; translationId: string; book: number; chapter: number; verse: number };
 
-export function HomeVerseOfDay() {
+export function HomeVerseOfDay({
+  translation,
+  translations,
+}: {
+  /** Versão ESCOLHIDA na Home (seletor). O texto do dia é buscado NELA — não mais na default fixa. */
+  translation: string;
+  /** Lista de versões (p/ resolver o NOME de exibição da tradução citada). */
+  translations: Translation[];
+}) {
   const theme = useTheme();
   const { t, locale } = useI18n();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+
+  // Nome de exibição da tradução (ex.: "Almeida 1911", "Bíblia Livre"). Derivado em render → segue a
+  // lista quando ela carrega, SEM re-buscar o versículo. Fallback ao id em caixa alta.
+  const versionNameFor = (id: string) => translations.find((x) => x.id === id)?.name ?? id.toUpperCase();
 
   // A referência do dia é determinística (data → referência). Calculada UMA vez no mount.
   const ref = useMemo(() => verseOfDayRef(new Date()), []);
@@ -40,6 +48,9 @@ export function HomeVerseOfDay() {
 
   useEffect(() => {
     let alive = true;
+    // Busca o texto do dia NA VERSÃO ESCOLHIDA (`translation`); fallback à default do idioma enquanto
+    // o seletor não resolveu. Re-busca ao trocar de versão (deps) — o cartão passa a acompanhar.
+    const tid = translation || defaultTranslationFor(locale);
     (async () => {
       try {
         const [{ ensureReadingDb }, { getChapter, listBooks }] = await Promise.all([
@@ -47,7 +58,7 @@ export function HomeVerseOfDay() {
           import('../web/reading'),
         ]);
         const dbPath = await ensureReadingDb();
-        const passage = await getChapter(dbPath, defaultTranslationFor(locale), ref.book, ref.chapter);
+        const passage = await getChapter(dbPath, tid, ref.book, ref.chapter);
         // Texto VERBATIM do store: acha o versículo-alvo no capítulo (Single). Nada gerado aqui.
         const hit = passage.verses.find(
           (v) => v.reference.verses.tag === 'Single' && v.reference.verses.inner.verse === ref.verse,
@@ -56,7 +67,9 @@ export function HomeVerseOfDay() {
         const books = listBooks();
         const bk = books.find((x) => x.number === ref.book);
         const name = bk ? (locale === 'en' ? bk.nameEn : bk.namePt) : t('read.bookFallback', { number: ref.book });
-        if (alive) setLoaded({ label: `${name} ${ref.chapter}:${ref.verse}`, text: hit.text, ...ref });
+        // label/text/translationId setados ATOMICAMENTE → nunca mostra texto de uma versão com o
+        // rótulo de outra (a versão citada bate sempre com o texto exibido).
+        if (alive) setLoaded({ label: `${name} ${ref.chapter}:${ref.verse}`, text: hit.text, translationId: tid, ...ref });
       } catch {
         /* store indisponível → cartão não aparece; a Home segue normal (offline-first) */
       }
@@ -64,7 +77,7 @@ export function HomeVerseOfDay() {
     return () => {
       alive = false;
     };
-  }, [locale, ref]);
+  }, [locale, ref, translation]);
 
   // Limpa o timer da confirmação ao desmontar.
   useEffect(() => () => {
@@ -73,10 +86,12 @@ export function HomeVerseOfDay() {
 
   if (!loaded) return null;
 
+  const versionName = versionNameFor(loaded.translationId);
+
   async function onShare() {
     if (!loaded) return;
     try {
-      const res = await shareVerse(loaded.text, loaded.label, translationLabelFor(locale));
+      const res = await shareVerse(loaded.text, loaded.label, versionNameFor(loaded.translationId));
       if (res === 'copied') {
         setCopied(true);
         if (copiedTimer.current) clearTimeout(copiedTimer.current);
@@ -102,14 +117,21 @@ export function HomeVerseOfDay() {
         }
         testID="verse-of-day"
         accessibilityRole="link"
-        accessibilityLabel={t('home.verseOfDayA11y', { reference: loaded.label })}
+        accessibilityLabel={t('home.verseOfDayA11y', { reference: `${loaded.label} · ${versionName}` })}
       >
         <Text style={styles.eyebrow}>{t('home.verseOfDay')}</Text>
         {/* Texto bíblico VERBATIM do store — serifa de leitura, distinto do cromo. */}
         <Text style={styles.verseText} testID="verse-of-day-text">
           {loaded.text}
         </Text>
-        <Text style={styles.reference}>{loaded.label}</Text>
+        {/* Referência + a VERSÃO citada (destacada) — sempre bate com o texto exibido. */}
+        <Text style={styles.reference} testID="verse-of-day-ref">
+          {loaded.label}
+          {'  ·  '}
+          <Text style={styles.version} testID="verse-of-day-version">
+            {versionName}
+          </Text>
+        </Text>
       </Pressable>
       <View style={styles.footer}>
         {/* Confirmação "copiado" (só aparece no fallback web sem Web Share API). */}
@@ -144,6 +166,7 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
     eyebrow: { ...type.label, color: colors.accent, letterSpacing: 1 },
     verseText: { ...type.verse, color: colors.verseText },
     reference: { ...type.caption, color: colors.muted },
+    version: { color: colors.accent }, // a tradução citada em ouro — responde "qual versão é esta"
     footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.xs },
     copied: { ...type.caption, color: colors.accent, flexShrink: 1 },
   });

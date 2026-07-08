@@ -255,7 +255,7 @@ export default function HomeScreen() {
 
       {/* VERSÍCULO DO DIA (Rodada 4) — devocional determinístico/local; texto verbatim do store.
           Some sozinho se o store não carregar (offline-first), sem quebrar a Home. */}
-      <HomeVerseOfDay />
+      <HomeVerseOfDay translation={effectiveTranslation} translations={translations} />
 
       {/* NAVEGAÇÃO SECUNDÁRIA — cartão com divisórias, cada linha via o kit <ListRow>. */}
       <View style={styles.rowsCard}>
