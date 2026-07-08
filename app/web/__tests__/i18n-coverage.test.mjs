@@ -273,6 +273,9 @@ async function main() {
     // remover, status (só-nomes) e o aviso web-só-sessão (ADR-0025). Nenhuma chave/valor
     // passa por t() (só o `{provider}` técnico é interpolado); nenhum texto bíblico.
     'settings',
+    // Rodada 2: cromo do painel INTERLINEAR — seção/loading/empty/nota. O texto original
+    // (surface/translit/glosa/Strong) vem do STORE via `interlinearVerse`, nunca de t().
+    'interlinear',
   ]);
   for (const key of MESSAGE_KEYS) {
     assert.ok(

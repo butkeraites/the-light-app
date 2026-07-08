@@ -309,6 +309,15 @@ export type MessageKey =
   | 'versePanel.compareButton'
   | 'versePanel.addToScope'
   | 'versePanel.inScope'
+  | 'versePanel.interlinearButton'
+  | 'versePanel.interlinearLabel'
+  // ─── Modo INTERLINEAR (Rodada 2): palavra-a-palavra na língua original ───────────────
+  // CROMO do painel interlinear. O TEXTO original (surface), a translit, a glosa e o Strong
+  // vêm SEMPRE do store (fronteira `interlinearVerse`) — nunca destas strings (anti-alucinação).
+  | 'interlinear.section'
+  | 'interlinear.loading'
+  | 'interlinear.empty'
+  | 'interlinear.note'
   // ─── CROMO dos NOMES das cores de destaque (F5.28) ───────────────────────────────────
   // Nomes de EXIBIÇÃO das 4 cores da paleta de marcação (`highlightColors.ts`). São CROMO
   // puro (não texto bíblico): antes ficavam hardcoded em PT (`label: 'Amarelo'`) e vazavam
@@ -669,6 +678,13 @@ const pt: Record<MessageKey, string> = {
   'versePanel.compareButton': 'Comparar (IA)',
   'versePanel.addToScope': 'Adicionar ao estudo',
   'versePanel.inScope': 'No estudo',
+  'versePanel.interlinearButton': 'Interlinear',
+  'versePanel.interlinearLabel': 'Ver a passagem palavra por palavra na língua original',
+  'interlinear.section': 'Palavra por palavra (língua original)',
+  'interlinear.loading': 'Carregando o interlinear…',
+  'interlinear.empty': 'Interlinear indisponível para esta passagem (o texto original cobre todo o NT, Gênesis e Salmos).',
+  'interlinear.note':
+    'Texto original, transliteração e glosa vêm do léxico local (STEP Bible / Tyndale House), nunca de IA.',
   'highlight.yellow': 'Amarelo',
   'highlight.green': 'Verde',
   'highlight.blue': 'Azul',
@@ -1010,6 +1026,13 @@ const en: Record<MessageKey, string> = {
   'versePanel.compareButton': 'Compare (AI)',
   'versePanel.addToScope': 'Add to study',
   'versePanel.inScope': 'In study',
+  'versePanel.interlinearButton': 'Interlinear',
+  'versePanel.interlinearLabel': 'View this passage word by word in the original language',
+  'interlinear.section': 'Word by word (original language)',
+  'interlinear.loading': 'Loading the interlinear…',
+  'interlinear.empty': 'Interlinear unavailable for this passage (the original text covers the whole NT, Genesis and Psalms).',
+  'interlinear.note':
+    'Original text, transliteration and gloss come from the local lexicon (STEP Bible / Tyndale House), never from AI.',
   'highlight.yellow': 'Yellow',
   'highlight.green': 'Green',
   'highlight.blue': 'Blue',

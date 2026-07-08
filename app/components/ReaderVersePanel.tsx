@@ -70,6 +70,7 @@ export function ReaderVersePanel({
   onStudy,
   onChat,
   onCompare,
+  onInterlinear,
   onAddToScope,
   inScope = false,
   onChanged,
@@ -99,6 +100,8 @@ export function ReaderVersePanel({
   onChat?: () => void;
   /** Abre a comparação multi-IA (N provedores lado a lado) desta passagem (F3.7). Opcional. */
   onCompare?: () => void;
+  /** Rodada 2: abre o interlinear (palavra-a-palavra, língua original) desta passagem. Opcional. */
+  onInterlinear?: () => void;
   /** Fase 4b: adiciona/remove ESTE versículo do Escopo de Estudo (montar estudo multi-trecho). */
   onAddToScope?: () => void;
   /** Este versículo já está no Escopo (o botão vira "No estudo ✓"). */
@@ -295,6 +298,21 @@ export function ReaderVersePanel({
             ) : null}
           </View>
         </>
+      ) : null}
+
+      {/* ── INTERLINEAR (Rodada 2: palavra-a-palavra na língua original) ──────
+          Distinto das ações de IA: o dado (grego/hebraico + translit + glosa + Strong) vem
+          VERBATIM do store, não de um modelo. */}
+      {onInterlinear ? (
+        <Button
+          title={t('versePanel.interlinearButton')}
+          variant="ghost"
+          icon="book"
+          onPress={onInterlinear}
+          testID="verse-interlinear"
+          accessibilityLabel={t('versePanel.interlinearLabel')}
+          style={styles.inlineBtn}
+        />
       ) : null}
 
       {/* ── ADICIONAR AO ESTUDO (Fase 4b: montar escopo multi-trecho a partir daqui) ── */}
