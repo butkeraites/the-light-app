@@ -55,6 +55,8 @@
     "test:web:passage-query": "node web/__tests__/passage-query.test.mjs",
     "test:web:study-scope": "node web/__tests__/studyScope.test.mjs",
     "test:web:hide-on-scroll": "node web/__tests__/hideOnScroll.test.mjs",
+    "test:web:verse-of-day": "node web/__tests__/verseOfDay.test.mjs",
+    "test:web:verse-of-day-data": "node web/__tests__/verseOfDayResolves.web.test.mjs",
     "test:ci": "node scripts/run-guards.mjs ci",
     "test:all": "node scripts/run-guards.mjs all"
   },

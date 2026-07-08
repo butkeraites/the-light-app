@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType }
 import { router } from 'expo-router';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { HomeVerseOfDay } from '../components/HomeVerseOfDay';
 import { PassageResultView } from '../components/PassageResultView';
 import { ReaderVersionPicker } from '../components/ReaderVersionPicker';
 import { Button } from '../components/ui/Button';
@@ -247,6 +248,10 @@ export default function HomeScreen() {
         <Text style={styles.ctaTitle}>{t('home.readBible')}</Text>
         <Text style={styles.ctaChevron}>›</Text>
       </Pressable>
+
+      {/* VERSÍCULO DO DIA (Rodada 4) — devocional determinístico/local; texto verbatim do store.
+          Some sozinho se o store não carregar (offline-first), sem quebrar a Home. */}
+      <HomeVerseOfDay />
 
       {/* NAVEGAÇÃO SECUNDÁRIA — cartão com divisórias, cada linha via o kit <ListRow>. */}
       <View style={styles.rowsCard}>
