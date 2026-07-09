@@ -307,8 +307,56 @@ async function runChapterNav(ctx) {
     if (page.url() !== urlBefore) throw new Error('chapter-nav: clique na margem esquerda em Gênesis 1 não deveria navegar (sem anterior)');
   }
 
+  // ── SWIPE (toque, celular na PWA/web): deslizar p/ ESQUERDA = próximo; p/ DIREITA em Gên 1 = nada. ──
+  // Emula um aparelho de toque (viewport móvel + hasTouch) e despacha um gesto de toque REAL via CDP
+  // (touchStart→touchMove→touchEnd). Restaura a viewport de desktop no fim (outros fluxos reusam a page).
+  const cdp = await page.target().createCDPSession();
+  const swipe = async (fromX, toX, y) => {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: fromX, y }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: Math.round((fromX + toX) / 2), y }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: toX, y }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  try {
+    await page.setViewport({ width: 390, height: 844, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+    await goto(ctx, '/read/1/1');
+    await waitSel(page, q('reader-body'), ACTION_TIMEOUT_MS);
+    // Deslizar p/ a ESQUERDA (dx<0), meio da tela → próximo capítulo.
+    await swipe(320, 70, 420);
+    await page.waitForFunction(() => /\/read\/1\/2(?:[/?#]|$)/.test(location.pathname + location.search), { timeout: ACTION_TIMEOUT_MS, polling: 200 });
+    await waitBodyIncludes(page, 'Genesis 2');
+    // Deslizar p/ a DIREITA (dx>0) em Gênesis 1 → NÃO navega (sem anterior).
+    await goto(ctx, '/read/1/1');
+    await waitSel(page, q('reader-body'), ACTION_TIMEOUT_MS);
+    {
+      const urlBefore = page.url();
+      await swipe(70, 320, 420);
+      await sleep(800);
+      if (page.url() !== urlBefore) throw new Error('chapter-nav: swipe p/ a direita em Gênesis 1 não deveria navegar (sem anterior)');
+    }
+    // INVARIANTE do touch: um TAP no versículo (dx~0) NÃO vira capítulo e ABRE o painel — o swipe
+    // não pode "comer" o toque. Prova no MESMO viewport móvel, com um tap de toque real.
+    await goto(ctx, '/read/1/1');
+    await waitSel(page, q('reader-body'), ACTION_TIMEOUT_MS);
+    await waitSel(page, q('verse-1'), ACTION_TIMEOUT_MS);
+    const vbox = await page.evaluate(() => {
+      const r = document.querySelector('[data-testid="verse-1"]').getBoundingClientRect();
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + Math.min(r.height / 2, 24)) };
+    });
+    {
+      const urlBefore = page.url();
+      await page.touchscreen.tap(vbox.x, vbox.y);
+      await waitSel(page, q('note-input'), ACTION_TIMEOUT_MS); // painel do versículo abriu (tap preservado)
+      if (page.url() !== urlBefore) throw new Error('chapter-nav: um TAP no versículo (touch) não deveria virar capítulo');
+    }
+    await clickSel(page, q('verse-panel-close'));
+  } finally {
+    await page.setViewport({ width: 1280, height: 900, hasTouch: false, isMobile: false, deviceScaleFactor: 1 });
+    await cdp.detach().catch(() => {});
+  }
+
   await assertNoForbidden(ctx, 'chapter-nav');
-  ctx.log('  [chapter-nav] botões (Gên1→Gên2, Gên50→Êx1, Apoc22 s/next) + teclado ←/→ + clique-lateral (web) OK');
+  ctx.log('  [chapter-nav] botões (Gên1→Gên2, Gên50→Êx1, Apoc22 s/next) + teclado ←/→ + clique-lateral + swipe (web) OK');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════

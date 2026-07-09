@@ -25,3 +25,16 @@ export function sideMarginWidth(viewportWidth: number, columnMax: number = READI
 
 /** Margem mínima (px) p/ o clique-lateral valer — abaixo disto a zona é estreita demais (usa botões/teclado). */
 export const SIDE_NAV_MIN_MARGIN = 44;
+
+// ── SWIPE de toque (celular na PWA/web) — virar capítulo deslizando o dedo ──
+// O gesto só vira capítulo se for CLARAMENTE horizontal, longo o bastante e rápido: assim uma
+// rolagem vertical (dy grande) ou um toque no versículo (dx~0) nunca viram página por engano.
+
+/** Distância horizontal mínima (px) p/ um swipe virar capítulo (abaixo disto é tap ou rolagem). */
+export const SWIPE_MIN_DISTANCE = 56;
+
+/** Duração máxima (ms) do gesto p/ contar como swipe (mais lento = arrastar/rolar, não swipe). */
+export const SWIPE_MAX_DURATION_MS = 600;
+
+/** Dominância horizontal: |dx| tem de superar |dy| por este fator (senão é rolagem diagonal). */
+export const SWIPE_H_DOMINANCE = 1.8;
