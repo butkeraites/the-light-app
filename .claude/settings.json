@@ -15,6 +15,17 @@
       "Bash(git commit:*)",
       "Bash(git status:*)",
       "Bash(git log:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git branch:*)",
+      "Bash(git merge:*)",
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git diff:*)",
+      "Bash(git cat-file:*)",
+      "Bash(gh:*)",
+      "Bash(grep:*)",
       "Bash(rustup:*)",
       "Bash(ls:*)",
       "Bash(cat:*)",
@@ -22,10 +33,6 @@
       "Bash(mv:*)"
     ],
     "deny": [
-      "Bash(git push:*)",
-      "Read(../the-light/**)",
-      "Edit(../the-light/**)",
-      "Write(../the-light/**)",
       "Read(./**/secrets.toml)",
       "Read(./**/.env)"
     ]
