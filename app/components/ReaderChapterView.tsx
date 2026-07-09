@@ -197,6 +197,7 @@ export function ReaderChapterView({
   return (
     <ScrollView
       ref={scrollRef}
+      testID="reader-body"
       style={styles.scroll}
       contentContainerStyle={[styles.content, { paddingTop: theme.space.lg + topInset }]}
       onScroll={onScroll}

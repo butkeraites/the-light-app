@@ -254,8 +254,48 @@ async function runChapterNav(ctx) {
     throw new Error('chapter-nav: Apocalipse 22 não deveria ter botão "próximo" (é o último capítulo do cânon)');
   }
 
+  // ── TECLADO (web): → próximo, ← anterior. ↑↓ ficam pro scroll (não testado aqui). ──
+  await goto(ctx, '/read/1/1');
+  await waitBodyIncludes(page, 'Genesis 1');
+  await page.evaluate(() => document.body && document.body.focus && document.body.focus());
+  await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(() => /\/read\/1\/2(?:[/?#]|$)/.test(location.pathname + location.search), { timeout: ACTION_TIMEOUT_MS, polling: 200 });
+  await waitBodyIncludes(page, 'Genesis 2');
+  await page.keyboard.press('ArrowLeft');
+  await page.waitForFunction(() => /\/read\/1\/1(?:[/?#]|$)/.test(location.pathname + location.search), { timeout: ACTION_TIMEOUT_MS, polling: 200 });
+  await waitBodyIncludes(page, 'Genesis 1');
+
+  // Guarda: com o painel do versículo ABERTO, as setas NÃO viram capítulo.
+  await clickSel(page, q('verse-1'));
+  await waitSel(page, q('note-input'), ACTION_TIMEOUT_MS);
+  {
+    const urlBefore = page.url();
+    await page.keyboard.press('ArrowRight');
+    await sleep(800);
+    if (page.url() !== urlBefore) throw new Error('chapter-nav: seta NÃO deveria virar capítulo com o painel do versículo aberto');
+  }
+  await clickSel(page, q('verse-panel-close'));
+
+  // ── CLIQUE-NAS-LATERAIS (Kindle, web): direita = próximo; esquerda em Gên 1 = nada. ──
+  await goto(ctx, '/read/1/1');
+  await waitBodyIncludes(page, 'Genesis 1');
+  const vp = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+  // Beirada DIREITA, meio da tela (abaixo do cromo, sobre o fundo) → próximo capítulo.
+  await page.mouse.click(vp.w - 8, Math.round(vp.h / 2));
+  await page.waitForFunction(() => /\/read\/1\/2(?:[/?#]|$)/.test(location.pathname + location.search), { timeout: ACTION_TIMEOUT_MS, polling: 200 });
+  await waitBodyIncludes(page, 'Genesis 2');
+  // Beirada ESQUERDA em Gênesis 1 → NÃO navega (é o 1º capítulo).
+  await goto(ctx, '/read/1/1');
+  await waitBodyIncludes(page, 'Genesis 1');
+  {
+    const urlBefore = page.url();
+    await page.mouse.click(8, Math.round(vp.h / 2));
+    await sleep(800);
+    if (page.url() !== urlBefore) throw new Error('chapter-nav: clique na lateral esquerda em Gênesis 1 não deveria navegar (sem anterior)');
+  }
+
   await assertNoForbidden(ctx, 'chapter-nav');
-  ctx.log('  [chapter-nav] Gên 1 (sem prev) → Gên 2; Gên 50 → Êx 1 (cruza livro); Apoc 22 (sem next)');
+  ctx.log('  [chapter-nav] botões (Gên1→Gên2, Gên50→Êx1, Apoc22 s/next) + teclado ←/→ + clique-lateral (web) OK');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
