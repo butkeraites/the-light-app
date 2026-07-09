@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 
 import { useI18n } from '../lib/i18n';
+import { READING_COLUMN_MAX } from '../lib/readingLayout';
 import {
   DEFAULT_FONT_STEP,
   DEFAULT_LINE_SPACING,
@@ -261,6 +262,13 @@ function makeStyles({ type, space, radius }: ThemeContextValue, colors: ThemeCol
       paddingVertical: space.lg,
       gap: space.md,
       backgroundColor: colors.background,
+      // Coluna de leitura CENTRALIZADA com largura máxima: comprimento de linha confortável em
+      // telas largas + margens vazias que viram a zona de clique-lateral (Kindle). Em telas
+      // estreitas (< maxWidth) ocupa 100% (sem margem) — leitura no celular fica igual. Ver
+      // `lib/readingLayout.ts`; a tela lê a MESMA constante p/ mapear os cliques de margem.
+      maxWidth: READING_COLUMN_MAX,
+      width: '100%',
+      alignSelf: 'center',
     },
     // Abertura do capítulo em serifa (type.title) + régua dourada — âncora de leitura.
     headingBlock: { marginBottom: space.xs },

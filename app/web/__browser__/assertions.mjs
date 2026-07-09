@@ -276,22 +276,35 @@ async function runChapterNav(ctx) {
   }
   await clickSel(page, q('verse-panel-close'));
 
-  // ── CLIQUE-NAS-LATERAIS (Kindle, web): direita = próximo; esquerda em Gên 1 = nada. ──
+  // ── CLIQUE-NAS-LATERAIS (Kindle, web): margem DIREITA = próximo; margem ESQUERDA em Gên 1 = nada. ──
+  // A zona é a MARGEM VAZIA fora da coluna de leitura centralizada. Esperamos o CORPO carregar de
+  // verdade (reader-body só existe APÓS o passage; o título do cromo aparece antes) e medimos a coluna
+  // real (bordas do 1º versículo) p/ clicar no MEIO da margem — longe do texto E da barra de rolagem.
   await goto(ctx, '/read/1/1');
-  await waitBodyIncludes(page, 'Genesis 1');
-  const vp = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
-  // Beirada DIREITA, meio da tela (abaixo do cromo, sobre o fundo) → próximo capítulo.
-  await page.mouse.click(vp.w - 8, Math.round(vp.h / 2));
+  await waitSel(page, q('reader-body'), ACTION_TIMEOUT_MS);
+  await waitSel(page, q('verse-1'), ACTION_TIMEOUT_MS);
+  const geo = await page.evaluate(() => {
+    const v = document.querySelector('[data-testid="verse-1"]').getBoundingClientRect();
+    return { w: window.innerWidth, h: window.innerHeight, colLeft: Math.round(v.left), colRight: Math.round(v.right) };
+  });
+  const midY = Math.round(geo.h / 2);
+  const rightMarginX = Math.round((geo.colRight + geo.w) / 2); // meio da margem direita (livre da scrollbar)
+  const leftMarginX = Math.round(geo.colLeft / 2); // meio da margem esquerda
+  if (geo.colLeft < 40 || geo.w - geo.colRight < 40) {
+    throw new Error(`chapter-nav: coluna de leitura sem margem util p/ clique-lateral (colLeft=${geo.colLeft}, colRight=${geo.colRight}, w=${geo.w})`);
+  }
+  // Margem DIREITA, meio da tela (sobre o fundo vazio) → próximo capítulo.
+  await page.mouse.click(rightMarginX, midY);
   await page.waitForFunction(() => /\/read\/1\/2(?:[/?#]|$)/.test(location.pathname + location.search), { timeout: ACTION_TIMEOUT_MS, polling: 200 });
   await waitBodyIncludes(page, 'Genesis 2');
-  // Beirada ESQUERDA em Gênesis 1 → NÃO navega (é o 1º capítulo).
+  // Margem ESQUERDA em Gênesis 1 → NÃO navega (é o 1º capítulo).
   await goto(ctx, '/read/1/1');
-  await waitBodyIncludes(page, 'Genesis 1');
+  await waitSel(page, q('reader-body'), ACTION_TIMEOUT_MS);
   {
     const urlBefore = page.url();
-    await page.mouse.click(8, Math.round(vp.h / 2));
+    await page.mouse.click(leftMarginX, midY);
     await sleep(800);
-    if (page.url() !== urlBefore) throw new Error('chapter-nav: clique na lateral esquerda em Gênesis 1 não deveria navegar (sem anterior)');
+    if (page.url() !== urlBefore) throw new Error('chapter-nav: clique na margem esquerda em Gênesis 1 não deveria navegar (sem anterior)');
   }
 
   await assertNoForbidden(ctx, 'chapter-nav');
