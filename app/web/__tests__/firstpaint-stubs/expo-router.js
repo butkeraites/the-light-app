@@ -15,7 +15,7 @@ Stack.Screen = function Screen({ name }) {
 };
 
 export const Link = ({ children }) => React.createElement('a', null, children);
-export const router = { push() {}, replace() {}, back() {} };
+export const router = { push() {}, replace() {}, back() {}, canGoBack: () => false };
 export function useNavigation() {
   return { setOptions() {} };
 }

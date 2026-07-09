@@ -39,9 +39,9 @@ const FRONTIER_WASM = join(__dirname, '..', 'generated', 'wasm-bindgen', 'index_
 const READING_DB = join(__dirname, '..', '..', '..', 'assets', 'data', 'reading-lite.sqlite');
 const WA_SQLITE_FTS5_WASM = join(__dirname, '..', 'vendor', 'wa-sqlite-fts5', 'wa-sqlite.wasm');
 
-// Cânon: 66 livros; 2 traduções (KJV en, Almeida 1911 pt).
+// Cânon: 66 livros; 4 traduções do corpus (en: BSB, KJV; pt: Almeida 1911, Bíblia Livre).
 const TOTAL_BOOKS = 66;
-const TRANSLATIONS = ['kjv', 'alm1911'];
+const TRANSLATIONS = ['bsb', 'kjv', 'alm1911', 'blivre'];
 // Livros FORA do sample de dev antigo {Gênesis(1), Salmos(19), João(43)} — precisam
 // existir na Bíblia completa. (number, KJV name, Almeida name).
 const BOOKS_OUTSIDE_SAMPLE = [
@@ -113,18 +113,18 @@ async function main() {
   // (2) Store local (wa-sqlite COM FTS5 + VFS de memória sobre os bytes do fixture).
   const handle = await openReadingDbInMemory();
 
-  // (2a) COBERTURA por TABELA `books`: 132 linhas (66 × 2) e 66 números DISTINTOS. Num
+  // (2a) COBERTURA por TABELA `books`: 264 linhas (66 × 4) e 66 números DISTINTOS. Num
   //      sample de 3 livros isto seria 6 / 3 — a guarda falha se o banco regredir.
   const bookRows = Number(await scalar(handle, 'SELECT COUNT(*) FROM books'));
   assert.equal(
     bookRows,
     TOTAL_BOOKS * TRANSLATIONS.length,
-    `books deve ter ${TOTAL_BOOKS * TRANSLATIONS.length} linhas (66 × 2), veio ${bookRows}`,
+    `books deve ter ${TOTAL_BOOKS * TRANSLATIONS.length} linhas (66 × ${TRANSLATIONS.length}), veio ${bookRows}`,
   );
   const distinctBooks = Number(await scalar(handle, 'SELECT COUNT(DISTINCT number) FROM books'));
   assert.equal(distinctBooks, TOTAL_BOOKS, `books deve ter 66 números distintos, veio ${distinctBooks}`);
 
-  // (2b) 2 traduções (KJV + Almeida 1911), cada uma com os 66 livros.
+  // (2b) 4 traduções (BSB, KJV, Almeida 1911, Bíblia Livre), cada uma com os 66 livros.
   const translations = await queryTranslations(handle);
   const tids = translations.map((t) => t.id).sort();
   assert.deepEqual(tids, [...TRANSLATIONS].sort(), `traduções devem ser ${TRANSLATIONS.join('+')}`);
@@ -178,7 +178,7 @@ async function main() {
   await handle.sqlite3.close(handle.db);
 
   console.log('PASS — cobertura web (Bíblia COMPLETA em reading-lite.sqlite, F5.36/ADR-0056):');
-  console.log(`  books                       -> ${bookRows} linhas (66 × 2), ${distinctBooks} livros distintos`);
+  console.log(`  books                       -> ${bookRows} linhas (66 × ${TRANSLATIONS.length}), ${distinctBooks} livros distintos`);
   console.log(`  traduções                   -> [${tids.join(', ')}] (66 livros cada)`);
   console.log(
     `  fora do sample {1,19,43}    -> ${BOOKS_OUTSIDE_SAMPLE.map((b) => `${b.en}/${b.pt}(${b.number})`).join(', ')} presentes, ≥1 cap. em ambas`,

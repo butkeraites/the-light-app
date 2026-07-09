@@ -38,6 +38,7 @@ const STUB_MAP = [
   [/(^|\/)lib\/i18n$/, join(STUBS, 'providers.js')],
   [/(^|\/)lib\/theme$/, join(STUBS, 'providers.js')],
   [/(^|\/)components\/(LanguageToggleButton|ThemeModeSelector)$/, join(STUBS, 'providers.js')],
+  [/(^|\/)components\/ui$/, join(STUBS, 'providers.js')],
 ];
 
 const stubPlugin = {

@@ -165,12 +165,15 @@ async function main() {
   const johnChapters = await queryChapterCount(handle, 'kjv', 43);
   assert.equal(johnChapters, 21, `chapterCount("kjv",43) deve ser 21, veio ${johnChapters}`);
 
-  // (2e) listTranslations inclui kjv (en) e alm1911 (pt), nessa ordem (do SQLite).
+  // (2e) listTranslations traz as 4 traduções do corpus na ORDEM do SQLite (language, id):
+  //      en (bsb, kjv) antes de pt (alm1911, blivre). Guarda contra deriva do corpus/ordenação.
   const translations = await queryTranslations(handle);
   const ids = translations.map((t) => t.id);
-  assert.ok(ids.includes('kjv'), 'listTranslations deve incluir kjv');
-  assert.ok(ids.includes('alm1911'), 'listTranslations deve incluir alm1911');
-  assert.equal(ids[0], 'kjv', 'ordem do SQLite (language, id): kjv (en) antes de alm1911 (pt)');
+  assert.deepEqual(
+    ids,
+    ['bsb', 'kjv', 'alm1911', 'blivre'],
+    `listTranslations deve trazer as 4 traduções na ordem (language, id), veio [${ids.join(', ')}]`,
+  );
 
   // (2f) F5.38: Mateus (livro 40, cap 1, KJV) via as funções de PRODUÇÃO — exercita um
   // livro do NT ALÉM de João. A F5.36 tornou o subset a Bíblia COMPLETA; se um livro além
