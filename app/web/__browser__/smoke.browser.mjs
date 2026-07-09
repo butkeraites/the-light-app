@@ -161,11 +161,18 @@ async function main() {
     // só afeta o static-server do dist) — que QUEBRARIA todos os outros fluxos. Então sob o flag
     // rodamos SÓ ele; sem o flag, rodamos todos os DEMAIS (fluxos normais da F6.2 seguem verdes).
     const wasmErrorMode = process.env.SMOKE_WASM_WRONG_MIME === '1';
-    const selectedFlows = wasmErrorMode
+    let selectedFlows = wasmErrorMode
       ? flows.filter((f) => f.name === 'wasm-error-ui')
       : flows.filter((f) => f.name !== 'wasm-error-ui');
     if (wasmErrorMode) {
       log('    modo SMOKE_WASM_WRONG_MIME=1 → só o fluxo wasm-error-ui (fronteira corrompida de propósito)');
+    }
+    // Afordância de DEV (não-CI): `SMOKE_ONLY=chapter-nav,verse-of-day` roda só esses fluxos p/
+    // iterar rápido. Sem o env, roda tudo (comportamento do guard inalterado).
+    const only = (process.env.SMOKE_ONLY ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (only.length > 0) {
+      selectedFlows = selectedFlows.filter((f) => only.includes(f.name));
+      log(`    modo SMOKE_ONLY=${only.join(',')} → ${selectedFlows.length} fluxo(s)`);
     }
 
     for (const flow of selectedFlows) {

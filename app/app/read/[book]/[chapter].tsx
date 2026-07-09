@@ -45,6 +45,12 @@ import { versesForChapter } from '../../../lib/studyScope';
 import { useTheme, type ThemeContextValue } from '../../../lib/theme';
 import { listBooks, type CrossRef } from '../../../web/reading';
 import { chapterNav } from '../../../lib/chapterNav';
+import {
+  READING_COLUMN_MAX,
+  READING_COLUMN_MAX_PARALLEL,
+  SIDE_NAV_MIN_MARGIN,
+  sideMarginWidth,
+} from '../../../lib/readingLayout';
 
 const DEFAULT_TRANSLATION = 'kjv';
 
@@ -323,6 +329,11 @@ function ChapterContent() {
   const navBlocked =
     selectedVerse != null || activePanel != null || settingsOpen || scopeSheetOpen || scope.selecting;
 
+  // Largura da COLUNA de leitura efetivamente renderizada (simples vs. paralelo) — a zona de
+  // clique-lateral é a MARGEM vazia fora dela. Mesma constante que os corpos usam p/ centralizar.
+  const readingColumnMax =
+    parallel && secondaryPassage != null ? READING_COLUMN_MAX_PARALLEL : READING_COLUMN_MAX;
+
   // (1) TECLADO: ← capítulo anterior, → próximo. ↑↓/PageUp/Down seguem rolando (return sem
   // preventDefault). Ignora com painel aberto, tecla modificadora, ou foco num campo de texto.
   useEffect(() => {
@@ -344,9 +355,12 @@ function ChapterContent() {
     return () => window.removeEventListener('keydown', onKey);
   }, [adj, goToChapter, navBlocked]);
 
-  // (2) CLIQUE-NAS-LATERAIS (Kindle): clicar a margem ESQUERDA vazia = anterior; DIREITA = próximo.
-  // Só conta clique DENTRO da leitura (`reader-body`), em espaço não-interativo (nunca rouba toque de
-  // versículo), na beirada, e sem seleção de texto ativa. NUNCA faz preventDefault → não bloqueia nada.
+  // (2) CLIQUE-NAS-LATERAIS (Kindle): clicar a MARGEM ESQUERDA vazia = anterior; DIREITA = próximo.
+  // A zona é toda a margem FORA da coluna de leitura centralizada (`readingColumnMax`) — espaço
+  // vazio de verdade, largo, então clicar "na lateral" nunca cai sobre texto. Só conta clique DENTRO
+  // da leitura (`reader-body`), em espaço não-interativo (cinto+suspensório), e sem seleção de texto
+  // ativa. Em telas estreitas a coluna preenche a tela (margem < mínimo) → clique-lateral inativo
+  // (celular usa botões). NUNCA faz preventDefault → não bloqueia scroll/clique.
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const onClick = (e: MouseEvent) => {
@@ -358,13 +372,14 @@ function ChapterContent() {
       }
       if (window.getSelection && String(window.getSelection() ?? '').length > 0) return; // terminando seleção
       const w = window.innerWidth;
-      const edge = Math.min(96, w * 0.15);
-      if (e.clientX <= edge && adj.prev) goToChapter(adj.prev);
-      else if (e.clientX >= w - edge && adj.next) goToChapter(adj.next);
+      const margin = sideMarginWidth(w, readingColumnMax);
+      if (margin < SIDE_NAV_MIN_MARGIN) return; // sem margem útil (tela estreita) → sem clique-lateral
+      if (e.clientX <= margin && adj.prev) goToChapter(adj.prev);
+      else if (e.clientX >= w - margin && adj.next) goToChapter(adj.next);
     };
     window.addEventListener('click', onClick);
     return () => window.removeEventListener('click', onClick);
-  }, [adj, goToChapter, navBlocked]);
+  }, [adj, goToChapter, navBlocked, readingColumnMax]);
 
   // 2ª tradução só oferece versões DIFERENTES da primária.
   const secondaryOptions = translations.filter((tr) => tr.id !== translation);

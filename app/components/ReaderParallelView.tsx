@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 
 import { useI18n } from '../lib/i18n';
+import { READING_COLUMN_MAX_PARALLEL } from '../lib/readingLayout';
 import { useTheme, type ThemeColors } from '../lib/theme';
 import type { Passage } from '../web/reading';
 
@@ -129,7 +130,15 @@ export function ReaderParallelView({
 
 function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    content: { padding: 16, paddingBottom: 32 },
+    // Coluna centralizada (mais larga que o modo simples — são 2 colunas lado a lado). Margens
+    // vazias em telas largas = zona de clique-lateral. Ver `lib/readingLayout.ts`.
+    content: {
+      padding: 16,
+      paddingBottom: 32,
+      maxWidth: READING_COLUMN_MAX_PARALLEL,
+      width: '100%',
+      alignSelf: 'center',
+    },
     headerRow: {
       flexDirection: 'row',
       gap: 12,
