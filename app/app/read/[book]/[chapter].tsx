@@ -50,6 +50,9 @@ import {
   READING_COLUMN_MAX_PARALLEL,
   SIDE_NAV_MIN_MARGIN,
   sideMarginWidth,
+  SWIPE_H_DOMINANCE,
+  SWIPE_MAX_DURATION_MS,
+  SWIPE_MIN_DISTANCE,
 } from '../../../lib/readingLayout';
 
 const DEFAULT_TRANSLATION = 'kjv';
@@ -380,6 +383,52 @@ function ChapterContent() {
     window.addEventListener('click', onClick);
     return () => window.removeEventListener('click', onClick);
   }, [adj, goToChapter, navBlocked, readingColumnMax]);
+
+  // (3) SWIPE horizontal (TOQUE — celular na PWA/web): deslizar p/ a ESQUERDA vira pro PRÓXIMO
+  // capítulo; p/ a DIREITA, pro ANTERIOR (molde de e-reader no touch, já que "clicar na lateral" não
+  // cabe num aparelho que rola na vertical). Passivo (window touchstart/touchend), SEM preventDefault
+  // → rolagem vertical e toque no versículo 100% intactos: só agimos no FIM de um gesto CLARAMENTE
+  // horizontal, rápido e longo o bastante. Suprimido com painel/folha aberto (navBlocked) ou seleção.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    let sx = 0;
+    let sy = 0;
+    let st = 0;
+    let tracking = false;
+    const onStart = (e: TouchEvent) => {
+      tracking = false;
+      if (navBlocked || e.touches.length !== 1) return; // multi-toque (pinça) não é swipe
+      const t = e.target as Element | null;
+      if (!t || !t.closest('[data-testid="reader-body"]')) return; // fora da superfície de leitura
+      if (t.closest('input, textarea, [role="switch"]')) return; // não competir com controles
+      const touch = e.touches[0];
+      sx = touch.clientX;
+      sy = touch.clientY;
+      st = e.timeStamp;
+      tracking = true;
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (!tracking) return;
+      tracking = false;
+      if (navBlocked) return;
+      const touch = e.changedTouches[0];
+      if (!touch) return;
+      const dx = touch.clientX - sx;
+      const dy = touch.clientY - sy;
+      if (e.timeStamp - st > SWIPE_MAX_DURATION_MS) return; // lento demais → arrastar/rolar, não swipe
+      if (Math.abs(dx) < SWIPE_MIN_DISTANCE) return; // curto demais → tap/rolagem
+      if (Math.abs(dx) < Math.abs(dy) * SWIPE_H_DOMINANCE) return; // não é claramente horizontal
+      if (window.getSelection && String(window.getSelection() ?? '').length > 0) return; // selecionando
+      const target = dx < 0 ? adj.next : adj.prev; // ← (dx<0) avança; → (dx>0) volta
+      if (target) goToChapter(target);
+    };
+    window.addEventListener('touchstart', onStart, { passive: true });
+    window.addEventListener('touchend', onEnd, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', onStart);
+      window.removeEventListener('touchend', onEnd);
+    };
+  }, [adj, goToChapter, navBlocked]);
 
   // 2ª tradução só oferece versões DIFERENTES da primária.
   const secondaryOptions = translations.filter((tr) => tr.id !== translation);
