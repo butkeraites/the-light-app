@@ -91,6 +91,7 @@ export function ReaderParallelView({
 
   return (
     <ScrollView
+      testID="reader-body"
       contentContainerStyle={[styles.content, { paddingTop: 16 + topInset }]}
       onScroll={onScroll}
       scrollEventThrottle={16}

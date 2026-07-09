@@ -15,7 +15,7 @@
 // só estado de CONTROLE + apresentação. Os 4 painéis de IA compartilham um `activePanel`.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ReaderChapterView } from '../../../components/ReaderChapterView';
@@ -316,6 +316,55 @@ function ChapterContent() {
         )}
       </View>
     ) : null;
+
+  // Atalhos de e-reader p/ virar capítulo, SÓ NO WEB (Platform), reusando `goToChapter`/`adj`. São
+  // listeners PASSIVOS de `window` (sem overlay sobre o ScrollView → scroll/roda/seleção de versículo
+  // 100% intactos). Suprimidos quando qualquer painel/folha está aberto ou há seleção multi-trecho.
+  const navBlocked =
+    selectedVerse != null || activePanel != null || settingsOpen || scopeSheetOpen || scope.selecting;
+
+  // (1) TECLADO: ← capítulo anterior, → próximo. ↑↓/PageUp/Down seguem rolando (return sem
+  // preventDefault). Ignora com painel aberto, tecla modificadora, ou foco num campo de texto.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      // `shiftKey` incluído: Shift+← / Shift+→ é EXTENSÃO DE SELEÇÃO de texto (inclusive caret-browsing),
+      // não navegação — deixamos o browser tratar (sem preventDefault).
+      if (navBlocked || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      const ae = document.activeElement as HTMLElement | null;
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+      // Simetria com o clique: não virar capítulo enquanto há seleção de texto ativa.
+      if (window.getSelection && String(window.getSelection() ?? '').length > 0) return;
+      const target = e.key === 'ArrowLeft' ? adj.prev : adj.next;
+      e.preventDefault();
+      if (target) goToChapter(target);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [adj, goToChapter, navBlocked]);
+
+  // (2) CLIQUE-NAS-LATERAIS (Kindle): clicar a margem ESQUERDA vazia = anterior; DIREITA = próximo.
+  // Só conta clique DENTRO da leitura (`reader-body`), em espaço não-interativo (nunca rouba toque de
+  // versículo), na beirada, e sem seleção de texto ativa. NUNCA faz preventDefault → não bloqueia nada.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const onClick = (e: MouseEvent) => {
+      if (e.button !== 0 || navBlocked || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as Element | null;
+      if (!t || !t.closest('[data-testid="reader-body"]')) return; // fora da superfície de leitura
+      if (t.closest('[data-testid^="verse-"], a, button, input, textarea, [role="button"], [role="switch"], [role="link"]')) {
+        return; // clique em versículo / elemento interativo → deixa o comportamento normal (abre painel)
+      }
+      if (window.getSelection && String(window.getSelection() ?? '').length > 0) return; // terminando seleção
+      const w = window.innerWidth;
+      const edge = Math.min(96, w * 0.15);
+      if (e.clientX <= edge && adj.prev) goToChapter(adj.prev);
+      else if (e.clientX >= w - edge && adj.next) goToChapter(adj.next);
+    };
+    window.addEventListener('click', onClick);
+    return () => window.removeEventListener('click', onClick);
+  }, [adj, goToChapter, navBlocked]);
 
   // 2ª tradução só oferece versões DIFERENTES da primária.
   const secondaryOptions = translations.filter((tr) => tr.id !== translation);
