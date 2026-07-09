@@ -43,3 +43,9 @@ export function LanguageToggleButton() {
 export function ThemeModeSelector() {
   return React.createElement('ThemeModeSelector', null);
 }
+
+// ../components/ui (barrel) — o _layout consome só o IconButton (voltar-ao-menu no headerLeft).
+// Stubado como no-op para o 1º paint não arrastar o kit real (Icon → @expo/vector-icons/.ttf).
+export function IconButton() {
+  return React.createElement('IconButton', null);
+}
