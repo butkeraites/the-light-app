@@ -439,6 +439,96 @@ async function runSearchXref(ctx) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
+// Fluxo (regressão): VERSÃO PRESERVADA NA BUSCA — buscar em Almeida e clicar num resultado abre o
+// leitor em Almeida (pt), NÃO em inglês (KJV). Trava o bug reportado: `openHit` descartava a versão
+// e o leitor nascia fixo em KJV, então clicar um hit de Almeida trocava para o inglês. Sinal
+// verbatim (anti-alucinação): o texto pt do store prova a versão renderizada; o texto en prova a
+// regressão. Também asseveramos que a navegação carrega `?version=alm1911` (o parâmetro que corrige).
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+async function runSearchVersionPreserved(ctx) {
+  const { page } = ctx;
+  await goto(ctx, '/search');
+  await waitSel(page, q('search-input'));
+
+  // Seleciona Almeida (pt) explicitamente — determinístico, independe do locale do runner.
+  await clickSel(page, q('search-version-alm1911'));
+
+  // Uma frase de João 3:16 em Almeida ("Porque Deus amou o mundo de tal maneira...") traz o
+  // versículo ao topo (BM25 AND palavra-a-palavra). O hit é o testID canônico `hit-alm1911-43-3-16`
+  // (tradução-livro-cap-verso) — independe do nome do livro/idioma da UI.
+  await typeSel(page, q('search-input'), 'amou o mundo de tal maneira');
+  try {
+    await waitSel(page, q('hit-alm1911-43-3-16'), RENDER_TIMEOUT_MS);
+  } catch {
+    const diag = await ctx.collectDiagnostics();
+    throw new Error(`search-version: João 3:16 em Almeida (hit-alm1911-43-3-16) não apareceu.${diag.summary}`);
+  }
+
+  // Clica o resultado → deve abrir o leitor NA VERSÃO ALMEIDA (antes: caía em KJV/inglês).
+  await clickSel(page, q('hit-alm1911-43-3-16'));
+
+  // (a) o texto renderizado é o PORTUGUÊS verbatim do store (prova a versão), não o inglês.
+  try {
+    await waitBodyIncludes(page, ALM_JOHN_3_16);
+  } catch {
+    const body = (await bodyText(page)).replace(/\s+/g, ' ').slice(0, 300);
+    const diag = await ctx.collectDiagnostics();
+    throw new Error(
+      `search-version: ao clicar um resultado Almeida o leitor NÃO mostrou o texto pt ` +
+        `"${ALM_JOHN_3_16}" (versão perdida → caiu em KJV?). body="${body}"${diag.summary}`,
+    );
+  }
+  // E NÃO mostra o texto inglês (garante que não regrediu para o KJV).
+  if ((await bodyText(page)).includes(KJV_JOHN_3_16)) {
+    throw new Error('search-version: o leitor mostrou o texto KJV (inglês) — a versão Almeida foi perdida no salto.');
+  }
+
+  // (b) a URL do leitor carrega a versão (?version=alm1911) — o parâmetro que conserta o bug.
+  const carriesVersion = await page.evaluate(() => /version=alm1911/.test(location.search));
+  if (!carriesVersion) {
+    const url = await page.evaluate(() => location.pathname + location.search);
+    throw new Error(`search-version: a navegação não carregou ?version=alm1911 (URL="${url}").`);
+  }
+
+  await assertNoForbidden(ctx, 'search-version');
+  ctx.log('  [search-version] busca em Almeida → clique abre o leitor em Almeida (pt); versão preservada na URL');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// Fluxo (regressão): VOLTAR AO MENU — as telas empilhadas (lista de livros/capítulos) SEMPRE têm um
+// voltar ao menu principal, inclusive numa entrada A FRIO (deep-link/refresh/PWA reaberto). Trava o
+// bug: o botão nativo do Stack só existe com HISTÓRICO in-app, então entrar a frio deixava o usuário
+// preso na lista, sem volta. `header-back-home` cai na HOME quando não há pilha.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+async function runBackToHome(ctx) {
+  const { page } = ctx;
+
+  // (a) entrada A FRIO na lista de capítulos (deep-link, sem histórico in-app): o voltar EXISTE
+  //     e leva à HOME (o menu principal, identificado pelo CTA de leitura `open-reader`).
+  await goto(ctx, '/read/1');
+  await waitSel(page, q('header-back-home'), RENDER_TIMEOUT_MS);
+  await clickSel(page, q('header-back-home'));
+  await waitSel(page, q('open-reader'), RENDER_TIMEOUT_MS);
+  const atHome = await page.evaluate(() => location.pathname === '/' || location.pathname === '');
+  if (!atHome) {
+    const p = await page.evaluate(() => location.pathname);
+    throw new Error(`back-to-home: da lista de capítulos a frio, o voltar não levou à home (path="${p}").`);
+  }
+
+  // (b) fluxo normal: home → "Ler a Bíblia" (/read) → voltar volta à home (back natural).
+  await clickSel(page, q('open-reader'));
+  await page.waitForFunction(() => /\/read(\/|$|\?)/.test(location.pathname), { timeout: ACTION_TIMEOUT_MS, polling: 200 });
+  await waitSel(page, q('header-back-home'), RENDER_TIMEOUT_MS);
+  await clickSel(page, q('header-back-home'));
+  await waitSel(page, q('open-reader'), RENDER_TIMEOUT_MS);
+
+  await assertNoForbidden(ctx, 'back-to-home');
+  ctx.log('  [back-to-home] lista de livros/capítulos SEMPRE tem voltar ao menu (a frio e no fluxo normal)');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
 // Fluxo 3 (F6.2): NOTAS PERSISTEM no reload (OPFS real) + caso ANÔNIMO gracioso.
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
@@ -1362,6 +1452,8 @@ export const flows = [
   // Navegação capítulo-a-capítulo (Anterior/Próximo, cruza livros, para nos extremos).
   { name: 'chapter-nav', run: runChapterNav },
   { name: 'search-xref', run: runSearchXref },
+  { name: 'search-version-preserved', run: runSearchVersionPreserved },
+  { name: 'back-to-home', run: runBackToHome },
   { name: 'notes-persist', run: runNotesPersist },
   { name: 'plans-persist', run: runPlansPersist },
   { name: 'export-import', run: runExportImport },

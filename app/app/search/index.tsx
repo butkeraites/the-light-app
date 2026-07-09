@@ -29,6 +29,7 @@ import { suggestBooks, type BookSuggestion } from '../../lib/searchReferenceSugg
 import { getRecentSearches, pushRecentSearch } from '../../lib/recentSearches';
 import { suggestFuzzy, suggestWords } from '../../lib/searchWordlist';
 import { fold } from '../../lib/searchNormalize';
+import { defaultTranslationFor } from '../../lib/translationDefault';
 import { useTheme, type ThemeContextValue } from '../../lib/theme';
 import { parseReference, type Reference } from '../../web/reference';
 import {
@@ -41,10 +42,8 @@ import {
 } from '../../web/reading';
 
 // ADR-0064: a tradução default da busca segue o IDIOMA da UI — um usuário lendo em português
-// busca no texto português (Almeida) por padrão, não no KJV. Cai no KJV se o idioma não bater.
-function defaultTranslationFor(locale: 'pt' | 'en'): string {
-  return locale === 'pt' ? 'alm1911' : 'kjv';
-}
+// busca no texto português (Almeida) por padrão, não no KJV. `defaultTranslationFor` é agora a
+// fonte única compartilhada (lib/translationDefault) — a leitura usa a MESMA para não nascer em KJV.
 const DEBOUNCE_MS = 300;
 
 /** Número do versículo de um hit (sempre `Single` num resultado de busca). */
@@ -265,13 +264,17 @@ function SearchContent() {
       params: {
         book: String(hit.reference.book),
         chapter: String(hit.reference.chapter),
+        // A versão EXATA do resultado (`hit.translation`) — o leitor abre na tradução buscada
+        // (ex.: Almeida), não mais no KJV fixo. Antes esta linha faltava → o bug reportado.
+        version: hit.translation,
         ...(verse != null ? { verse: String(verse) } : {}),
       },
     });
   }
 
   function openBook(book: number) {
-    router.push({ pathname: '/read/[book]', params: { book: String(book) } });
+    // Abre o livro na versão corrente da busca (o leitor a herda ao descer para um capítulo).
+    router.push({ pathname: '/read/[book]', params: { book: String(book), version: effectiveTranslation } });
   }
 
   function openRef(ref: Reference) {
@@ -282,6 +285,8 @@ function SearchContent() {
       params: {
         book: String(ref.book),
         chapter: String(ref.chapter),
+        // Uma referência parseada não traz versão própria → usa a corrente da busca.
+        version: effectiveTranslation,
         ...(verse != null ? { verse: String(verse) } : {}),
       },
     });

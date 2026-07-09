@@ -45,6 +45,7 @@ import { versesForChapter } from '../../../lib/studyScope';
 import { useTheme, type ThemeContextValue } from '../../../lib/theme';
 import { listBooks, type CrossRef } from '../../../web/reading';
 import { chapterNav } from '../../../lib/chapterNav';
+import { defaultTranslationFor } from '../../../lib/translationDefault';
 import {
   READING_COLUMN_MAX,
   READING_COLUMN_MAX_PARALLEL,
@@ -54,8 +55,6 @@ import {
   SWIPE_MAX_DURATION_MS,
   SWIPE_MIN_DISTANCE,
 } from '../../../lib/readingLayout';
-
-const DEFAULT_TRANSLATION = 'kjv';
 
 /** Nome (PT) de um livro pelo número canônico (cânon puro, independe do banco). */
 function bookNamePt(book: number): string {
@@ -94,13 +93,20 @@ function ChapterContent() {
   // navegar entre capítulos/livros). `scopeSheetOpen` abre a pré-visualização verbatim do escopo.
   const scope = useStudyScope();
   const [scopeSheetOpen, setScopeSheetOpen] = useState(false);
-  const { book, chapter, verse } = useLocalSearchParams<{
+  const { book, chapter, verse, version } = useLocalSearchParams<{
     book: string;
     chapter: string;
     verse?: string;
+    version?: string;
   }>();
   const bookNumber = Number(book);
   const chapterNumber = Number(chapter);
+  // A VERSÃO de origem (`?version=`) — de qual tradução veio o salto (busca/referência/xref/virar
+  // capítulo). A tela lia só book/chapter/verse e nascia sempre em KJV, então a versão escolhida
+  // (ex.: Almeida) se perdia no salto. Normaliza `string | string[]` → 1ª string não-vazia; fora
+  // disso → null (deep-link a frio: cai no default do idioma).
+  const versionParamRaw = Array.isArray(version) ? version[0] : version;
+  const versionParam = versionParamRaw && versionParamRaw.length > 0 ? versionParamRaw : null;
   // F5.32: versículo-ÂNCORA opcional vindo de busca/xref (`?verse=N`). A tela lia só
   // book/chapter e descartava `verse` — então o alvo aterrissava no TOPO. Agora é
   // repassado ao `ReaderChapterView`, que rola até ele e o destaca. `expo-router` pode
@@ -111,7 +117,9 @@ function ChapterContent() {
   const anchorVerse = Number.isFinite(verseParam) && verseParam > 0 ? verseParam : null;
 
   // Estado de CONTROLE da tela (o fetching de fronteira vive no hook useChapterReader).
-  const [translation, setTranslation] = useState(DEFAULT_TRANSLATION);
+  // Versão INICIAL = a de origem (`?version=`), senão o default do IDIOMA da UI (pt→Almeida) —
+  // não mais KJV fixo. O usuário ainda troca livremente pelo seletor; o parâmetro só semeia.
+  const [translation, setTranslation] = useState(() => versionParam ?? defaultTranslationFor(locale));
   // F1.4: modo lado a lado (a 2ª tradução é reconciliada pelo hook).
   const [parallel, setParallel] = useState(false);
   // F1.9: versículo selecionado (dirige o carregamento de xref no hook).
@@ -221,6 +229,16 @@ function ChapterContent() {
     selectedVerse,
   });
 
+  // Defensivo: se a versão semeada (do parâmetro) não existir no store, cai no default do idioma —
+  // mesmo espírito da reconciliação da 2ª tradução no hook (`useChapterReader`). Slugs vindos da
+  // busca/xref são sempre válidos (kjv/alm1911); isto só protege um `?version=` inválido a frio.
+  useEffect(() => {
+    if (translations.length === 0) return;
+    if (!translations.some((tr) => tr.id === translation)) {
+      setTranslation(defaultTranslationFor(locale));
+    }
+  }, [translations, translation, locale]);
+
   // Fase 7 (follow-up): o nome do livro EXIBIDO segue o IDIOMA DA VERSÃO lida, não o `locale` da
   // UI — lendo Almeida (pt) o header/painéis mostram "João" mesmo com a UI em inglês (e KJV → "John"
   // mesmo com a UI em português). Cai no `locale` se a versão não declarar idioma conhecido. A
@@ -265,6 +283,8 @@ function ChapterContent() {
       params: {
         book: String(ref.book),
         chapter: String(ref.chapter),
+        // Carrega a versão corrente: a xref abre na MESMA tradução que se estava lendo.
+        version: translation,
         ...(verse != null ? { verse: String(verse) } : {}),
       },
     });
@@ -283,10 +303,12 @@ function ChapterContent() {
       resetChrome();
       router.replace({
         pathname: '/read/[book]/[chapter]',
-        params: { book: String(target.book), chapter: String(target.chapter) },
+        // Carrega a versão corrente: virar capítulo (botões/teclado/clique-lateral/swipe) NÃO reseta
+        // a tradução — o alvo semeia a mesma versão, independente da semântica de remonte do router.
+        params: { book: String(target.book), chapter: String(target.chapter), version: translation },
       });
     },
-    [resetChrome],
+    [resetChrome, translation],
   );
 
   // Rótulo curto do capítulo-alvo p/ os botões/a11y (nome do livro VERBATIM do store, nunca fabricado).
