@@ -11,6 +11,7 @@ import { ListRow } from '../components/ui/ListRow';
 import { isLargePassage, resolvePassageQuery, type PassageResult } from '../lib/passageResolve';
 import { runReferenceSelfTest } from '../web/selftest';
 import { useI18n } from '../lib/i18n';
+import { defaultTranslationFor } from '../lib/translationDefault';
 import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { parseReference } from '../web/reference';
 // PERF (F5.12): a leitura de store (`reading`/`db`) é a parte PESADA (glue + sqlite-mirror). É
@@ -27,10 +28,8 @@ import type { Translation } from '../web/reading';
 // capítulo (`resolvePassageQuery`), SEM tocar o core. Seletor de versão reusa o padrão da busca
 // (pt→Almeida / en→KJV, reativo). Cromo via `t()`; texto do verso nunca traduzido.
 
-// Tradução default do lookup por idioma da UI (o texto casa o idioma do usuário). Cai no KJV.
-function defaultTranslationFor(locale: 'pt' | 'en'): string {
-  return locale === 'pt' ? 'alm1911' : 'kjv';
-}
+// Tradução default do lookup por idioma da UI (o texto casa o idioma do usuário) — fonte única em
+// `lib/translationDefault` (a MESMA usada pela busca e pela leitura). Cai no KJV fora de pt.
 
 export default function HomeScreen() {
   const { t, locale } = useI18n();

@@ -18,6 +18,7 @@ import { ensureReadingDb } from '../../../lib/db';
 import { useI18n } from '../../../lib/i18n';
 import { useTheme, type ThemeColors } from '../../../lib/theme';
 import { chapterCount, listBooks } from '../../../web/reading';
+import { defaultTranslationFor } from '../../../lib/translationDefault';
 
 // Tradução default p/ a contagem de capítulos (o cânon é igual entre versões;
 // o seletor de versão atua na leitura do texto, na tela do capítulo).
@@ -36,8 +37,13 @@ function ChaptersContent() {
   const { colors } = useTheme();
   const { locale, t } = useI18n();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { book } = useLocalSearchParams<{ book: string }>();
+  const { book, version } = useLocalSearchParams<{ book: string; version?: string }>();
   const bookNumber = Number(book);
+  // Versão herdada da busca/navegação (`?version=`) para carregar adiante ao abrir um capítulo. A
+  // CONTAGEM de capítulos independe da versão (cânon igual), então só a navegação carrega a versão;
+  // sem parâmetro (browse a frio) cai no default do idioma da UI (pt→Almeida), não em KJV.
+  const versionRaw = Array.isArray(version) ? version[0] : version;
+  const readingVersion = versionRaw && versionRaw.length > 0 ? versionRaw : defaultTranslationFor(locale);
   const [count, setCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,7 +90,12 @@ function ChaptersContent() {
   return (
     <ReaderChapterGrid
       count={count}
-      onSelect={(chapter) => router.push(`/read/${bookNumber}/${chapter}`)}
+      onSelect={(chapter) =>
+        router.push({
+          pathname: '/read/[book]/[chapter]',
+          params: { book: String(bookNumber), chapter: String(chapter), version: readingVersion },
+        })
+      }
     />
   );
 }
