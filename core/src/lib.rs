@@ -2831,6 +2831,78 @@ pub fn llm_endpoint_url(
     Ok(url)
 }
 
+/// Header `(nome, valor)` de um request de LLM — o web converte em `Record<string,string>`
+/// para o `fetch`. ADR-0062.
+#[derive(uniffi::Record)]
+pub struct LlmHeader {
+    pub name: String,
+    pub value: String,
+}
+
+/// Headers do request HTTP do provedor, espelhando `the_light_core::ai::providers::*_headers`.
+/// `browser=true` (o web sempre passa) inclui o header de acesso-direto-do-browser do Anthropic
+/// (CORS, ADR-0058); ignorado pelos demais. A chave BYOK vai SÓ aqui (nunca na URL/log). ADR-0062.
+#[uniffi::export]
+pub fn llm_request_headers(
+    provider_name: String,
+    key: String,
+    browser: bool,
+) -> Result<Vec<LlmHeader>, CoreError> {
+    use the_light_core::ai::providers as p;
+    let pairs = match provider_name.as_str() {
+        "anthropic" => p::anthropic_headers(&key, browser),
+        "openai" => p::openai_headers(&key),
+        "ollama" => p::ollama_headers(),
+        "gemini" => p::gemini_headers(&key),
+        other => {
+            return Err(CoreError::Generic {
+                message: format!("provedor sem headers de transporte conhecidos: {other}"),
+            })
+        }
+    };
+    Ok(pairs
+        .into_iter()
+        .map(|(name, value)| LlmHeader { name, value })
+        .collect())
+}
+
+/// Corpo JSON (serializado) do request do provedor, espelhando `*_body` + `with_stream` do core.
+/// `stream=true` insere `"stream": true` (exceto gemini, cujo streaming é selecionado pelo
+/// endpoint — corpo idêntico). `max_tokens` = `DEFAULT_MAX_TOKENS` (ollama não tem). As chaves
+/// JSON podem sair em ordem distinta do TS antigo (serde), mas o payload é equivalente. ADR-0062.
+#[uniffi::export]
+pub fn llm_request_body(
+    provider_name: String,
+    model: String,
+    system: String,
+    user: String,
+    stream: bool,
+) -> Result<String, CoreError> {
+    use the_light_core::ai::providers as p;
+    let max = p::DEFAULT_MAX_TOKENS;
+    let body = match provider_name.as_str() {
+        "anthropic" => p::anthropic_body(&model, &system, &user, max),
+        "openai" => p::openai_body(&model, &system, &user, max),
+        "ollama" => p::ollama_body(&model, &system, &user),
+        "gemini" => p::gemini_body(&model, &system, &user, max),
+        other => {
+            return Err(CoreError::Generic {
+                message: format!("provedor sem corpo de request conhecido: {other}"),
+            })
+        }
+    };
+    // gemini: o streaming NÃO altera o corpo (o endpoint seleciona). Os demais: with_stream
+    // insere "stream": true (no ollama, sobrescreve o "stream": false do corpo).
+    let body = if stream && provider_name != "gemini" {
+        p::with_stream(body)
+    } else {
+        body
+    };
+    // `Value::to_string()` (Display) serializa JSON compacto SEM nomear o crate `serde_json`
+    // (não é dep direta do app-core) — infalível para um `Value`.
+    Ok(body.to_string())
+}
+
 /// **Finaliza** uma pergunta ancorada no web: aplica a **citação anti-alucinação em
 /// Rust** (mesma impl do nativo) sobre a `interpretation` do `fetch` e monta o
 /// [`AiAnswer`], mantendo o `cited_text` do **store** separado da interpretação do
