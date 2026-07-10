@@ -101,12 +101,12 @@ const CONSTS = [
 ];
 
 const SELECTS = [
-  // As 6 consultas de LEITURA/BUSCA/XREF (chapter/count/translations/has_translation/
-  // passage-single/search/xref) foram COLAPSADAS p/ `the_light_core::query` (ADR-0062,
-  // fatia SQL): o web importa `{sql, params}` da fronteira (`*_query`), não há mais
-  // espelho TS a guardar (fonte única no core). `interlinear` (lexicon) segue espelhado
-  // — a fatia lexicon (`collect`/`interlinear`/`attributions`) é a próxima.
-  { name: 'interlinear tokens', rustFile: 'ai/lexicon.rs', include: ['from original_tokens', 'order by t.word_index'], tsFile: 'app/web/sqlite-lexicon.web.ts', tsConst: 'INTERLINEAR_SELECT' },
+  // TODAS as consultas SQL do web (leitura/busca/xref/passage E AGORA o LÉXICO —
+  // collect/interlinear/attributions) foram COLAPSADAS p/ `the_light_core::query` (ADR-0062):
+  // o web importa `{sql, params}` da fronteira (`*_query`) e executa via `bindPlanParams`;
+  // não há mais NENHUM espelho de SELECT em TS a guardar (fonte única no core). Esta lista
+  // fica VAZIA — a guarda de SELECT cumpriu seu papel; o CONSTS abaixo segue guardando as
+  // constantes numéricas ainda espelhadas (xref votos/limite).
 ];
 
 function theLightAvailable(rev) {
@@ -160,7 +160,7 @@ function main() {
 
   console.log(`PASS — mirror-drift: espelho TS FIEL ao the-light @ ${rev.slice(0, 10)} (${checked} itens):`);
   console.log(`  constantes numéricas (${CONSTS.length}): xref min_votes/limit (providers max_tokens colapsado p/ wasm — ADR-0062): OK`);
-  console.log(`  SQL SELECTs (${SELECTS.length}): interlinear (leitura/busca/xref/passage colapsados p/ query.rs — ADR-0062): OK`);
+  console.log(`  SQL SELECTs (${SELECTS.length}): TODOS colapsados p/ query.rs (leitura/busca/xref/passage + léxico — ADR-0062): OK`);
 }
 
 try {
