@@ -344,9 +344,16 @@ const BUDGET = {
   //   handler `onConfigureProvider` (onClose+router.push, copiado nos 5 paineis) virou
   //   `lib/aiConfigure.ts`. Importados pelos paineis de IA (eager nas rotas de leitura). NAO e regressao:
   //   e a DE-DUPLICACAO. BYTES do entry INALTERADOS. Tolerancias INALTERADAS. Espelhado em web-bundle-budget.json.
+  //
+  // NOTA ADR-0080 (deepening — useSearchIntent) — re-baseline DELIBERADO: ESTRUTURAL moduleCount 924 ->
+  //   925 (+1 modulo eager EXATO). Os 4 produtores de busca (autocomplete/livro/referencia/busca+DYM) + o
+  //   estado sairam da tela `app/app/search/index.tsx` p/ `lib/useSearchIntent.ts` (cada produtor com o
+  //   SEU debounce; timing inalterado), importado pela rota de busca (eager). NAO e regressao: e a extracao
+  //   da orquestracao p/ uma costura (a tela so renderiza). BYTES do entry INALTERADOS. Tolerancias
+  //   INALTERADAS. Espelhado em web-bundle-budget.json (noteADR0080).
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 924,
+    moduleCount: 925,
     eagerBytes: { nominal: 1425377, tolerance: 1024 },
     eagerGzipBytes: { nominal: 366056, tolerance: 2048 },
     eagerBrotliBytes: { nominal: 289318, tolerance: 1024 },

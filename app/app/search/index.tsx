@@ -10,7 +10,7 @@
 //     que DE FATO retornam resultados (termos significativos + equivalências curadas), provados
 //     contra o store — ex.: "armadura do espírito" → "armadura de Deus" → Efésios 6:11.
 // Cores/tipografia via TOKENS Vigil (ADR-0063).
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { router } from 'expo-router';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -22,25 +22,18 @@ import { WasmGate } from '../../components/WasmGate';
 import { Chip, ListRow, Surface } from '../../components/ui';
 import { studyScope, useStudyScope } from '../../lib/useStudyScope';
 import { versesForChapter } from '../../lib/studyScope';
-import { ensureReadingDb } from '../../lib/db';
 import { useI18n } from '../../lib/i18n';
-import { type DidYouMean } from '../../lib/searchSuggest';
-import { resolveDidYouMean } from '../../lib/searchIntent';
-import { suggestBooks, type BookSuggestion } from '../../lib/searchReferenceSuggest';
 import { getRecentSearches, pushRecentSearch } from '../../lib/recentSearches';
-import { suggestFuzzy, suggestWords } from '../../lib/searchWordlist';
-import { fold } from '../../lib/searchNormalize';
 import { langForTranslation } from '../../lib/translationDefault';
 import { readingBookHref, readingChapterHref } from '../../lib/readingNav';
+import { useSearchIntent } from '../../lib/useSearchIntent';
 import { useVersionSelection } from '../../lib/useVersionSelection';
 import { useTheme, type ThemeContextValue } from '../../lib/theme';
-import { parseReference, type Reference } from '../../web/reference';
-import { listBooks, search, type Book, type SearchHit } from '../../web/reading';
+import { type Reference } from '../../web/reference';
+import { listBooks, type Book, type SearchHit } from '../../web/reading';
 
-// ADR-0064: a tradução default da busca segue o IDIOMA da UI — um usuário lendo em português
-// busca no texto português (Almeida) por padrão, não no KJV. `defaultTranslationFor` é agora a
-// fonte única compartilhada (lib/translationDefault) — a leitura usa a MESMA para não nascer em KJV.
-const DEBOUNCE_MS = 300;
+// ADR-0064/0080: a busca (default por IDIOMA da UI, os 4 produtores assíncronos e o estado) vive na
+// costura `useSearchIntent`; esta tela injeta `term/translation/lang/locale/books` e só RENDERIZA.
 
 /** Número do versículo de um hit (sempre `Single` num resultado de busca). */
 function verseOf(hit: SearchHit): number | null {
@@ -79,19 +72,12 @@ function SearchContent() {
   const [scopeSheetOpen, setScopeSheetOpen] = useState(false);
 
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchHit[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
+  const [recent, setRecent] = useState<string[]>([]);
   // ADR-0070/0064: seletor de versão numa costura só (instância LOCAL → a busca segue o idioma da UI
   // independentemente). `effectiveTranslation` = versão resolvida; `setPickedTranslation` = a escolha.
   const { translations, setPicked: setPickedTranslation, effective: effectiveTranslation } =
     useVersionSelection(locale);
-  // ADR-0064: sugestões "did you mean?" (só no caminho zero-resultado), recentes e referência.
-  const [suggestions, setSuggestions] = useState<DidYouMean[]>([]);
-  const [recent, setRecent] = useState<string[]>([]);
-  const [parsedRef, setParsedRef] = useState<Reference | null>(null);
-  const [wordSuggestions, setWordSuggestions] = useState<string[]>([]);
 
   useEffect(() => {
     try {
@@ -123,97 +109,11 @@ function SearchContent() {
 
   const term = query.trim();
 
-  // ADR-0064 Fase B: AUTOCOMPLETE de TERMO por prefixo do corpus ("eter" → eternamente,
-  // eternidade…). Só para um token (sem espaço); as palavras vêm do texto da tradução buscada,
-  // então tocar numa SEMPRE retorna resultados. Debounce curto (asset local, em memória).
-  useEffect(() => {
-    if (term.length < 2 || /\s/.test(term)) {
-      setWordSuggestions([]);
-      return;
-    }
-    let alive = true;
-    const h = setTimeout(async () => {
-      const ws = await suggestWords(term, searchLang, 6);
-      // Não sugere a própria palavra já digitada por inteiro (redundante).
-      if (alive) setWordSuggestions(ws.filter((w) => fold(w) !== fold(term)));
-    }, 120);
-    return () => {
-      alive = false;
-      clearTimeout(h);
-    };
-  }, [term, searchLang]);
-
-  // ADR-0064: sugestões de LIVRO (síncrono, do cânon) — só para um token que prefixa um livro.
-  const bookSuggestions: BookSuggestion[] = useMemo(
-    () => (books.length > 0 ? suggestBooks(term, books, locale) : []),
-    [term, books, locale],
-  );
-
-  // ADR-0064: detecção de REFERÊNCIA COMPLETA ("João 3") via a fronteira (async, debounced).
-  useEffect(() => {
-    if (term.length < 3) {
-      setParsedRef(null);
-      return;
-    }
-    let alive = true;
-    const h = setTimeout(async () => {
-      try {
-        const ref = await parseReference(term);
-        if (alive) setParsedRef(ref);
-      } catch {
-        if (alive) setParsedRef(null); // não é uma referência → só busca de texto
-      }
-    }, DEBOUNCE_MS);
-    return () => {
-      alive = false;
-      clearTimeout(h);
-    };
-  }, [term]);
-
-  // Busca com DEBOUNCE + guarda de corrida (`seq`). Ao dar ZERO, computa o "did you mean?"
-  // (sondando candidatos contra o store, limit=1). A busca EXATA em si é inalterada.
-  const seqRef = useRef(0);
-  useEffect(() => {
-    if (term.length === 0) {
-      setResults([]);
-      setSuggestions([]);
-      setError(null);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    const mySeq = ++seqRef.current;
-    const handle = setTimeout(async () => {
-      try {
-        const dbPath = await ensureReadingDb();
-        const hits = await search(dbPath, term, effectiveTranslation);
-        if (mySeq !== seqRef.current) return;
-        setResults(hits);
-        setError(null);
-        setLoading(false);
-        if (hits.length === 0) {
-          // ADR-0075: a orquestração do "você quis dizer?" (sonda de existência + fuzzy do corpus +
-          // composição) vive na costura PURA `resolveDidYouMean`; a tela só INJETA as portas (busca com
-          // `limit` / fuzzy) e aplica o resultado sob o race-guard. Timing/duas-fases INALTERADOS.
-          const dym = await resolveDidYouMean(term, effectiveTranslation, locale, searchLang, {
-            search: (cand, translation, limit) => search(dbPath, cand, translation, undefined, limit),
-            suggestFuzzy,
-          });
-          if (mySeq === seqRef.current) setSuggestions(dym);
-        } else {
-          setSuggestions([]);
-        }
-      } catch (err) {
-        if (mySeq === seqRef.current) {
-          setError(err instanceof Error ? err.message : String(err));
-          setResults([]);
-          setSuggestions([]);
-          setLoading(false);
-        }
-      }
-    }, DEBOUNCE_MS);
-    return () => clearTimeout(handle);
-  }, [query, effectiveTranslation, locale, searchLang]);
+  // ADR-0080: os 4 produtores de busca (autocomplete de termo, sugestão de livro, detecção de referência,
+  // e a busca principal + "você quis dizer?") + o estado (results/loading/error/…) vivem na costura
+  // `useSearchIntent` — cada produtor mantém o SEU debounce/deps (timing inalterado). A tela só RENDERIZA.
+  const { results, loading, error, didYouMean: suggestions, wordSuggestions, parsedRef, bookSuggestions } =
+    useSearchIntent(term, effectiveTranslation, searchLang, locale, books);
 
   function openHit(hit: SearchHit) {
     void pushRecentSearch(term).then(refreshRecent);
