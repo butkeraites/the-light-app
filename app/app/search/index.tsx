@@ -29,17 +29,12 @@ import { suggestBooks, type BookSuggestion } from '../../lib/searchReferenceSugg
 import { getRecentSearches, pushRecentSearch } from '../../lib/recentSearches';
 import { suggestFuzzy, suggestWords } from '../../lib/searchWordlist';
 import { fold } from '../../lib/searchNormalize';
-import { defaultTranslationFor } from '../../lib/translationDefault';
+import { langForTranslation } from '../../lib/translationDefault';
+import { readingBookHref, readingChapterHref } from '../../lib/readingNav';
+import { useVersionSelection } from '../../lib/useVersionSelection';
 import { useTheme, type ThemeContextValue } from '../../lib/theme';
 import { parseReference, type Reference } from '../../web/reference';
-import {
-  listBooks,
-  listTranslations,
-  search,
-  type Book,
-  type SearchHit,
-  type Translation,
-} from '../../web/reading';
+import { listBooks, search, type Book, type SearchHit } from '../../web/reading';
 
 // ADR-0064: a tradução default da busca segue o IDIOMA da UI — um usuário lendo em português
 // busca no texto português (Almeida) por padrão, não no KJV. `defaultTranslationFor` é agora a
@@ -87,9 +82,10 @@ function SearchContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
-  // Tradução ESCOLHIDA pelo usuário (null = ainda seguindo o default do idioma da UI).
-  const [pickedTranslation, setPickedTranslation] = useState<string | null>(null);
-  const [translations, setTranslations] = useState<Translation[]>([]);
+  // ADR-0070/0064: seletor de versão numa costura só (instância LOCAL → a busca segue o idioma da UI
+  // independentemente). `effectiveTranslation` = versão resolvida; `setPickedTranslation` = a escolha.
+  const { translations, setPicked: setPickedTranslation, effective: effectiveTranslation } =
+    useVersionSelection(locale);
   // ADR-0064: sugestões "did you mean?" (só no caminho zero-resultado), recentes e referência.
   const [suggestions, setSuggestions] = useState<DidYouMean[]>([]);
   const [recent, setRecent] = useState<string[]>([]);
@@ -102,22 +98,6 @@ function SearchContent() {
     } catch {
       /* sem cânon → item cai no fallback; não bloqueia a busca */
     }
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const dbPath = await ensureReadingDb();
-        const ts = await listTranslations(dbPath);
-        if (alive) setTranslations(ts);
-      } catch {
-        /* sem traduções → seletor some; busca usa a default do idioma */
-      }
-    })();
-    return () => {
-      alive = false;
-    };
   }, []);
 
   // ADR-0064: carrega as buscas recentes (KV offline) no mount + um refresh sob demanda.
@@ -134,25 +114,11 @@ function SearchContent() {
     return (n: number) => map.get(n) ?? t('read.bookFallback', { number: n });
   }, [books, locale, t]);
 
-  // ADR-0064: tradução EFETIVA da busca — a escolha do usuário, senão o default do IDIOMA da UI
-  // (validado contra o store). Reativo ao idioma até o usuário escolher explicitamente, então
-  // um usuário em português busca em Almeida por padrão mesmo que o idioma resolva de forma async.
-  const effectiveTranslation = useMemo(() => {
-    if (pickedTranslation && translations.some((x) => x.id === pickedTranslation)) {
-      return pickedTranslation;
-    }
-    const byLocale = defaultTranslationFor(locale);
-    if (translations.length === 0 || translations.some((x) => x.id === byLocale)) {
-      return byLocale;
-    }
-    return translations.find((x) => x.language === locale)?.id ?? translations[0]?.id ?? byLocale;
-  }, [pickedTranslation, translations, locale]);
-
-  // ADR-0064 Fase B: idioma do dicionário de autocomplete = idioma da tradução buscada.
-  const searchLang: 'pt' | 'en' = useMemo(() => {
-    const lang = translations.find((x) => x.id === effectiveTranslation)?.language;
-    return lang === 'en' || lang === 'pt' ? lang : locale === 'en' ? 'en' : 'pt';
-  }, [translations, effectiveTranslation, locale]);
+  // ADR-0064 Fase B: idioma do dicionário de autocomplete = idioma da tradução buscada (costura pura).
+  const searchLang: 'pt' | 'en' = useMemo(
+    () => langForTranslation(effectiveTranslation, translations, locale),
+    [translations, effectiveTranslation, locale],
+  );
 
   const term = query.trim();
 
@@ -258,38 +224,29 @@ function SearchContent() {
 
   function openHit(hit: SearchHit) {
     void pushRecentSearch(term).then(refreshRecent);
-    const verse = verseOf(hit);
-    router.push({
-      pathname: '/read/[book]/[chapter]',
-      params: {
-        book: String(hit.reference.book),
-        chapter: String(hit.reference.chapter),
-        // A versão EXATA do resultado (`hit.translation`) — o leitor abre na tradução buscada
-        // (ex.: Almeida), não mais no KJV fixo. Antes esta linha faltava → o bug reportado.
+    // A versão EXATA do resultado (`hit.translation`) — o leitor abre na tradução buscada. A costura
+    // `readingChapterHref` EXIGE `version`, então nenhum salto pode esquecê-la (era o bug reportado).
+    router.push(
+      readingChapterHref({
+        book: hit.reference.book,
+        chapter: hit.reference.chapter,
+        verse: verseOf(hit),
         version: hit.translation,
-        ...(verse != null ? { verse: String(verse) } : {}),
-      },
-    });
+      }),
+    );
   }
 
   function openBook(book: number) {
     // Abre o livro na versão corrente da busca (o leitor a herda ao descer para um capítulo).
-    router.push({ pathname: '/read/[book]', params: { book: String(book), version: effectiveTranslation } });
+    router.push(readingBookHref({ book, version: effectiveTranslation }));
   }
 
   function openRef(ref: Reference) {
     void pushRecentSearch(term).then(refreshRecent);
-    const verse = refVerse(ref);
-    router.push({
-      pathname: '/read/[book]/[chapter]',
-      params: {
-        book: String(ref.book),
-        chapter: String(ref.chapter),
-        // Uma referência parseada não traz versão própria → usa a corrente da busca.
-        version: effectiveTranslation,
-        ...(verse != null ? { verse: String(verse) } : {}),
-      },
-    });
+    // Uma referência parseada não traz versão própria → usa a corrente da busca.
+    router.push(
+      readingChapterHref({ book: ref.book, chapter: ref.chapter, verse: refVerse(ref), version: effectiveTranslation }),
+    );
   }
 
   function runTerm(next: string) {

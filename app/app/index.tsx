@@ -11,13 +11,12 @@ import { ListRow } from '../components/ui/ListRow';
 import { isLargePassage, resolvePassageQuery, type PassageResult } from '../lib/passageResolve';
 import { runReferenceSelfTest } from '../web/selftest';
 import { useI18n } from '../lib/i18n';
-import { defaultTranslationFor } from '../lib/translationDefault';
+import { useVersionSelection } from '../lib/useVersionSelection';
 import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { parseReference } from '../web/reference';
-// PERF (F5.12): a leitura de store (`reading`/`db`) é a parte PESADA (glue + sqlite-mirror). É
-// importada SOB DEMANDA (chunk async, FORA do 1º paint eager) — `Translation` é `import type`
-// (apagado). `parseReference` (leve, wasm) e a lógica pura (`resolvePassageQuery`) seguem eager.
-import type { Translation } from '../web/reading';
+// PERF (F5.12): a leitura de store (`reading`/`db`) é a parte PESADA (glue + sqlite-mirror), importada
+// SOB DEMANDA (chunk async, FORA do 1º paint eager) — aqui no lookup de passagem, e para as traduções
+// dentro de `useVersionSelection`/`useTranslations`. `parseReference` (leve, wasm) segue eager.
 
 // F0.6b/F0.10 · ADR-0063 (Vigil) · ADR-0065 (lookup de passagem: seletor de versão + ranges/listas)
 //
@@ -43,10 +42,11 @@ export default function HomeScreen() {
   const [resolving, setResolving] = useState(false);
   const [resolveError, setResolveError] = useState<string | null>(null);
 
-  // ADR-0065: seletor de versão (mesmo padrão da busca) — escolha do usuário, senão o default do
-  // idioma, validado contra o store. Reativo ao idioma até o usuário escolher.
-  const [translations, setTranslations] = useState<Translation[]>([]);
-  const [pickedTranslation, setPickedTranslation] = useState<string | null>(null);
+  // ADR-0070/0065: seletor de versão (traduções + escolha + resolução) numa costura só
+  // (`useVersionSelection`, instância LOCAL). Reativo ao idioma até o usuário escolher — mesmo
+  // comportamento, sem a escada/efeito de carregamento duplicados.
+  const { translations, setPicked: setPickedTranslation, effective: effectiveTranslation } =
+    useVersionSelection(locale);
 
   // F5.26: SEÇÃO de SINCRONIZAÇÃO OPT-IN + backup. Carregada SOB DEMANDA (chunk async), fora do
   // entry eager do 1º paint. Opt-in é OFF por padrão (`syncPrefs`).
@@ -66,38 +66,6 @@ export default function HomeScreen() {
       void runReferenceSelfTest();
     }
   }, []);
-
-  // Carrega as traduções presentes no store (seletor de versão). Some se o store não expõe.
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const [{ ensureReadingDb }, { listTranslations }] = await Promise.all([
-          import('../lib/db'),
-          import('../web/reading'),
-        ]);
-        const dbPath = await ensureReadingDb();
-        const ts = await listTranslations(dbPath);
-        if (alive) setTranslations(ts);
-      } catch {
-        /* sem traduções → seletor some; usa a default do idioma */
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  const effectiveTranslation = useMemo(() => {
-    if (pickedTranslation && translations.some((x) => x.id === pickedTranslation)) {
-      return pickedTranslation;
-    }
-    const byLocale = defaultTranslationFor(locale);
-    if (translations.length === 0 || translations.some((x) => x.id === byLocale)) {
-      return byLocale;
-    }
-    return translations.find((x) => x.language === locale)?.id ?? translations[0]?.id ?? byLocale;
-  }, [pickedTranslation, translations, locale]);
 
   // Resolve a consulta (ranges + listas) na tradução escolhida. Re-resolve ao trocar a versão ou o
   // idioma. `seq` descarta respostas obsoletas. Anti-alucinação: o texto vem de `getChapter`.

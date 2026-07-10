@@ -9,16 +9,13 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 
 import { useI18n } from '../lib/i18n';
+import { readingChapterHref } from '../lib/readingNav';
 import { shareVerse } from '../lib/shareVerse';
+import { defaultTranslationFor } from '../lib/translationDefault';
 import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { verseOfDayRef } from '../lib/verseOfDay';
 import type { Translation } from '../web/reading';
 import { IconButton } from './ui';
-
-/** Tradução default do lookup por idioma (fallback se o seletor ainda não resolveu uma versão). */
-function defaultTranslationFor(locale: 'pt' | 'en'): string {
-  return locale === 'pt' ? 'alm1911' : 'kjv';
-}
 
 type Loaded = { label: string; text: string; translationId: string; book: number; chapter: number; verse: number };
 
@@ -110,10 +107,16 @@ export function HomeVerseOfDay({
       <Pressable
         style={styles.tap}
         onPress={() =>
-          router.push({
-            pathname: '/read/[book]/[chapter]',
-            params: { book: String(loaded.book), chapter: String(loaded.chapter), verse: String(loaded.verse) },
-          })
+          // Abre na MESMA versão do texto do dia (`loaded.translationId`) — antes descartava a versão
+          // e o toque caía no default do idioma. A costura `readingChapterHref` EXIGE `version`.
+          router.push(
+            readingChapterHref({
+              book: loaded.book,
+              chapter: loaded.chapter,
+              verse: loaded.verse,
+              version: loaded.translationId,
+            }),
+          )
         }
         testID="verse-of-day"
         accessibilityRole="link"

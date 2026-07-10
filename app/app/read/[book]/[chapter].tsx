@@ -45,7 +45,8 @@ import { versesForChapter } from '../../../lib/studyScope';
 import { useTheme, type ThemeContextValue } from '../../../lib/theme';
 import { listBooks, type CrossRef } from '../../../web/reading';
 import { chapterNav } from '../../../lib/chapterNav';
-import { defaultTranslationFor } from '../../../lib/translationDefault';
+import { defaultTranslationFor, langForTranslation } from '../../../lib/translationDefault';
+import { readingChapterHref } from '../../../lib/readingNav';
 import {
   READING_COLUMN_MAX,
   READING_COLUMN_MAX_PARALLEL,
@@ -243,10 +244,10 @@ function ChapterContent() {
   // UI — lendo Almeida (pt) o header/painéis mostram "João" mesmo com a UI em inglês (e KJV → "John"
   // mesmo com a UI em português). Cai no `locale` se a versão não declarar idioma conhecido. A
   // `reference` CANÔNICA passada às fronteiras segue EN (`bookNameEn`, a âncora) — anti-alucinação.
-  const nameLang: 'pt' | 'en' = useMemo(() => {
-    const lang = translations.find((tr) => tr.id === translation)?.language;
-    return lang === 'en' || lang === 'pt' ? lang : locale === 'en' ? 'en' : 'pt';
-  }, [translations, translation, locale]);
+  const nameLang: 'pt' | 'en' = useMemo(
+    () => langForTranslation(translation, translations, locale),
+    [translations, translation, locale],
+  );
 
   // Nome do livro no IDIOMA DA VERSÃO, para o `sourceLabel` (cabeçalho) dos painéis de IA. O nome
   // vem SEMPRE do STORE (`namePt`/`nameEn`) — `nameLang` só ESCOLHE o campo, NUNCA traduz via `t()`.
@@ -278,16 +279,8 @@ function ChapterContent() {
     const v = ref.verses;
     const verse = v.tag === 'Single' ? v.inner.verse : v.tag === 'Range' ? v.inner.start : null;
     setSelectedVerse(null);
-    router.push({
-      pathname: '/read/[book]/[chapter]',
-      params: {
-        book: String(ref.book),
-        chapter: String(ref.chapter),
-        // Carrega a versão corrente: a xref abre na MESMA tradução que se estava lendo.
-        version: translation,
-        ...(verse != null ? { verse: String(verse) } : {}),
-      },
-    });
+    // A xref abre na MESMA tradução que se estava lendo (a costura EXIGE `version`).
+    router.push(readingChapterHref({ book: ref.book, chapter: ref.chapter, verse, version: translation }));
   }
 
   // Navegação CAPÍTULO-A-CAPÍTULO (leitura contínua): vizinhos canônicos do capítulo atual, cruzando
@@ -301,12 +294,8 @@ function ChapterContent() {
     (target: { book: number; chapter: number }) => {
       setSelectedVerse(null);
       resetChrome();
-      router.replace({
-        pathname: '/read/[book]/[chapter]',
-        // Carrega a versão corrente: virar capítulo (botões/teclado/clique-lateral/swipe) NÃO reseta
-        // a tradução — o alvo semeia a mesma versão, independente da semântica de remonte do router.
-        params: { book: String(target.book), chapter: String(target.chapter), version: translation },
-      });
+      // Virar capítulo NÃO reseta a tradução: a costura carrega a versão corrente (sem `verse` → topo).
+      router.replace(readingChapterHref({ book: target.book, chapter: target.chapter, version: translation }));
     },
     [resetChrome, translation],
   );

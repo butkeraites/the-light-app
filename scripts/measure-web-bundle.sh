@@ -288,9 +288,19 @@ const BUDGET = {
   //   (+65.672, ~+64 KB); gzip 345.110 -> 366.056 (+20.946); brotli 271.513 -> 289.318 (+17.805).
   //   Custo de 1º paint aceito (app local-first, download unico; icones sao upgrade visual central).
   //   Tolerancias INALTERADAS. Espelhado em web-bundle-budget.json (noteADR0068Fase5).
+  //
+  // NOTA ADR-0070 (deepening — costura do seletor de versao + navegacao de leitura) — re-baseline
+  //   DELIBERADO/justificado: ESTRUTURAL moduleCount 911 -> 914 (+3 modulos eager EXATOS). A resolucao
+  //   de versao duplicada nas telas virou 3 modulos compartilhados eager: `lib/useTranslations.ts`
+  //   (carregador unico), `lib/useVersionSelection.ts` (hook-costura) e `lib/readingNav.ts` (hrefs com
+  //   `version` obrigatorio), importados por Home/Busca/Leitor (rotas eager, web output:static);
+  //   `lib/translationDefault.ts` ganhou as funcoes puras mas NAO e modulo novo. NAO e regressao: e a
+  //   DE-DUPLICACAO (o LOC liquido CAI). BYTES do entry INALTERADOS (3 modulos pequenos puros/hook,
+  //   dentro da banda existente) — so o moduleCount re-baseado. Tolerancias INALTERADAS. Espelhado em
+  //   web-bundle-budget.json (noteADR0070).
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 911,
+    moduleCount: 914,
     eagerBytes: { nominal: 1425377, tolerance: 1024 },
     eagerGzipBytes: { nominal: 366056, tolerance: 2048 },
     eagerBrotliBytes: { nominal: 289318, tolerance: 1024 },

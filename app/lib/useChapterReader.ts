@@ -16,13 +16,13 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { ensureReadingDb } from './db';
 import { ensureUserDataDir } from './userdata';
+import { useTranslations } from './useTranslations';
 import { deriveVerseMarkers } from './verseMarkers';
 import {
   crossRefs,
   getChapter,
   listHighlights,
   listNotes,
-  listTranslations,
   type CrossRef,
   type Passage,
   type Translation,
@@ -56,7 +56,8 @@ export interface ChapterReader {
 export function useChapterReader(input: ChapterReaderInput): ChapterReader {
   const { book, chapter, translation, parallel, selectedVerse } = input;
 
-  const [translations, setTranslations] = useState<Translation[]>([]);
+  // ADR-0070: traduções pelo carregador único (antes um efeito próprio idêntico; agora `useTranslations`).
+  const translations = useTranslations();
   const [passage, setPassage] = useState<Passage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [secondTranslation, setSecondTranslation] = useState<string | null>(null);
@@ -69,23 +70,6 @@ export function useChapterReader(input: ChapterReaderInput): ChapterReader {
   const [notedVerses, setNotedVerses] = useState<Set<number>>(new Set());
   // versículo → NOME da cor (dado do usuário); resolvido p/ hex no render (na tela).
   const [highlightColors, setHighlightColors] = useState<Map<number, string>>(new Map());
-
-  // Carrega as traduções disponíveis (seletor de versão) uma vez.
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const path = await ensureReadingDb();
-        const ts = await listTranslations(path);
-        if (alive) setTranslations(ts);
-      } catch {
-        // Sem traduções → o seletor some; a leitura ainda tenta a default.
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   // Mantém a 2ª tradução válida e SEMPRE diferente da primária.
   useEffect(() => {
