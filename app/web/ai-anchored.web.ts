@@ -28,8 +28,10 @@ import {
   aiWebFinalize,
   aiWebPrepare,
   llmEndpointUrl,
+  llmExtract,
   llmRequestBody,
   llmRequestHeaders,
+  llmStreamDelta,
   parseReference,
   type AiAnswer,
   type AiAnswerMulti,
@@ -90,56 +92,6 @@ function toHeaderRecord(provider: string, key: string): Record<string, string> {
 const MOCK_INTERPRETATION =
   'Interpretação simulada (provedor de teste). ' +
   'A passagem é citada acima a partir do texto local.';
-
-/**
- * Extrai o texto dos `parts` de UM `GenerateContentResponse` — parcial (um evento SSE do
- * `streamGenerateContent`) ou completo (`generateContent`): `candidates[0].content.parts[*]
- * .text` concatenado. LENIENTE: devolve `''` quando o evento não tem texto (ex.: um evento
- * SSE só com `usageMetadata`/`safetyRatings`, ou `finishReason` sem `parts`), SEM lançar —
- * é o extrator de DELTA do stream, chamado por evento. Mesmo shape do `gemini_extract`
- * PRIVADO do core (providers.rs); a versão ESTRITA (`geminiExtract`) valida/agrega em cima.
- */
-function geminiPartText(raw: unknown): string {
-  const v = raw as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: unknown }> } }>;
-  };
-  const parts = v?.candidates?.[0]?.content?.parts;
-  if (!Array.isArray(parts)) {
-    return '';
-  }
-  return parts.map((p) => (typeof p?.text === 'string' ? p.text : '')).join('');
-}
-
-/**
- * Extrai `candidates[0].content.parts[*].text` (concatenado) da resposta COMPLETA (caminho
- * NÃO-streaming) — ESPELHA o `gemini_extract` PRIVADO do core (providers.rs). Sem
- * `candidates`, tenta `promptFeedback.blockReason` (resposta bloqueada por segurança) para
- * uma mensagem clara; texto vazio → erro. REUSA `geminiPartText` na agregação.
- */
-function geminiExtract(raw: unknown): string {
-  const v = raw as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: unknown }> } }>;
-    promptFeedback?: { blockReason?: unknown };
-  };
-  const candidates = v?.candidates;
-  if (!Array.isArray(candidates) || candidates.length === 0) {
-    const reason = v?.promptFeedback?.blockReason;
-    throw new Error(
-      typeof reason === 'string'
-        ? `resposta bloqueada pelo provedor: ${reason}`
-        : 'sem `candidates` na resposta',
-    );
-  }
-  const parts = candidates[0]?.content?.parts;
-  if (!Array.isArray(parts)) {
-    throw new Error('sem `content.parts` no candidate');
-  }
-  const text = geminiPartText(raw);
-  if (text.trim().length === 0) {
-    throw new Error('resposta de texto vazia');
-  }
-  return text;
-}
 
 /**
  * Corpo do request Gemini (`contents`/`system_instruction`/`generationConfig`) a partir do
@@ -208,29 +160,6 @@ async function readLineStream(
 }
 
 /**
- * Parseia UMA linha SSE `data: {…}` (formato compartilhado por gemini/anthropic/openai):
- * devolve o objeto JSON parseado, ou `undefined` quando a linha NÃO é um `data:` JSON útil —
- * linha vazia, `event:`/`id:`/`:`comentário, `data: [DONE]`, ou JSON inválido (ruído/parcial
- * tolerado pelo parser incremental). O DELTA por provedor é extraído pelo chamador (cada API
- * tem seu shape). `JSON.parse` nunca devolve `undefined` → o sentinela é seguro.
- */
-function parseSseData(line: string): unknown {
-  const trimmed = line.trim();
-  if (trimmed.length === 0 || !trimmed.startsWith('data:')) {
-    return undefined;
-  }
-  const payload = trimmed.slice('data:'.length).trim();
-  if (payload.length === 0 || payload === '[DONE]') {
-    return undefined;
-  }
-  try {
-    return JSON.parse(payload);
-  } catch {
-    return undefined;
-  }
-}
-
-/**
  * Transporte Gemini (`fetch`): monta o corpo `generateContent` a partir do `system`/`user`
  * do `AiWebRequest` (ESPELHANDO `gemini_body` PRIVADO do core) e extrai a interpretação. O
  * modelo vai na URL; a chave vai no header `x-goog-api-key` — NUNCA na URL nem em log.
@@ -249,15 +178,15 @@ async function geminiComplete(
     geminiBody(request),
   );
   const raw: unknown = await res.json();
-  return geminiExtract(raw);
+  return llmExtract('gemini', JSON.stringify(raw));
 }
 
 /**
  * Transporte Gemini STREAMING (`fetch` + `ReadableStream`): usa o endpoint
  * `:streamGenerateContent?alt=sse` (mesmo corpo do não-streaming). Lê `res.body` incremental
  * (`getReader()` + `TextDecoder`), quebra por linha, parseia cada evento SSE `data: {…}` (um
- * `GenerateContentResponse` PARCIAL com o MESMO shape), extrai o DELTA de texto
- * (`geminiPartText`), chama `onToken(delta)` por evento e ACUMULA o texto completo — que é o
+ * `GenerateContentResponse` PARCIAL com o MESMO shape), extrai o DELTA de texto pela fronteira
+ * (`llmStreamDelta`), chama `onToken(delta)` por evento e ACUMULA o texto completo — que é o
  * MESMO que o `:generateContent` devolveria e que segue para `ai_web_finalize` (ZERO drift).
  * O modelo vai na URL; a chave vai SÓ no header `x-goog-api-key` — NUNCA na URL nem em log.
  * ANTI-ALUCINAÇÃO: os deltas são só da INTERPRETAÇÃO do modelo; nenhum texto bíblico é
@@ -281,17 +210,13 @@ async function geminiCompleteStream(
     throw new Error('resposta de streaming do provedor "gemini" sem corpo (`body`)');
   }
 
-  // Cada evento SSE `data: {…}` é um `GenerateContentResponse` parcial (mesmo shape) → extrai
-  // o delta (`geminiPartText`) e, se houver texto, emite + acumula. `[DONE]`/linhas vazias/
-  // parciais são ignoradas por `parseSseData`.
+  // Cada linha vai à fronteira `llmStreamDelta('gemini', line)` (sse_data + gemini_stream_delta
+  // no core): devolve o texto do delta (emite + acumula), `undefined` p/ ignorar (`[DONE]`/
+  // vazias/parciais) ou LANÇA em recusa/bloqueio/erro in-band (ESTRITO — aborta o stream).
   let full = '';
   await readLineStream(res.body, (line) => {
-    const parsed = parseSseData(line);
-    if (parsed === undefined) {
-      return;
-    }
-    const delta = geminiPartText(parsed);
-    if (delta.length > 0) {
+    const delta = llmStreamDelta('gemini', line);
+    if (delta != null && delta.length > 0) {
       full += delta;
       onToken(delta);
     }
@@ -333,51 +258,7 @@ function anthropicBody(request: LlmRequestParts, stream: boolean): string {
   return llmRequestBody('anthropic', request.model, request.system, request.user, stream);
 }
 
-/**
- * Extrai a interpretação da resposta COMPLETA (não-streaming) do Anthropic — ESPELHA
- * `anthropic_extract` PRIVADO do core: `stop_reason=="refusal"` → erro; concatena os blocos
- * `content[]` onde `type=="text"` → `text` (ignora blocos de pensamento); texto vazio → erro.
- */
-function anthropicExtract(raw: unknown): string {
-  const v = raw as {
-    stop_reason?: unknown;
-    content?: Array<{ type?: unknown; text?: unknown }>;
-  };
-  if (v?.stop_reason === 'refusal') {
-    throw new Error('o modelo recusou a solicitação (refusal)');
-  }
-  const blocks = v?.content;
-  if (!Array.isArray(blocks)) {
-    throw new Error('sem `content` na resposta');
-  }
-  const text = blocks
-    .filter((b) => b?.type === 'text')
-    .map((b) => (typeof b?.text === 'string' ? b.text : ''))
-    .join('');
-  if (text.trim().length === 0) {
-    throw new Error('resposta de texto vazia');
-  }
-  return text;
-}
-
-/**
- * Extrai o DELTA de UM evento SSE do Anthropic (`content_block_delta` com
- * `delta.type=="text_delta"` → `delta.text`). LENIENTE: devolve `''` para eventos que NÃO são
- * delta de texto (`message_start`/`content_block_start`/`message_delta`/`message_stop`/`ping`).
- */
-function anthropicDelta(raw: unknown): string {
-  const v = raw as { type?: unknown; delta?: { type?: unknown; text?: unknown } };
-  if (
-    v?.type === 'content_block_delta' &&
-    v?.delta?.type === 'text_delta' &&
-    typeof v.delta.text === 'string'
-  ) {
-    return v.delta.text;
-  }
-  return '';
-}
-
-/** Transporte Anthropic não-streaming: `POST /v1/messages` → `res.json()` → `anthropicExtract`. */
+/** Transporte Anthropic não-streaming: `POST /v1/messages` → `res.json()` → `llmExtract`. */
 async function anthropicComplete(
   fetchImpl: AiFetch,
   key: string,
@@ -391,14 +272,14 @@ async function anthropicComplete(
     anthropicBody(request, false),
   );
   const raw: unknown = await res.json();
-  return anthropicExtract(raw);
+  return llmExtract('anthropic', JSON.stringify(raw));
 }
 
 /**
  * Transporte Anthropic STREAMING (SSE): body com `stream:true`, lê `res.body` linha a linha
- * (`readLineStream`), parseia cada evento SSE (`parseSseData`), extrai o DELTA de texto
- * (`anthropicDelta`), `onToken(delta)` na ORDEM e ACUMULA o texto completo (idêntico ao
- * não-streaming) → segue para `ai_web_finalize` (ZERO drift). Chave SÓ no header.
+ * (`readLineStream`); cada linha vai à fronteira `llmStreamDelta('anthropic', line)` (extrai o
+ * delta ou LANÇA em recusa/erro in-band — ESTRITO), `onToken(delta)` na ORDEM e ACUMULA o texto
+ * completo (idêntico ao não-streaming) → segue para `ai_web_finalize` (ZERO drift). Chave SÓ no header.
  */
 async function anthropicCompleteStream(
   fetchImpl: AiFetch,
@@ -418,12 +299,8 @@ async function anthropicCompleteStream(
   }
   let full = '';
   await readLineStream(res.body, (line) => {
-    const parsed = parseSseData(line);
-    if (parsed === undefined) {
-      return;
-    }
-    const delta = anthropicDelta(parsed);
-    if (delta.length > 0) {
+    const delta = llmStreamDelta('anthropic', line);
+    if (delta != null && delta.length > 0) {
       full += delta;
       onToken(delta);
     }
@@ -453,33 +330,7 @@ function openaiBody(request: LlmRequestParts, stream: boolean): string {
   return llmRequestBody('openai', request.model, request.system, request.user, stream);
 }
 
-/**
- * Extrai a interpretação da resposta COMPLETA (não-streaming) do OpenAI — ESPELHA
- * `openai_extract` PRIVADO do core: `choices[0].message.content`; ausente → erro; vazio → erro.
- */
-function openaiExtract(raw: unknown): string {
-  const v = raw as { choices?: Array<{ message?: { content?: unknown } }> };
-  const content = v?.choices?.[0]?.message?.content;
-  if (typeof content !== 'string') {
-    throw new Error('sem `choices[0].message.content`');
-  }
-  if (content.trim().length === 0) {
-    throw new Error('resposta de texto vazia');
-  }
-  return content;
-}
-
-/**
- * Extrai o DELTA de UM evento SSE do OpenAI (`choices[0].delta.content`). LENIENTE: devolve
- * `''` quando o evento não tem texto (eventos só-`role`/`finish_reason`).
- */
-function openaiDelta(raw: unknown): string {
-  const v = raw as { choices?: Array<{ delta?: { content?: unknown } }> };
-  const content = v?.choices?.[0]?.delta?.content;
-  return typeof content === 'string' ? content : '';
-}
-
-/** Transporte OpenAI não-streaming: `POST /v1/chat/completions` → `res.json()` → `openaiExtract`. */
+/** Transporte OpenAI não-streaming: `POST /v1/chat/completions` → `res.json()` → `llmExtract`. */
 async function openaiComplete(
   fetchImpl: AiFetch,
   key: string,
@@ -493,13 +344,13 @@ async function openaiComplete(
     openaiBody(request, false),
   );
   const raw: unknown = await res.json();
-  return openaiExtract(raw);
+  return llmExtract('openai', JSON.stringify(raw));
 }
 
 /**
- * Transporte OpenAI STREAMING (SSE): body com `stream:true`, lê `res.body` linha a linha,
- * parseia cada `data: {choices:[{delta:{content}}]}` (+`data: [DONE]`), extrai o DELTA
- * (`openaiDelta`), `onToken` na ORDEM e ACUMULA. Chave SÓ no header.
+ * Transporte OpenAI STREAMING (SSE): body com `stream:true`, lê `res.body` linha a linha; cada
+ * linha vai à fronteira `llmStreamDelta('openai', line)` (extrai o delta de `choices[0].delta.
+ * content`, ignora `[DONE]`, LANÇA em frame de erro — ESTRITO), `onToken` na ORDEM e ACUMULA. Chave SÓ no header.
  */
 async function openaiCompleteStream(
   fetchImpl: AiFetch,
@@ -519,12 +370,8 @@ async function openaiCompleteStream(
   }
   let full = '';
   await readLineStream(res.body, (line) => {
-    const parsed = parseSseData(line);
-    if (parsed === undefined) {
-      return;
-    }
-    const delta = openaiDelta(parsed);
-    if (delta.length > 0) {
+    const delta = llmStreamDelta('openai', line);
+    if (delta != null && delta.length > 0) {
       full += delta;
       onToken(delta);
     }
@@ -555,33 +402,7 @@ function ollamaBody(request: LlmRequestParts, stream: boolean): string {
   return llmRequestBody('ollama', request.model, request.system, request.user, stream);
 }
 
-/**
- * Extrai a interpretação da resposta COMPLETA (não-streaming) do Ollama — ESPELHA
- * `ollama_extract` PRIVADO do core: `message.content`; ausente → erro; vazio → erro.
- */
-function ollamaExtract(raw: unknown): string {
-  const v = raw as { message?: { content?: unknown } };
-  const content = v?.message?.content;
-  if (typeof content !== 'string') {
-    throw new Error('sem `message.content`');
-  }
-  if (content.trim().length === 0) {
-    throw new Error('resposta de texto vazia');
-  }
-  return content;
-}
-
-/**
- * Extrai o DELTA de UMA linha NDJSON do Ollama (`message.content`). LENIENTE: devolve `''`
- * quando a linha não tem texto (ex.: a linha final `{"message":{"content":""},"done":true}`).
- */
-function ollamaDelta(raw: unknown): string {
-  const v = raw as { message?: { content?: unknown } };
-  const content = v?.message?.content;
-  return typeof content === 'string' ? content : '';
-}
-
-/** Transporte Ollama não-streaming: `POST {host}/api/chat` (SEM chave) → `res.json()` → `ollamaExtract`. */
+/** Transporte Ollama não-streaming: `POST {host}/api/chat` (SEM chave) → `res.json()` → `llmExtract`. */
 async function ollamaComplete(fetchImpl: AiFetch, request: LlmRequestParts): Promise<string> {
   const res = await postJson(
     fetchImpl,
@@ -591,13 +412,14 @@ async function ollamaComplete(fetchImpl: AiFetch, request: LlmRequestParts): Pro
     ollamaBody(request, false),
   );
   const raw: unknown = await res.json();
-  return ollamaExtract(raw);
+  return llmExtract('ollama', JSON.stringify(raw));
 }
 
 /**
  * Transporte Ollama STREAMING (NDJSON, NÃO SSE): body com `stream:true`, lê `res.body` linha a
- * linha — CADA linha é um JSON completo (sem prefixo `data:`) → parseia a linha inteira,
- * extrai o DELTA (`ollamaDelta`), `onToken` na ORDEM e ACUMULA. SEM chave (Ollama é local).
+ * linha — CADA linha é um JSON completo (sem prefixo `data:`); vai à fronteira
+ * `llmStreamDelta('ollama', line)` (extrai `message.content` ou LANÇA em `error` — ESTRITO),
+ * `onToken` na ORDEM e ACUMULA. SEM chave (Ollama é local).
  */
 async function ollamaCompleteStream(
   fetchImpl: AiFetch,
@@ -616,19 +438,8 @@ async function ollamaCompleteStream(
   }
   let full = '';
   await readLineStream(res.body, (line) => {
-    const trimmed = line.trim();
-    if (trimmed.length === 0) {
-      return;
-    }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(trimmed);
-    } catch {
-      // Linha NDJSON parcial/ruído — ignora (robustez do parser incremental).
-      return;
-    }
-    const delta = ollamaDelta(parsed);
-    if (delta.length > 0) {
+    const delta = llmStreamDelta('ollama', line);
+    if (delta != null && delta.length > 0) {
       full += delta;
       onToken(delta);
     }
