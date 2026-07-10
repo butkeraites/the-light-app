@@ -31,6 +31,7 @@ const CI = [
   'test:web:verse-markers',
   'test:web:translation-resolve',
   'test:web:gesture-nav',
+  'test:web:prefs',
   'test:web:verse-of-day',
   'test:web:chapter-nav',
   'test:web:reading-streak',

@@ -306,9 +306,17 @@ const BUDGET = {
   //   (eager, web output:static). NAO e regressao: e a extracao (o LOC liquido cai; a cinematica do
   //   swipe/zona ganha teste headless). BYTES do entry INALTERADOS. Tolerancias INALTERADAS. Espelhado
   //   em web-bundle-budget.json (noteADR0071).
+  //
+  // NOTA ADR-0073 (deepening — prefs.shared / keystore.shared) — re-baseline DELIBERADO: ESTRUTURAL
+  //   moduleCount 916 -> 918 (+2 modulos eager EXATOS). O corpo copiado byte-a-byte de prefs.ts/
+  //   prefs.web.ts e keystore.ts/keystore.web.ts (namespacing + validacao BYOK) virou os modulos
+  //   profundos `lib/prefs.shared.ts` + `lib/keystore.shared.ts`; cada leaf traz so o backend. Ambos
+  //   eager (i18n usa prefs; os paineis de IA/settings usam keystore). NAO e regressao: e a DE-
+  //   DUPLICACAO (o LOC liquido cai). BYTES do entry INALTERADOS. Tolerancias INALTERADAS. Espelhado
+  //   em web-bundle-budget.json (noteADR0073).
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 916,
+    moduleCount: 918,
     eagerBytes: { nominal: 1425377, tolerance: 1024 },
     eagerGzipBytes: { nominal: 366056, tolerance: 2048 },
     eagerBrotliBytes: { nominal: 289318, tolerance: 1024 },
