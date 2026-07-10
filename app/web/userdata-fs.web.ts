@@ -18,7 +18,7 @@
 // VFS-agnóstica (par de sqlite-xref.web.ts): opera sobre uma `UserDataDir` mínima
 // que o backend OPFS do browser (`userdata-opfs.web.ts`) e o mock em memória da
 // prova headless implementam. A prova node exercita EXATAMENTE estas funções.
-import { listBooks, parseReference } from './generated/the_light_app_core';
+import { listBooks, noteSlug, parseNoteSlug, parseReference } from './generated/the_light_app_core';
 import type { Highlight, Note, Reference } from './generated/the_light_app_core';
 
 /**
@@ -80,16 +80,12 @@ export function formatReferenceEn(reference: Reference, nameEn: string): string 
 }
 
 /**
- * Nome de arquivo da nota de uma referência. Espelha `notes.rs::slug` (linhas 24-31):
- * `format_reference(reference, En).replace(' ', "_").replace(':', ".") + ".md"`.
- * Ex.: `John 3:16` → `John_3.16.md`; `Genesis 1:1-3` → `Genesis_1.1-3.md` (o `-` é
- * preservado); `Psalms 23` → `Psalms_23.md`. (Distinto do `ref` do JSON, que NÃO
- * troca `_`/`.`.)
+ * Nome de arquivo da nota de uma referência (`John 3:16` → `John_3.16.md`) — DELEGA à
+ * fronteira `noteSlug` (= `the_light_core::userdata::note_slug::slug`, ADR-0062): fonte
+ * ÚNICA do formato, compartilhada com o nativo. O TS não re-deriva mais o slug.
  */
 export function slugForNote(reference: Reference): string {
-  return `${formatReferenceEn(reference, nameEnOf(reference.book))
-    .replace(/ /g, '_')
-    .replace(/:/g, '.')}.md`;
+  return noteSlug(reference);
 }
 
 /** Versículo inicial p/ ordenação canônica (espelha `VerseRange::start().unwrap_or(0)`). */
@@ -163,13 +159,11 @@ export async function listNotesFs(dir: UserDataDir): Promise<Note[]> {
       continue; // não-.md: ignora (espelha o filtro de extensão do core)
     }
     const stem = name.slice(0, -'.md'.length);
-    let reference: Reference;
-    try {
-      // Read-back: UMA fonte da verdade — a referência vem do WASM, não de TS.
-      // Espelha `parse_reference(stem.replace('_', " "))` (NÃO desfaz o `.`→`:`).
-      reference = parseReference(stem.replace(/_/g, ' '));
-    } catch {
-      continue; // arquivo .md não-reconhecível: ignora
+    // Read-back: UMA fonte da verdade — o parse do slug vem da fronteira `parseNoteSlug`
+    // (= `note_slug::parse_slug` do core, ADR-0062); `undefined` → arquivo não-reconhecível.
+    const reference = parseNoteSlug(stem);
+    if (reference === undefined) {
+      continue;
     }
     const body = await dir.readFile(`${NOTES_DIR}/${name}`);
     if (body === null) {
