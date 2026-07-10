@@ -42,11 +42,11 @@ thiserror = "2.0.18"
 # a montagem de prompt/RAG + `ask` ancorado + `citation` (anti-alucinação) em Rust —
 # SEM arrastar rusqlite/reqwest (só a chamada HTTP no web é `fetch`, F2.7b). No nativo,
 # a feature `embedded` (que inclui `ai-pure`) é religada no bloco [target...] abaixo.
-the-light-core = { git = "https://github.com/butkeraites/the-light", rev = "4c76d6fddb913f11583d9cd7eef3804310d53ab2", package = "the-light-core", default-features = false, features = ["ai-pure"] }
+the-light-core = { git = "https://github.com/butkeraites/the-light", rev = "8c80bdac3936638d3a73d84bf1f321fdd4004882", package = "the-light-core", default-features = false, features = ["ai-pure"] }
 
 # Matriz de features por alvo (ADR-0005). No NATIVO (não-wasm), habilita a feature
 # `embedded` do core (store SQLite + rede), necessária quando a fronteira passar a
 # expor store/IA. No WEB (wasm32), fica puro (bloco acima, sem `embedded`) — sem
 # arrastar rusqlite/reqwest, permitindo o build wasm.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-the-light-core = { git = "https://github.com/butkeraites/the-light", rev = "4c76d6fddb913f11583d9cd7eef3804310d53ab2", package = "the-light-core", default-features = false, features = ["embedded"] }
+the-light-core = { git = "https://github.com/butkeraites/the-light", rev = "8c80bdac3936638d3a73d84bf1f321fdd4004882", package = "the-light-core", default-features = false, features = ["embedded"] }

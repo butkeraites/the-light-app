@@ -298,6 +298,37 @@ impl From<the_light_core::model::Reference> for Reference {
     }
 }
 
+/// Reconstrói a `Reference` do core a partir do Record da fronteira. Round-trip (o
+/// Record SEMPRE veio do core via [`From`] — não é a fronteira inventando uma
+/// referência), usado onde um dado derivado precisa voltar ao core (ex.: slug da nota).
+fn to_core_reference(r: Reference) -> the_light_core::model::Reference {
+    use the_light_core::model::VerseRange as Core;
+    the_light_core::model::Reference {
+        book: r.book,
+        chapter: r.chapter,
+        verses: match r.verses {
+            VerseRange::Single { verse } => Core::Single(verse),
+            VerseRange::Range { start, end } => Core::Range { start, end },
+            VerseRange::WholeChapter => Core::WholeChapter,
+        },
+    }
+}
+
+/// Nome do arquivo de nota (`John_3.16.md`) para uma referência — DELEGA a
+/// `the_light_core::userdata::note_slug::slug` (fonte única, `ai-pure`). O web deixa de
+/// re-derivar o formato (`formatReferenceEn`/`slugForNote`). ADR-0062.
+#[uniffi::export]
+pub fn note_slug(reference: Reference) -> String {
+    the_light_core::userdata::note_slug::slug(&to_core_reference(reference))
+}
+
+/// Recupera a referência do `stem` (nome do arquivo de nota SEM `.md`) — DELEGA a
+/// `note_slug::parse_slug`; `None` se não parsear. ADR-0062.
+#[uniffi::export]
+pub fn parse_note_slug(stem: String) -> Option<Reference> {
+    the_light_core::userdata::note_slug::parse_slug(&stem).map(Reference::from)
+}
+
 /// Analisa uma referência bíblica (PT ou EN) **delegando** ao `the-light-core`.
 ///
 /// O parsing, a tabela canônica e a resolução de ambiguidades vivem no core
