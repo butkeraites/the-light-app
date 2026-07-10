@@ -2903,6 +2903,63 @@ pub fn llm_request_body(
     Ok(body.to_string())
 }
 
+/// Extrai a interpretação da resposta COMPLETA (não-streaming) do provedor, espelhando
+/// `*_extract` do core. Recebe o JSON cru da resposta; parseia via `parse_api_response`
+/// (o parser canônico do core) e delega ao extrator do provedor. Erros (recusa/bloqueio/
+/// vazio) sobem como `CoreError` com a mensagem do core (`AiError`) — texto ligeiramente
+/// diferente do espelho TS antigo, aceito na ADR-0062 (mensagem mais clara). ADR-0062.
+#[uniffi::export]
+pub fn llm_extract(provider_name: String, response_json: String) -> Result<String, CoreError> {
+    use the_light_core::ai::providers as p;
+    // `parse_api_response(success=true, …)` é o parse JSON canônico do core (na via 2xx),
+    // reusado aqui como parser puro — evita `serde_json` como dep direta do app-core.
+    let v = p::parse_api_response(true, "200", &response_json).map_err(core_err)?;
+    let extracted = match provider_name.as_str() {
+        "anthropic" => p::anthropic_extract(&v),
+        "openai" => p::openai_extract(&v),
+        "ollama" => p::ollama_extract(&v),
+        "gemini" => p::gemini_extract(&v),
+        other => {
+            return Err(CoreError::Generic {
+                message: format!("provedor sem extrator conhecido: {other}"),
+            })
+        }
+    };
+    extracted.map_err(core_err)
+}
+
+/// Delta de UMA linha do stream do provedor, espelhando o handling de `stream_response` do
+/// core: SSE (anthropic/openai/gemini) → `sse_data(line)` + `*_stream_delta`; NDJSON (ollama)
+/// → a linha inteira. Retorna `Some(text)` (emitir), `None` (linha a ignorar: `event:`/vazia/
+/// `[DONE]`/parcial), ou ERRO (`CoreError`) para recusa/bloqueio/frame de erro in-band — o core
+/// é ESTRITO (aborta o stream) onde o espelho TS era LENIENTE (truncava); mudança aceita na
+/// ADR-0062. ADR-0062.
+#[uniffi::export]
+pub fn llm_stream_delta(provider_name: String, line: String) -> Result<Option<String>, CoreError> {
+    use the_light_core::ai::providers as p;
+    let result = match provider_name.as_str() {
+        "anthropic" => match p::sse_data(&line) {
+            Some(data) => p::anthropic_stream_delta(data),
+            None => Ok(None),
+        },
+        "openai" => match p::sse_data(&line) {
+            Some(data) => p::openai_stream_delta(data),
+            None => Ok(None),
+        },
+        "gemini" => match p::sse_data(&line) {
+            Some(data) => p::gemini_stream_delta(data),
+            None => Ok(None),
+        },
+        "ollama" => p::ollama_stream_delta(&line),
+        other => {
+            return Err(CoreError::Generic {
+                message: format!("provedor sem delta de stream conhecido: {other}"),
+            })
+        }
+    };
+    result.map_err(core_err)
+}
+
 /// **Finaliza** uma pergunta ancorada no web: aplica a **citação anti-alucinação em
 /// Rust** (mesma impl do nativo) sobre a `interpretation` do `fetch` e monta o
 /// [`AiAnswer`], mantendo o `cited_text` do **store** separado da interpretação do
