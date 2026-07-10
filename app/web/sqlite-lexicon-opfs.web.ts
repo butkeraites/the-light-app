@@ -20,9 +20,7 @@
 // das do `reading-sample.sqlite` combinado (mesmo pipeline `gen-reading-sample-db.sh`),
 // então as glosas/lemas/Strong/atribuição STEP CC-BY são IDÊNTICAS — separar o DADO do
 // caminho de leitura NÃO muda o conteúdo. BROWSER-ONLY (guard `typeof navigator`).
-import SQLiteESMFactory from './vendor/wa-sqlite-fts5/wa-sqlite.mjs';
-import * as SQLite from 'wa-sqlite';
-import { MemoryVFS } from 'wa-sqlite/src/examples/MemoryVFS.js';
+import { openSqliteMemVfs } from './sqliteMemVfs.web';
 
 // eslint-disable-next-line import/no-unresolved
 import waSqliteWasmUri from './vendor/wa-sqlite-fts5/wa-sqlite.wasm';
@@ -95,32 +93,8 @@ export async function openLexiconDbWeb(): Promise<OpenLexiconDb> {
     );
   }
 
-  const wasmBinary = await fetchBytes(waSqliteWasmUri);
-  // `locateFile` p/ NÃO tomar o branch `new URL("wa-sqlite.wasm", import.meta.url)` do glue
-  // Emscripten: sob o bundler DEV do Metro `import.meta.url` é "null" → `new URL(...)` lança
-  // "Failed to construct 'URL': Invalid base URL" (mesmo bug da leitura, F5.39). Passamos os bytes
-  // do wasm direto (`wasmBinary`); `locateFile` só desvia do URL inválido.
-  const module = await SQLiteESMFactory({ wasmBinary, locateFile: (path: string) => path });
-  const sqlite3 = SQLite.Factory(module);
-
-  const vfs = new MemoryVFS();
-  const dbBytes = await readLexiconBytesFromOpfs();
-  vfs.mapNameToFile.set(MEM_DB_NAME, {
-    name: MEM_DB_NAME,
-    flags: SQLite.SQLITE_OPEN_READONLY,
-    size: dbBytes.byteLength,
-    data: dbBytes,
-  });
-  // Cast: assinaturas de `xRead` divergem no `.d.ts` do wa-sqlite (igual ao store de
-  // leitura); em runtime a MemoryVFS é uma VFS válida.
-  sqlite3.vfs_register(vfs as unknown as SQLiteVFS, false);
-
-  const db = await sqlite3.open_v2(MEM_DB_NAME, SQLite.SQLITE_OPEN_READONLY, vfs.name);
-  return {
-    sqlite3,
-    db,
-    close: async () => {
-      await sqlite3.close(db);
-    },
-  };
+  // Bytes: wasm do asset local + o léxico persistido/lido do OPFS. O boot do wa-sqlite (+ o workaround
+  // DEV `locateFile`) vive na costura `openSqliteMemVfs` (ADR-0072) — a AQUISIÇÃO de bytes é o adapter.
+  const [wasmBytes, dbBytes] = await Promise.all([fetchBytes(waSqliteWasmUri), readLexiconBytesFromOpfs()]);
+  return openSqliteMemVfs({ wasmBytes, dbBytes, dbName: MEM_DB_NAME, locateFile: (path) => path });
 }

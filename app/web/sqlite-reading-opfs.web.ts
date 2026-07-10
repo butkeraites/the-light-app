@@ -49,9 +49,7 @@
 // `bm25`/`highlight`). É UM ÚNICO artefato p/ LEITURA e BUSCA (a leitura, F1.13,
 // não regride). A API JS (`wa-sqlite`, `MemoryVFS`) segue do npm — casa com este
 // build (mesmo commit do release `1.0.0`, `registerVFS`).
-import SQLiteESMFactory from './vendor/wa-sqlite-fts5/wa-sqlite.mjs';
-import * as SQLite from 'wa-sqlite';
-import { MemoryVFS } from 'wa-sqlite/src/examples/MemoryVFS.js';
+import { openSqliteMemVfs } from './sqliteMemVfs.web';
 
 // Assets EMPACOTADOS pelo Metro (servidos pela própria origem; offline-first).
 // eslint-disable-next-line import/no-unresolved
@@ -98,39 +96,8 @@ export async function openReadingDbWeb(): Promise<OpenReadingDb> {
     );
   }
 
-  // Instancia o SQLite-wasm passando os BYTES do .wasm (asset local) — sem rede
-  // externa e sem depender de fetch interno do Emscripten.
-  const wasmBinary = await fetchBytes(waSqliteWasmUri);
-  // `locateFile` p/ NÃO tomar o branch `new URL("wa-sqlite.wasm", import.meta.url)` do glue
-  // Emscripten: sob o bundler DEV do Metro `import.meta.url` é "null" → `new URL(...)` lança
-  // "Failed to construct 'URL': Invalid base URL" e a LEITURA quebrava no BROWSER (só passava
-  // headless, onde import.meta.url é file://). Passamos os bytes do wasm direto (`wasmBinary`);
-  // `locateFile` só desvia do URL inválido (o valor retornado não é buscado — usa-se `wasmBinary`).
-  const module = await SQLiteESMFactory({ wasmBinary, locateFile: (path: string) => path });
-  const sqlite3 = SQLite.Factory(module);
-
-  // VFS de memória hidratado com os bytes do asset LOCAL (fetch da própria origem —
-  // offline-first, sem round-trip OPFS; F5.38/ADR-0057). Robusto p/ qualquer tamanho
-  // (38 MB da Bíblia completa) e p/ janela anônima; espelha o caminho de prova Node
-  // (readFile → MemoryVFS).
-  const vfs = new MemoryVFS();
-  const dbBytes = await fetchBytes(readingDbUri);
-  vfs.mapNameToFile.set(MEM_DB_NAME, {
-    name: MEM_DB_NAME,
-    flags: SQLite.SQLITE_OPEN_READONLY,
-    size: dbBytes.byteLength,
-    data: dbBytes,
-  });
-  // Cast: o `.d.ts` do wa-sqlite tem assinaturas de `xRead` divergentes entre
-  // `VFS.Base` (MemoryVFS) e `SQLiteVFS`; em runtime a MemoryVFS é uma VFS válida.
-  sqlite3.vfs_register(vfs as unknown as SQLiteVFS, false);
-
-  const db = await sqlite3.open_v2(MEM_DB_NAME, SQLite.SQLITE_OPEN_READONLY, vfs.name);
-  return {
-    sqlite3,
-    db,
-    close: async () => {
-      await sqlite3.close(db);
-    },
-  };
+  // Bytes do asset LOCAL (fetch da própria origem — offline-first, sem round-trip OPFS; F5.38/ADR-0057).
+  // O boot do wa-sqlite (+ o workaround DEV `locateFile`) vive na costura `openSqliteMemVfs` (ADR-0072).
+  const [wasmBytes, dbBytes] = await Promise.all([fetchBytes(waSqliteWasmUri), fetchBytes(readingDbUri)]);
+  return openSqliteMemVfs({ wasmBytes, dbBytes, dbName: MEM_DB_NAME, locateFile: (path) => path });
 }
