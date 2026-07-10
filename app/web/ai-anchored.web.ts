@@ -27,8 +27,9 @@ import {
   aiMultiWebPrepare,
   aiWebFinalize,
   aiWebPrepare,
-  llmDefaultMaxTokens,
   llmEndpointUrl,
+  llmRequestBody,
+  llmRequestHeaders,
   parseReference,
   type AiAnswer,
   type AiAnswerMulti,
@@ -59,14 +60,26 @@ export interface LlmRequestParts {
   model: string;
 }
 
-// Transporte = DADO do core via a fronteira wasm (ADR-0062), não mais hard-coded no TS:
-//   - `llmDefaultMaxTokens()` → `DEFAULT_MAX_TOKENS` do core (8192) que o corpo inclui em
-//     `max_tokens`/`maxOutputTokens`. O `ollama_body` NÃO tem `max_tokens` (espelha o core).
+// Transporte = DADO do core via a fronteira wasm (ADR-0062), não mais re-derivado no TS:
 //   - `llmEndpointUrl(provider, model, stream, host?)` → URL do endpoint (fixa p/ anthropic/
-//     openai; ollama = `http://localhost:11434/api/chat`; gemini embute model+stream). O
-//     `model` já vem RESOLVIDO em `request.model` (o `ai_web_prepare` aplica o `default_model`).
-// Ambas são SÍNCRONAS e só rodam no transporte (após o wasm pronto). A chave BYOK NUNCA
-// entra na URL — vai SÓ no header apropriado (ver `*Headers`).
+//     openai; ollama = `http://localhost:11434/api/chat`; gemini embute model+stream).
+//   - `llmRequestBody(provider, model, system, user, stream)` → corpo JSON do request (espelha
+//     `*_body` + `with_stream`; `max_tokens`=8192 do core; ollama sem max_tokens; gemini sem stream).
+//   - `llmRequestHeaders(provider, key, browser)` → headers (via `toHeaderRecord`; CORS do
+//     Anthropic quando `browser=true`, que o web sempre passa).
+// O `model` já vem RESOLVIDO em `request.model` (o `ai_web_prepare` aplica o `default_model`).
+// TODAS SÍNCRONAS e só rodam no transporte (após o wasm pronto). A chave BYOK NUNCA entra na
+// URL — vai SÓ nos headers. Os `*Body`/`*Headers` abaixo são adaptadores FINOS (zero lógica de
+// domínio): delegam ao core. Os extractors/deltas seguem no TS (fatia própria da ADR-0062).
+
+/**
+ * Converte os headers DATA-ONLY do core (`[{name, value}]`) no `Record<string,string>` que o
+ * `fetch` espera — fonte única `llm_request_headers` (ADR-0062). `browser=true`: o web sempre
+ * envia o header de acesso-direto-do-browser do Anthropic (CORS, ADR-0058); ignorado nos demais.
+ */
+function toHeaderRecord(provider: string, key: string): Record<string, string> {
+  return Object.fromEntries(llmRequestHeaders(provider, key, true).map((h) => [h.name, h.value]));
+}
 
 /**
  * Resposta determinística OFFLINE do provedor `"mock"` (sem rede/chave), ESPELHANDO a
@@ -135,11 +148,7 @@ function geminiExtract(raw: unknown): string {
  * (streaming, SSE) — só a URL muda.
  */
 function geminiBody(request: LlmRequestParts): string {
-  return JSON.stringify({
-    contents: [{ role: 'user', parts: [{ text: request.user }] }],
-    system_instruction: { parts: [{ text: request.system }] },
-    generationConfig: { maxOutputTokens: llmDefaultMaxTokens() },
-  });
+  return llmRequestBody('gemini', request.model, request.system, request.user, false);
 }
 
 /**
@@ -236,7 +245,7 @@ async function geminiComplete(
     fetchImpl,
     'gemini',
     url,
-    { 'x-goog-api-key': key, 'content-type': 'application/json' },
+    toHeaderRecord('gemini', key),
     geminiBody(request),
   );
   const raw: unknown = await res.json();
@@ -265,7 +274,7 @@ async function geminiCompleteStream(
     fetchImpl,
     'gemini',
     url,
-    { 'x-goog-api-key': key, 'content-type': 'application/json' },
+    toHeaderRecord('gemini', key),
     geminiBody(request),
   );
   if (res.body == null) {
@@ -311,12 +320,7 @@ async function geminiCompleteStream(
  * não sofre CORS e NÃO usa este header (permanece inalterado).
  */
 function anthropicHeaders(key: string): Record<string, string> {
-  return {
-    'x-api-key': key,
-    'anthropic-version': '2023-06-01',
-    'content-type': 'application/json',
-    'anthropic-dangerous-direct-browser-access': 'true',
-  };
+  return toHeaderRecord('anthropic', key);
 }
 
 /**
@@ -326,17 +330,7 @@ function anthropicHeaders(key: string): Record<string, string> {
  * (streaming) adiciona `"stream": true` — o MESMO endpoint serve aos dois caminhos.
  */
 function anthropicBody(request: LlmRequestParts, stream: boolean): string {
-  const body: Record<string, unknown> = {
-    model: request.model,
-    max_tokens: llmDefaultMaxTokens(),
-    system: request.system,
-    thinking: { type: 'adaptive' },
-    messages: [{ role: 'user', content: request.user }],
-  };
-  if (stream) {
-    body.stream = true;
-  }
-  return JSON.stringify(body);
+  return llmRequestBody('anthropic', request.model, request.system, request.user, stream);
 }
 
 /**
@@ -447,10 +441,7 @@ async function anthropicCompleteStream(
 
 /** Headers do request OpenAI — a chave BYOK vai SÓ em `authorization: Bearer` (nunca na URL/log). */
 function openaiHeaders(key: string): Record<string, string> {
-  return {
-    authorization: `Bearer ${key}`,
-    'content-type': 'application/json',
-  };
+  return toHeaderRecord('openai', key);
 }
 
 /**
@@ -459,18 +450,7 @@ function openaiHeaders(key: string): Record<string, string> {
  * (streaming) adiciona `"stream": true`.
  */
 function openaiBody(request: LlmRequestParts, stream: boolean): string {
-  const body: Record<string, unknown> = {
-    model: request.model,
-    max_tokens: llmDefaultMaxTokens(),
-    messages: [
-      { role: 'system', content: request.system },
-      { role: 'user', content: request.user },
-    ],
-  };
-  if (stream) {
-    body.stream = true;
-  }
-  return JSON.stringify(body);
+  return llmRequestBody('openai', request.model, request.system, request.user, stream);
 }
 
 /**
@@ -563,7 +543,7 @@ async function openaiCompleteStream(
 
 /** Headers do request Ollama — SÓ `content-type` (Ollama é local, sem BYOK; NENHUM header de chave). */
 function ollamaHeaders(): Record<string, string> {
-  return { 'content-type': 'application/json' };
+  return toHeaderRecord('ollama', '');
 }
 
 /**
@@ -572,14 +552,7 @@ function ollamaHeaders(): Record<string, string> {
  * não-streaming, `true` streaming) — Ollama NÃO tem `max_tokens` no corpo.
  */
 function ollamaBody(request: LlmRequestParts, stream: boolean): string {
-  return JSON.stringify({
-    model: request.model,
-    stream,
-    messages: [
-      { role: 'system', content: request.system },
-      { role: 'user', content: request.user },
-    ],
-  });
+  return llmRequestBody('ollama', request.model, request.system, request.user, stream);
 }
 
 /**
