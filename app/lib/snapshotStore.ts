@@ -1,16 +1,14 @@
-// app/lib/snapshotStore.ts — F5.26 (ADR-0054) · wiring NATIVO
+// app/lib/snapshotStore.ts — F5.26 (ADR-0054) · wiring PLATFORM-AGNOSTIC (ADR-0078)
 //
-// Liga o adaptador PURO (`snapshotStore.shared.ts`) ao STORE REAL do usuário no
-// NATIVO (iOS/Android): as fns de fronteira de userdata/planos já expostas por F1.10/
-// F5.4 via `web/reading.ts` (JSI → the-light-core, fs-backed), casadas ao `dataDir`
-// gravável (`lib/userdata.ts`). O nome EN do livro e a validação de referência REAL
-// vêm do CORE (`listBooks`/`parseReference` do binding JSI) — anti-alucinação.
-//
-// Resolução por extensão do Metro: este `.ts` vale no NATIVO (alvo GARANTIDO — as fns
-// fs-backed existem); no web vale `snapshotStore.web.ts` (OPFS). Carregado SOB DEMANDA
-// (`import()`) pela UI de sync (F5.26) — fica FORA do entry eager do 1º paint.
-import { parseReference as parseReferenceSync } from '../web/native-generated/src/index';
+// Liga o adaptador PURO (`snapshotStore.shared.ts`) ao STORE REAL do usuário: as fns de fronteira de
+// userdata/planos + `listBooks` + `parseReferenceSync` vêm TODAS da COSTURA `web/reading` (o Metro a
+// resolve a `reading.ts` no nativo / `reading.web.ts` no web). Antes este wiring era duplicado BYTE-A-BYTE
+// em `snapshotStore.ts` e `snapshotStore.web.ts`, diferindo SÓ na fonte do `parseReferenceSync`; a ADR-0078
+// expôs essa 1 linha pela seam de leitura e os dois leaves colapsaram num arquivo só. O nome EN do livro e
+// a validação REAL de referência vêm do CORE (anti-alucinação). Carregado SOB DEMANDA (`import()`) pela UI
+// de sync (F5.26) — FORA do entry eager do 1º paint.
 import {
+  parseReferenceSync,
   listBooks,
   listNotes,
   listHighlights,
@@ -24,10 +22,9 @@ import { createSnapshotStore } from './snapshotStore.shared';
 import type { SnapshotStore } from './userdataSnapshot';
 
 /**
- * Cria o `SnapshotStore` REAL do alvo NATIVO, ligado ao `dataDir` gravável do usuário
- * (de `ensureUserDataDir()`). Memoiza o mapa `número→nomeEN` do livro (`listBooks` do
- * CORE) e valida a referência importada com o `parse_reference` SÍNCRONO do CORE
- * (lança em referência irreal ANTES de qualquer escrita — anti-alucinação).
+ * Cria o `SnapshotStore` REAL do usuário, ligado ao `dataDir` gravável (de `ensureUserDataDir()`).
+ * Memoiza o mapa `número→nomeEN` do livro (`listBooks` do CORE) e valida a referência importada com o
+ * `parse_reference` SÍNCRONO do CORE (lança em referência irreal ANTES de qualquer escrita — anti-alucinação).
  */
 export function createRealSnapshotStore(dataDir: string): SnapshotStore {
   let bookNames: Map<number, string> | null = null;

@@ -105,6 +105,10 @@ export type {
 };
 export { StudyMode, StudyLens, StudyDepth, ChatRole };
 
+// ADR-0078: `parse_reference` SÍNCRONO do core (wasm) exposto pela COSTURA de leitura (ver reading.ts) —
+// o `snapshotStore` valida referência por esta seam, sem ramificar por plataforma.
+export { parseReference as parseReferenceSync } from './generated/index.web';
+
 /**
  * 66 livros canônicos (PURO — `reference::BOOKS`), do RUST (wasm). SÍNCRONO, como
  * o nativo: exige o wasm já inicializado (pré-aquecido por `useWasmReady()` no
