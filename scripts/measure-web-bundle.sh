@@ -330,9 +330,16 @@ const BUDGET = {
   //   regressao: e a extracao da orquestracao (que nao tinha teste) p/ uma costura testavel; timing/
   //   duas-fases inalterados. BYTES do entry INALTERADOS. Tolerancias INALTERADAS. Espelhado em
   //   web-bundle-budget.json (noteADR0075).
+  //
+  // NOTA ADR-0076 (deepening — useImmersiveChrome) — re-baseline DELIBERADO: ESTRUTURAL moduleCount
+  //   921 -> 922 (+1 modulo eager EXATO). O ciclo da barra-overlay imersiva (barHeight/chromeAnim/
+  //   chromeGone/chromeHidden + os 2 efeitos interligados + a interpolacao inline) saiu da tela do
+  //   capitulo p/ `lib/useImmersiveChrome.ts`, importado pela rota de leitura (eager). E COESAO (1 caller),
+  //   nao deepening; a tela renderiza <Animated.View {...overlayProps} style=[..., animatedStyle]>. NAO e
+  //   regressao. BYTES do entry INALTERADOS. Tolerancias INALTERADAS. Espelhado em web-bundle-budget.json.
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 921,
+    moduleCount: 922,
     eagerBytes: { nominal: 1425377, tolerance: 1024 },
     eagerGzipBytes: { nominal: 366056, tolerance: 2048 },
     eagerBrotliBytes: { nominal: 289318, tolerance: 1024 },

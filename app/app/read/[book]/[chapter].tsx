@@ -15,7 +15,7 @@
 // só estado de CONTROLE + apresentação. Os 4 painéis de IA compartilham um `activePanel`.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ReaderChapterView } from '../../../components/ReaderChapterView';
@@ -37,8 +37,7 @@ import { Chip, IconButton } from '../../../components/ui';
 import { resolveHighlightColor } from '../../../lib/highlightColors';
 import { useI18n } from '../../../lib/i18n';
 import { useChapterReader } from '../../../lib/useChapterReader';
-import { useHideOnScroll } from '../../../lib/useHideOnScroll';
-import { useReducedMotion } from '../../../lib/useReducedMotion';
+import { useImmersiveChrome } from '../../../lib/useImmersiveChrome';
 import { useReadingPrefs } from '../../../lib/useReadingPrefs';
 import { studyScope, useStudyScope } from '../../../lib/useStudyScope';
 import { versesForChapter } from '../../../lib/studyScope';
@@ -119,54 +118,13 @@ function ChapterContent() {
   // F1.9: versículo selecionado (dirige o carregamento de xref no hook).
   const [selectedVerse, setSelectedVerse] = useState<number | null>(null);
 
-  // LEITURA IMERSIVA (ADR-0069-feel): o topo INTEIRO (voltar + título + versão + Aa + idioma +
-  // tema + controles) é UMA barra-OVERLAY absoluta. Rolar PRA FRENTE a desliza pra fora (texto
-  // fullscreen); PRA TRÁS ela volta ("acompanha e aparece"). `chromeAnim` (1 visível · 0 escondido)
-  // dirige translateY + opacity no DRIVER NATIVO — o frame do ScrollView NUNCA muda de tamanho
-  // (sem pulo). Header nativo desligado nesta rota (_layout). Esconder é DELIBERADO (limiar maior),
-  // mostrar é ÁGIL. Respeita reduce-motion (troca instantânea).
+  // LEITURA IMERSIVA (ADR-0069-feel / ADR-0076): o topo INTEIRO (voltar + título + versão + Aa + idioma +
+  // tema + controles) é UMA barra-OVERLAY absoluta que desliza ao rolar (translateY+opacity, driver
+  // nativo; sem pulo). O CICLO da barra (hidden→anim→gone), a medição e o reset por âncora vivem na
+  // costura `useImmersiveChrome`; a tela só espalha os props no `<Animated.View>`.
   const insets = useSafeAreaInsets();
-  const reduceMotion = useReducedMotion();
-  const [barHeight, setBarHeight] = useState(0);
-  const { hidden: chromeHidden, onScroll: onReaderScroll, reset: resetChrome } = useHideOnScroll({
-    topGuard: barHeight || 24, // dobra como "mínimo antes de esconder": nunca descobre um vão
-    hideThreshold: 18, // afiado: responde um pouco antes ao intento de esconder (sem ficar twitchy)
-    showThreshold: 6, // afiado: reaparece com um toque a menos de scroll ("acompanha" mais colado)
-  });
-  const chromeAnim = useRef(new Animated.Value(1)).current; // 1 = visível · 0 = escondido
-  // `chromeGone`: barra TOTALMENTE escondida → sai do FLUXO/FOCO/a11y (display:none). Some só ao FIM
-  // da animação de esconder e volta ANTES de animar a entrada — assim controles fora de vista não
-  // ficam tabbáveis/anunciados (o antigo header nativo desmontava; a barra-overlay precisa disto).
-  const [chromeGone, setChromeGone] = useState(false);
-
-  // Desliza a barra (translateY) + fade; curvas ASSIMÉTRICAS: sai acelerando, volta desacelerando.
-  useEffect(() => {
-    const toValue = chromeHidden ? 0 : 1;
-    if (!chromeHidden) setChromeGone(false); // re-monta ANTES de animar a entrada
-    if (reduceMotion) {
-      chromeAnim.setValue(toValue);
-      setChromeGone(chromeHidden);
-      return;
-    }
-    const anim = Animated.timing(chromeAnim, {
-      toValue,
-      duration: chromeHidden ? 150 : 190, // afiado: saída/volta mais curtas = mais snappy
-      easing: chromeHidden ? Easing.bezier(0.3, 0, 1, 1) : Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    });
-    anim.start(({ finished }) => {
-      if (finished && chromeHidden) setChromeGone(true); // fora do foco/a11y após terminar de esconder
-    });
-    return () => anim.stop(); // interrupção limpa em viradas rápidas de direção
-  }, [chromeHidden, reduceMotion, chromeAnim]);
-
-  // Âncora de busca/xref: a barra deve estar VISÍVEL quando a nova âncora chega (senão a rolagem
-  // programática a esconde e o versículo-alvo fica atrás dela).
-  useEffect(() => {
-    if (anchorVerse != null) {
-      resetChrome();
-    }
-  }, [anchorVerse, resetChrome]);
+  const { barHeight, onReaderScroll, resetChrome, overlayProps, gone: chromeGone, animatedStyle } =
+    useImmersiveChrome(anchorVerse);
 
   // Fase 2: versículos DESTE capítulo já no Escopo (realce multi-seleção) + handlers de gesto.
   const chapterScope = useMemo(
@@ -356,26 +314,10 @@ function ChapterContent() {
           medida (onLayout) p/ o translateY e p/ o paddingTop do texto (topInset). */}
       <Animated.View
         testID="reader-chrome"
-        // Escondida → sem toque/mouse e fora da árvore de a11y (nativo); `chromeGone` tira do fluxo
-        // (web: display:none), removendo do Tab/leitor de tela quando totalmente fora de vista.
-        pointerEvents={chromeHidden ? 'none' : 'auto'}
-        accessibilityElementsHidden={chromeHidden}
-        importantForAccessibility={chromeHidden ? 'no-hide-descendants' : 'auto'}
-        onLayout={(e) => {
-          const h = e.nativeEvent.layout.height;
-          if (h > 0 && h !== barHeight) setBarHeight(h);
-        }}
-        style={[
-          styles.chrome,
-          { paddingTop: insets.top },
-          chromeGone ? styles.chromeGone : null,
-          {
-            transform: [
-              { translateY: chromeAnim.interpolate({ inputRange: [0, 1], outputRange: [-barHeight, 0] }) },
-            ],
-            opacity: chromeAnim.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 0.15, 1] }),
-          },
-        ]}
+        // Escondida → sem toque/mouse e fora da a11y (`chromeGone` → display:none). Os props de medição +
+        // a11y e o estilo ANIMADO (translateY+opacity, driver nativo) vêm da costura `useImmersiveChrome`.
+        {...overlayProps}
+        style={[styles.chrome, { paddingTop: insets.top }, chromeGone ? styles.chromeGone : null, animatedStyle]}
       >
         {/* Linha de navegação: voltar + título (nome do STORE, `bookLabel`) + Aa / idioma / tema. */}
         <View style={styles.navRow}>
