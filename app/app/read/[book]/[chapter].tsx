@@ -15,7 +15,7 @@
 // só estado de CONTROLE + apresentação. Os 4 painéis de IA compartilham um `activePanel`.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ReaderChapterView } from '../../../components/ReaderChapterView';
@@ -47,15 +47,8 @@ import { listBooks, type CrossRef } from '../../../web/reading';
 import { chapterNav } from '../../../lib/chapterNav';
 import { defaultTranslationFor, langForTranslation } from '../../../lib/translationDefault';
 import { readingChapterHref } from '../../../lib/readingNav';
-import {
-  READING_COLUMN_MAX,
-  READING_COLUMN_MAX_PARALLEL,
-  SIDE_NAV_MIN_MARGIN,
-  sideMarginWidth,
-  SWIPE_H_DOMINANCE,
-  SWIPE_MAX_DURATION_MS,
-  SWIPE_MIN_DISTANCE,
-} from '../../../lib/readingLayout';
+import { READING_COLUMN_MAX, READING_COLUMN_MAX_PARALLEL } from '../../../lib/readingLayout';
+import { useChapterTurnGestures } from '../../../lib/useChapterTurnGestures';
 
 /** Nome (PT) de um livro pelo número canônico (cânon puro, independe do banco). */
 function bookNamePt(book: number): string {
@@ -348,98 +341,9 @@ function ChapterContent() {
   const readingColumnMax =
     parallel && secondaryPassage != null ? READING_COLUMN_MAX_PARALLEL : READING_COLUMN_MAX;
 
-  // (1) TECLADO: ← capítulo anterior, → próximo. ↑↓/PageUp/Down seguem rolando (return sem
-  // preventDefault). Ignora com painel aberto, tecla modificadora, ou foco num campo de texto.
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-      // `shiftKey` incluído: Shift+← / Shift+→ é EXTENSÃO DE SELEÇÃO de texto (inclusive caret-browsing),
-      // não navegação — deixamos o browser tratar (sem preventDefault).
-      if (navBlocked || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-      const ae = document.activeElement as HTMLElement | null;
-      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
-      // Simetria com o clique: não virar capítulo enquanto há seleção de texto ativa.
-      if (window.getSelection && String(window.getSelection() ?? '').length > 0) return;
-      const target = e.key === 'ArrowLeft' ? adj.prev : adj.next;
-      e.preventDefault();
-      if (target) goToChapter(target);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [adj, goToChapter, navBlocked]);
-
-  // (2) CLIQUE-NAS-LATERAIS (Kindle): clicar a MARGEM ESQUERDA vazia = anterior; DIREITA = próximo.
-  // A zona é toda a margem FORA da coluna de leitura centralizada (`readingColumnMax`) — espaço
-  // vazio de verdade, largo, então clicar "na lateral" nunca cai sobre texto. Só conta clique DENTRO
-  // da leitura (`reader-body`), em espaço não-interativo (cinto+suspensório), e sem seleção de texto
-  // ativa. Em telas estreitas a coluna preenche a tela (margem < mínimo) → clique-lateral inativo
-  // (celular usa botões). NUNCA faz preventDefault → não bloqueia scroll/clique.
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const onClick = (e: MouseEvent) => {
-      if (e.button !== 0 || navBlocked || e.metaKey || e.ctrlKey || e.altKey) return;
-      const t = e.target as Element | null;
-      if (!t || !t.closest('[data-testid="reader-body"]')) return; // fora da superfície de leitura
-      if (t.closest('[data-testid^="verse-"], a, button, input, textarea, [role="button"], [role="switch"], [role="link"]')) {
-        return; // clique em versículo / elemento interativo → deixa o comportamento normal (abre painel)
-      }
-      if (window.getSelection && String(window.getSelection() ?? '').length > 0) return; // terminando seleção
-      const w = window.innerWidth;
-      const margin = sideMarginWidth(w, readingColumnMax);
-      if (margin < SIDE_NAV_MIN_MARGIN) return; // sem margem útil (tela estreita) → sem clique-lateral
-      if (e.clientX <= margin && adj.prev) goToChapter(adj.prev);
-      else if (e.clientX >= w - margin && adj.next) goToChapter(adj.next);
-    };
-    window.addEventListener('click', onClick);
-    return () => window.removeEventListener('click', onClick);
-  }, [adj, goToChapter, navBlocked, readingColumnMax]);
-
-  // (3) SWIPE horizontal (TOQUE — celular na PWA/web): deslizar p/ a ESQUERDA vira pro PRÓXIMO
-  // capítulo; p/ a DIREITA, pro ANTERIOR (molde de e-reader no touch, já que "clicar na lateral" não
-  // cabe num aparelho que rola na vertical). Passivo (window touchstart/touchend), SEM preventDefault
-  // → rolagem vertical e toque no versículo 100% intactos: só agimos no FIM de um gesto CLARAMENTE
-  // horizontal, rápido e longo o bastante. Suprimido com painel/folha aberto (navBlocked) ou seleção.
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    let sx = 0;
-    let sy = 0;
-    let st = 0;
-    let tracking = false;
-    const onStart = (e: TouchEvent) => {
-      tracking = false;
-      if (navBlocked || e.touches.length !== 1) return; // multi-toque (pinça) não é swipe
-      const t = e.target as Element | null;
-      if (!t || !t.closest('[data-testid="reader-body"]')) return; // fora da superfície de leitura
-      if (t.closest('input, textarea, [role="switch"]')) return; // não competir com controles
-      const touch = e.touches[0];
-      sx = touch.clientX;
-      sy = touch.clientY;
-      st = e.timeStamp;
-      tracking = true;
-    };
-    const onEnd = (e: TouchEvent) => {
-      if (!tracking) return;
-      tracking = false;
-      if (navBlocked) return;
-      const touch = e.changedTouches[0];
-      if (!touch) return;
-      const dx = touch.clientX - sx;
-      const dy = touch.clientY - sy;
-      if (e.timeStamp - st > SWIPE_MAX_DURATION_MS) return; // lento demais → arrastar/rolar, não swipe
-      if (Math.abs(dx) < SWIPE_MIN_DISTANCE) return; // curto demais → tap/rolagem
-      if (Math.abs(dx) < Math.abs(dy) * SWIPE_H_DOMINANCE) return; // não é claramente horizontal
-      if (window.getSelection && String(window.getSelection() ?? '').length > 0) return; // selecionando
-      const target = dx < 0 ? adj.next : adj.prev; // ← (dx<0) avança; → (dx>0) volta
-      if (target) goToChapter(target);
-    };
-    window.addEventListener('touchstart', onStart, { passive: true });
-    window.addEventListener('touchend', onEnd, { passive: true });
-    return () => {
-      window.removeEventListener('touchstart', onStart);
-      window.removeEventListener('touchend', onEnd);
-    };
-  }, [adj, goToChapter, navBlocked]);
+  // ADR-0071: os 3 atalhos de virar-capítulo (teclado ←/→, clique-nas-laterais, swipe de toque —
+  // SÓ NO WEB, listeners passivos) vivem numa costura; as decisões puras estão em `gestureNav`.
+  useChapterTurnGestures({ adj, goToChapter, navBlocked, readingColumnMax });
 
   // 2ª tradução só oferece versões DIFERENTES da primária.
   const secondaryOptions = translations.filter((tr) => tr.id !== translation);
