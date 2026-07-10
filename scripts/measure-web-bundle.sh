@@ -322,9 +322,17 @@ const BUDGET = {
   //   `components/ui/AttributionBlock.tsx`, importados pelos 2 paineis (eager nas rotas de leitura).
   //   NAO e regressao: e a DE-DUPLICACAO (o LOC liquido cai; some o import painel->painel). BYTES do
   //   entry INALTERADOS. Tolerancias INALTERADAS. Espelhado em web-bundle-budget.json (noteADR0074).
+  //
+  // NOTA ADR-0075 (deepening — resolveDidYouMean, orquestracao do zero-path da busca) — re-baseline
+  //   DELIBERADO: ESTRUTURAL moduleCount 920 -> 921 (+1 modulo eager EXATO). A montagem inline do
+  //   "voce quis dizer?" (sonda + fuzzy + composicao) no efeito da tela virou `lib/searchIntent.ts`
+  //   (funcao pura com ports injetados), importado por app/app/search/index.tsx (rota eager). NAO e
+  //   regressao: e a extracao da orquestracao (que nao tinha teste) p/ uma costura testavel; timing/
+  //   duas-fases inalterados. BYTES do entry INALTERADOS. Tolerancias INALTERADAS. Espelhado em
+  //   web-bundle-budget.json (noteADR0075).
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 920,
+    moduleCount: 921,
     eagerBytes: { nominal: 1425377, tolerance: 1024 },
     eagerGzipBytes: { nominal: 366056, tolerance: 2048 },
     eagerBrotliBytes: { nominal: 289318, tolerance: 1024 },

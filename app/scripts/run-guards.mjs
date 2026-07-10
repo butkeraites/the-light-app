@@ -32,6 +32,7 @@ const CI = [
   'test:web:translation-resolve',
   'test:web:gesture-nav',
   'test:web:prefs',
+  'test:web:search-intent',
   'test:web:verse-of-day',
   'test:web:chapter-nav',
   'test:web:reading-streak',
