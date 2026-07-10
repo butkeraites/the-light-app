@@ -2790,6 +2790,47 @@ pub fn ai_web_prepare(
     })
 }
 
+// --- Transporte: superfície DATA-ONLY (ADR-0062) ---------------------------
+// O alvo web IMPORTA estes DADOS (em vez de hard-codar URLs/`8192`) e monta o
+// `{url, headers, body}` do `fetch`. Delegam à superfície `pub` de
+// `the_light_core::ai::providers` (PR `data-seam-for-web-parity`): puras, cfg-free →
+// compilam no wasm sem arrastar `reqwest`. Colapsam a RE-DERIVAÇÃO no TS num import.
+
+/// Teto de tokens de saída pedido a cada provedor
+/// (`the_light_core::ai::providers::DEFAULT_MAX_TOKENS`, atualmente 8192). O web o usa
+/// em `max_tokens`/`maxOutputTokens` do corpo em vez de hard-codar `8192` (ADR-0062).
+#[uniffi::export]
+pub fn llm_default_max_tokens() -> u32 {
+    the_light_core::ai::providers::DEFAULT_MAX_TOKENS
+}
+
+/// URL do endpoint HTTP do provedor, espelhando 1:1 as helpers `pub` do core:
+/// `anthropic`/`openai` são fixas (`ANTHROPIC_URL`/`OPENAI_URL`); `ollama` deriva de
+/// `ollama_host` (ou `OLLAMA_DEFAULT_HOST` quando `None`); `gemini` embute
+/// `model`+`stream` na URL (`gemini_url`). O web deixa de hard-codar/derivar a URL —
+/// a chave BYOK NUNCA entra aqui (vai só nos headers). ADR-0062.
+#[uniffi::export]
+pub fn llm_endpoint_url(
+    provider_name: String,
+    model: String,
+    stream: bool,
+    ollama_host: Option<String>,
+) -> Result<String, CoreError> {
+    use the_light_core::ai::providers as p;
+    let url = match provider_name.as_str() {
+        "anthropic" => p::ANTHROPIC_URL.to_string(),
+        "openai" => p::OPENAI_URL.to_string(),
+        "ollama" => p::ollama_url(ollama_host.as_deref().unwrap_or(p::OLLAMA_DEFAULT_HOST)),
+        "gemini" => p::gemini_url(&model, stream),
+        other => {
+            return Err(CoreError::Generic {
+                message: format!("provedor sem URL de transporte conhecida: {other}"),
+            })
+        }
+    };
+    Ok(url)
+}
+
 /// **Finaliza** uma pergunta ancorada no web: aplica a **citação anti-alucinação em
 /// Rust** (mesma impl do nativo) sobre a `interpretation` do `fetch` e monta o
 /// [`AiAnswer`], mantendo o `cited_text` do **store** separado da interpretação do
