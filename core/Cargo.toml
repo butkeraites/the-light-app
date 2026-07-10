@@ -26,6 +26,13 @@ thiserror = "2.0.18"
 # UniFFI delega a `the_light_core::reference` (regra "uma fonte da verdade").
 # Nunca forkar/copiar/vendorizar — mudanças no core só via PR + ADR.
 #
+# rev 80aa1a7: rev ff6c988 + planners de SQL de LÉXICO em `query` (`lexicon_collect_plan`/
+# `interlinear_plan`/`attributions_plan` + `base_strong`/`resolve_verses` puros, movidos de
+# `ai::lexicon`) → última fatia SQL da ADR-0062 (paridade web do léxico). Não-quebrante;
+# grafo wasm segue puro (planners são DADO, `From<SqlParam> for Value` só sob `embedded`).
+# Anterior — rev ff6c988: rev 8c80bda + módulo `query` (SqlParam + planners de leitura/busca/
+# xref/passage) → fatia SQL da ADR-0062. Anteriores (8c80bda note_slug; 4c76d6f transporte):
+# ADR-0062 fatias formatos/transporte.
 # rev 225b8c9: rev 2fc2dab + geração PURA de planos de leitura exposta sob `ai-pure`
 # (`userdata::plans::{available_plans, plan_by_id, Plan, PlanProgress, day_index_for}`
 # compiláveis em wasm; `PlanStore`/fs seguem embedded) → paridade WEB dos planos
@@ -42,11 +49,11 @@ thiserror = "2.0.18"
 # a montagem de prompt/RAG + `ask` ancorado + `citation` (anti-alucinação) em Rust —
 # SEM arrastar rusqlite/reqwest (só a chamada HTTP no web é `fetch`, F2.7b). No nativo,
 # a feature `embedded` (que inclui `ai-pure`) é religada no bloco [target...] abaixo.
-the-light-core = { git = "https://github.com/butkeraites/the-light", rev = "ff6c98876f9423f876d9a732f8baf3ec460c22e4", package = "the-light-core", default-features = false, features = ["ai-pure"] }
+the-light-core = { git = "https://github.com/butkeraites/the-light", rev = "80aa1a723b57787ab0548d0bbd8e9cbe4e8a3fb3", package = "the-light-core", default-features = false, features = ["ai-pure"] }
 
 # Matriz de features por alvo (ADR-0005). No NATIVO (não-wasm), habilita a feature
 # `embedded` do core (store SQLite + rede), necessária quando a fronteira passar a
 # expor store/IA. No WEB (wasm32), fica puro (bloco acima, sem `embedded`) — sem
 # arrastar rusqlite/reqwest, permitindo o build wasm.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-the-light-core = { git = "https://github.com/butkeraites/the-light", rev = "ff6c98876f9423f876d9a732f8baf3ec460c22e4", package = "the-light-core", default-features = false, features = ["embedded"] }
+the-light-core = { git = "https://github.com/butkeraites/the-light", rev = "80aa1a723b57787ab0548d0bbd8e9cbe4e8a3fb3", package = "the-light-core", default-features = false, features = ["embedded"] }

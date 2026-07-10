@@ -433,6 +433,42 @@ pub fn build_match_query(input: String) -> Option<String> {
     the_light_core::query::build_match_query(&input)
 }
 
+// --- Léxico: planos de SQL DATA-ONLY (ADR-0062, fatia lexicon) --------------
+// Última fatia SQL: colapsa o espelho de `sqlite-lexicon.web.ts`. Espelham
+// `the_light_core::query` (léxico) — o web executa `{sql, params}` no `wa-sqlite` e
+// mantém a agregação "primeiro não-nulo vence" no shaper TS. `base_strong` (chave de
+// agregação) vira fonte única no core; `DEFAULT_LEXICON_LIMIT` segue APP-owned.
+
+/// Plano do léxico verificado de uma passagem (`query::lexicon_collect_plan`): com `verse`
+/// acrescenta o filtro `AND t.verse = ?3` (um versículo), senão cobre o capítulo inteiro.
+/// O web agrega o resultado por Strong base (shaper TS). ADR-0062.
+#[uniffi::export]
+pub fn lexicon_collect_query(book: u8, chapter: u16, verse: Option<u16>) -> SqlPlan {
+    the_light_core::query::lexicon_collect_plan(book, chapter, verse).into()
+}
+
+/// Plano INTERLINEAR de um versículo (`query::interlinear_plan`): tokens na ordem de leitura
+/// (`ORDER BY t.word_index`), sem agregar. ADR-0062.
+#[uniffi::export]
+pub fn interlinear_query(book: u8, chapter: u16, verse: u16) -> SqlPlan {
+    the_light_core::query::interlinear_plan(book, chapter, verse).into()
+}
+
+/// Plano da atribuição (verbatim, CC-BY) de uma fonte usada (`query::attributions_plan`;
+/// `?1` = id da fonte). O web deduplica preservando a ordem (shaper TS). ADR-0062.
+#[uniffi::export]
+pub fn attributions_query(id: String) -> SqlPlan {
+    the_light_core::query::attributions_plan(&id).into()
+}
+
+/// Strong **base** (`query::base_strong`): remove o sufixo de desambiguação à direita
+/// (`"H7225G"` → `"H7225"`). Fonte única da chave de agregação do léxico — o web deixa de
+/// re-derivar `baseStrong`. ADR-0062.
+#[uniffi::export]
+pub fn base_strong(strongs: String) -> String {
+    the_light_core::query::base_strong(&strongs)
+}
+
 /// Analisa uma referência bíblica (PT ou EN) **delegando** ao `the-light-core`.
 ///
 /// O parsing, a tabela canônica e a resolução de ambiguidades vivem no core

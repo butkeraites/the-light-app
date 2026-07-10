@@ -1,24 +1,21 @@
 // app/web/sqlite-lexicon.web.ts — F3.12a (ADR-0031; par de sqlite-xref.web.ts)
 //
 // GLUE web do STORE de LÉXICO VERIFICADO (hand-written, VERSIONADO). Camada de
-// INFRAESTRUTURA que roda a consulta de léxico sobre um `wa-sqlite` aberto no
+// INFRAESTRUTURA que EXECUTA os planos de léxico do core sobre um `wa-sqlite` aberto no
 // `lexicon-sample.sqlite` (F5.15/ADR-0044: o DADO do léxico, ~9 MB, carregado ON-DEMAND
-// e SEPARADO do subset de leitura — antes era o combinado `reading-sample.sqlite`, F1.13/
-// F3.5). O arquivo propaga `original_tokens`/`lexicon`/`scholarly_sources`
-// desde a F3.5/ADR-0027 (João 3:16: 26 tokens Strong; STEP CC-BY) — ESPELHANDO o
-// retrieval do core (`the_light_core::ai::lexicon::verified_lexicon`, rev pinado
-// 04b9b24), que é `embedded`-only (rusqlite) e NÃO entra no wasm:
-//   - SELECT `original_tokens` + LEFT JOIN `lexicon` (COALESCE da glosa) por
-//     book/chapter[/verse];
-//   - agregação por Strong BASE (remove letras de desambiguação à direita:
-//     "H7225G"→"H7225"), contando ocorrências, "primeiro não-nulo vence" p/
-//     lemma/translit/gloss/testament (na ordem das linhas, como o core);
-//   - ordenação por ocorrências DESC (desempate estável por Strong ASC), truncada ao
-//     `limit`;
-//   - atribuições (STEP CC-BY) via `scholarly_sources.attribution` por `source_id`
-//     usado (ordem por `source_id` ASC, deduplicada — espelha o `BTreeSet` do core).
+// e SEPARADO do subset de leitura). O arquivo propaga `original_tokens`/`lexicon`/
+// `scholarly_sources` desde a F3.5/ADR-0027 (João 3:16: 26 tokens Strong; STEP CC-BY).
 //
-// ADR-0011 (precedente passage/xref/search web): SELECT + shaping É infra TS
+// ADR-0062 (fatia LEXICON — última fatia SQL): o SELECT e os params NÃO são mais
+// espelhados aqui — vêm da FRONTEIRA do core (`lexiconCollectQuery`/`interlinearQuery`/
+// `attributionsQuery`, planos `the_light_core::query`), executados via `bindPlanParams`
+// (posicional). O que PERMANECE em TS é só o SHAPER (não é SQL): a agregação por Strong
+// BASE — "primeiro não-nulo vence" (na ordem das linhas, como o core), ocorrências,
+// ordenação por ocorrências DESC (desempate estável por Strong ASC) e o corte no `limit`;
+// a chave de agregação (`baseStrong`) também vem do core. Assim há UMA fonte da verdade
+// (SQL/params/base_strong no Rust); o web só EXECUTA e AGREGA.
+//
+// ADR-0011 (precedente passage/xref/search web): executar plano + shaping É infra TS
 // sancionada; o que NUNCA vira TS é prompt/verify/citação/aparato do estudo (isso vem
 // do Rust `ai-pure`, ADR-0029/ADR-0031). Anti-alucinação: glosas/lemas/Strong são
 // VERBATIM do store local (STEP Bible / TBESH–TBESG, CC-BY), nunca gerados por LLM.
@@ -28,55 +25,20 @@
 // usa um VFS de memória sobre os bytes de `assets/data/lexicon-sample.sqlite`.
 import * as SQLite from 'wa-sqlite';
 
-import type {
-  InterlinearTokenOut,
-  InterlinearVerseOut,
-  LexEntry,
-  VerifiedLexiconOut,
+import {
+  attributionsQuery,
+  baseStrong,
+  interlinearQuery,
+  lexiconCollectQuery,
+  type InterlinearTokenOut,
+  type InterlinearVerseOut,
+  type LexEntry,
+  type VerifiedLexiconOut,
 } from './generated/the_light_app_core';
-import type { ReadingDb } from './sqlite-reading.web';
+import { bindPlanParams, type ReadingDb } from './sqlite-reading.web';
 
-/** Limite padrão de entradas (espelha `DEFAULT_LEXICON_LIMIT = 32` do core). */
+/** Limite padrão de entradas (espelha `DEFAULT_LEXICON_LIMIT = 32` do core). App-owned. */
 export const DEFAULT_LEXICON_LIMIT = 32;
-
-/**
- * SELECT espelhado de `ai::lexicon::verified_lexicon`/`collect` (lexicon.rs, rev
- * 04b9b24):
- *   "SELECT t.strongs, t.lemma, t.translit, t.testament,
- *           COALESCE(l.gloss_pt, l.gloss, t.gloss) AS gloss, t.source_id, l.source_id
- *    FROM original_tokens t
- *    LEFT JOIN lexicon l ON l.strongs = t.strongs
- *    WHERE t.book_number = ?1 AND t.chapter = ?2
- *    AND t.strongs IS NOT NULL AND t.strongs <> ''"
- * (+ "AND t.verse = ?3" quando há versículo). É a ÚNICA SQL de léxico no web — infra,
- * não domínio. NENHUM ORDER BY: a ordem das linhas é a do SQLite (rowid), como no core
- * (o "primeiro não-nulo vence" da agregação depende dessa ordem).
- */
-const LEXICON_SELECT_BASE =
-  'SELECT t.strongs, t.lemma, t.translit, t.testament, ' +
-  'COALESCE(l.gloss_pt, l.gloss, t.gloss) AS gloss, t.source_id, l.source_id ' +
-  'FROM original_tokens t ' +
-  'LEFT JOIN lexicon l ON l.strongs = t.strongs ' +
-  "WHERE t.book_number = ? AND t.chapter = ? AND t.strongs IS NOT NULL AND t.strongs <> ''";
-
-/**
- * SELECT espelhado de `attributions_for` (lexicon.rs): a atribuição verbatim (CC-BY)
- * de um `source_id` usado. `scholarly_sources.attribution` é a string exigida (STEP).
- */
-const ATTRIBUTION_SELECT = 'SELECT attribution FROM scholarly_sources WHERE id = ?';
-
-/**
- * SELECT espelhado de `interlinear_tokens` (lexicon.rs): tokens de idioma original de UM versículo,
- * na ordem de leitura (`word_index`), SEM agregar e SEM filtro de Strong (partículas incluídas).
- * `LEFT JOIN lexicon` traz a glosa PT (COALESCE). Guardado contra o Rust por `mirror-drift`.
- */
-const INTERLINEAR_SELECT =
-  'SELECT t.surface, t.translit, t.lemma, t.strongs, t.morph_code, ' +
-  'COALESCE(l.gloss_pt, l.gloss, t.gloss) AS gloss, t.word_index, t.testament, t.source_id ' +
-  'FROM original_tokens t ' +
-  'LEFT JOIN lexicon l ON l.strongs = t.strongs ' +
-  'WHERE t.book_number = ? AND t.chapter = ? AND t.verse = ? ' +
-  'ORDER BY t.word_index';
 
 /** Uma linha bruta do SELECT de léxico (apenas infra; o domínio é agregado adiante). */
 interface TokenRow {
@@ -98,15 +60,6 @@ interface Agg {
   occ: number;
 }
 
-/**
- * Strong BASE: remove as letras de desambiguação à DIREITA — espelha `base_strong`
- * do core (`s.trim().trim_end_matches(|c| c.is_ascii_alphabetic())`). Ex.: "H7225G"
- * → "H7225"; "G2316" → "G2316" (termina em dígito, nada a remover).
- */
-export function baseStrong(s: string): string {
-  return s.trim().replace(/[A-Za-z]+$/, '');
-}
-
 /** Lê a coluna de texto opcional (`column_text` devolve "" p/ NULL → normaliza a undefined). */
 function textOrUndef(sqlite3: ReadingDb['sqlite3'], stmt: number, i: number): string | undefined {
   const t = sqlite3.column_text(stmt, i);
@@ -114,19 +67,12 @@ function textOrUndef(sqlite3: ReadingDb['sqlite3'], stmt: number, i: number): st
 }
 
 /**
- * Resolve os versículos abrangidos por uma referência numérica (espelha
- * `resolve_verses` do core): versículo único → `[v]`; capítulo inteiro (`verse`
- * ausente) → `undefined` (sem filtro de versículo).
- */
-function resolveVerses(verse: number | undefined): number[] | undefined {
-  return verse == null ? undefined : [verse];
-}
-
-/**
- * Roda o SELECT de léxico (uma vez por versículo, ou uma vez sem filtro p/ o capítulo
- * inteiro) e agrega os tokens por Strong base — ESPELHANDO `verified_lexicon`/`collect`
- * do core. ISOLADA do VFS (browser OPFS / prova node em memória). NENHUMA lógica de
- * anti-alucinação aqui: só o SELECT + a agregação (infra, ADR-0011).
+ * Roda o plano de léxico (`lexiconCollectQuery` do core — uma passagem: um versículo, ou o
+ * capítulo inteiro quando `verse` é ausente, decidido PELO PLANO) e agrega os tokens por
+ * Strong base — ESPELHANDO `verified_lexicon`/`collect` do core. ISOLADA do VFS (browser
+ * OPFS / prova node em memória). NENHUMA lógica de anti-alucinação aqui: só a execução do
+ * plano + a agregação (infra, ADR-0011/ADR-0062). A chave de agregação vem do core
+ * (`baseStrong`).
  */
 export async function queryVerifiedLexicon(
   handle: ReadingDb,
@@ -154,33 +100,21 @@ export async function queryVerifiedLexicon(
     if (row.lexSource != null) sourceIds.add(row.lexSource);
   };
 
-  const runFor = async (v: number | undefined): Promise<void> => {
-    const sql = v == null ? LEXICON_SELECT_BASE : `${LEXICON_SELECT_BASE} AND t.verse = ?`;
-    for await (const stmt of sqlite3.statements(db, sql)) {
-      let i = 1;
-      sqlite3.bind(stmt, i++, book);
-      sqlite3.bind(stmt, i++, chapter);
-      if (v != null) sqlite3.bind(stmt, i++, v);
-      while ((await sqlite3.step(stmt)) === SQLite.SQLITE_ROW) {
-        collectRow({
-          strongs: sqlite3.column_text(stmt, 0),
-          lemma: textOrUndef(sqlite3, stmt, 1),
-          translit: textOrUndef(sqlite3, stmt, 2),
-          testament: sqlite3.column_text(stmt, 3),
-          gloss: textOrUndef(sqlite3, stmt, 4),
-          tokenSource: textOrUndef(sqlite3, stmt, 5),
-          lexSource: textOrUndef(sqlite3, stmt, 6),
-        });
-      }
-    }
-  };
-
-  const verses = resolveVerses(verse);
-  if (verses == null) {
-    await runFor(undefined);
-  } else {
-    for (const v of verses) {
-      await runFor(v);
+  // Plano do core: SELECT + params (com o filtro de versículo quando `verse` está presente;
+  // ausente = capítulo inteiro). O web só EXECUTA — sem SQL/params re-derivados (ADR-0062).
+  const { sql, params } = lexiconCollectQuery(book, chapter, verse);
+  for await (const stmt of sqlite3.statements(db, sql)) {
+    bindPlanParams(sqlite3, stmt, params);
+    while ((await sqlite3.step(stmt)) === SQLite.SQLITE_ROW) {
+      collectRow({
+        strongs: sqlite3.column_text(stmt, 0),
+        lemma: textOrUndef(sqlite3, stmt, 1),
+        translit: textOrUndef(sqlite3, stmt, 2),
+        testament: sqlite3.column_text(stmt, 3),
+        gloss: textOrUndef(sqlite3, stmt, 4),
+        tokenSource: textOrUndef(sqlite3, stmt, 5),
+        lexSource: textOrUndef(sqlite3, stmt, 6),
+      });
     }
   }
 
@@ -204,17 +138,19 @@ export async function queryVerifiedLexicon(
 }
 
 /**
- * Busca as atribuições (verbatim) das fontes usadas — espelha `attributions_for` do
- * core (`SELECT attribution FROM scholarly_sources WHERE id = ?`, dedup preservando a
- * ordem). `ids` deve chegar já ordenado (BTreeSet do core = ordem ASC).
+ * Busca as atribuições (verbatim) das fontes usadas — EXECUTA o plano `attributionsQuery`
+ * do core (`SELECT attribution FROM scholarly_sources WHERE id = ?1`) por `id` e deduplica
+ * preservando a ordem (espelha `attributions_for`). `ids` deve chegar já ordenado (BTreeSet
+ * do core = ordem ASC).
  */
 export async function queryAttributions(handle: ReadingDb, ids: string[]): Promise<string[]> {
   const { sqlite3, db } = handle;
   const out: string[] = [];
   const seen = new Set<string>();
   for (const id of ids) {
-    for await (const stmt of sqlite3.statements(db, ATTRIBUTION_SELECT)) {
-      sqlite3.bind(stmt, 1, id);
+    const { sql, params } = attributionsQuery(id);
+    for await (const stmt of sqlite3.statements(db, sql)) {
+      bindPlanParams(sqlite3, stmt, params);
       while ((await sqlite3.step(stmt)) === SQLite.SQLITE_ROW) {
         const attr = sqlite3.column_text(stmt, 0);
         if (attr != null && attr.length > 0 && !seen.has(attr)) {
@@ -228,10 +164,10 @@ export async function queryAttributions(handle: ReadingDb, ids: string[]): Promi
 }
 
 /**
- * Roda o SELECT INTERLINEAR (um versículo) e devolve os tokens na ordem de `word_index` +
- * as atribuições CC-BY — ESPELHANDO `interlinear_tokens` do core. SEM agregação (uma linha por
- * palavra). ISOLADA do VFS (OPFS no browser / memória na prova node). Anti-alucinação: campos
- * verbatim do store.
+ * Roda o plano INTERLINEAR do core (`interlinearQuery` — um versículo, `ORDER BY word_index`)
+ * e devolve os tokens na ordem de leitura + as atribuições CC-BY — ESPELHANDO
+ * `interlinear_tokens` do core. SEM agregação (uma linha por palavra). ISOLADA do VFS (OPFS no
+ * browser / memória na prova node). Anti-alucinação: campos verbatim do store.
  */
 export async function queryInterlinearVerse(
   handle: ReadingDb,
@@ -242,10 +178,9 @@ export async function queryInterlinearVerse(
   const { sqlite3, db } = handle;
   const tokens: InterlinearTokenOut[] = [];
   const sourceIds = new Set<string>();
-  for await (const stmt of sqlite3.statements(db, INTERLINEAR_SELECT)) {
-    sqlite3.bind(stmt, 1, book);
-    sqlite3.bind(stmt, 2, chapter);
-    sqlite3.bind(stmt, 3, verse);
+  const { sql, params } = interlinearQuery(book, chapter, verse);
+  for await (const stmt of sqlite3.statements(db, sql)) {
+    bindPlanParams(sqlite3, stmt, params);
     while ((await sqlite3.step(stmt)) === SQLite.SQLITE_ROW) {
       const src = textOrUndef(sqlite3, stmt, 8);
       if (src != null) sourceIds.add(src);
