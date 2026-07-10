@@ -17,7 +17,18 @@
 // `assets/data/reading-sample.sqlite`. Ambos exercitam EXATAMENTE estas funções.
 import * as SQLite from 'wa-sqlite';
 
-import { VerseRange, type Passage, type Reference, type Translation, type Verse } from './generated/the_light_app_core';
+import {
+  chapterCountQuery,
+  chapterQuery,
+  hasTranslationQuery,
+  translationsQuery,
+  VerseRange,
+  type Passage,
+  type Reference,
+  type SqlParam,
+  type Translation,
+  type Verse,
+} from './generated/the_light_app_core';
 import type { PassageDb } from './sqlite.web';
 
 /**
@@ -33,45 +44,19 @@ export interface ChapterRow {
 }
 
 /**
- * SELECT espelhado de `EmbeddedSource::passage`, variante `VerseRange::WholeChapter`
- * (a fronteira nativa usa `Reference::whole_chapter(book, chapter)`). Fonte
- * (the-light-core/src/source/embedded.rs):
- *   "SELECT verse, text FROM verses \
- *    WHERE translation_id = ?1 AND book_number = ?2 AND chapter = ?3 \
- *    ORDER BY verse"
- * É a ÚNICA SQL de leitura de capítulo no web — infraestrutura, não domínio.
+ * Liga os `params` de um plano (`SqlPlan` da fronteira) ao statement, POSICIONALMENTE
+ * (1-indexado) — `Text`→string, `Int`→bigint. O web só EXECUTA o `{sql, params}` que o
+ * core montou; nenhuma SQL de leitura ou montagem de params vive mais aqui (ADR-0062).
  */
-export const CHAPTER_SELECT_WHOLE =
-  'SELECT verse, text FROM verses ' +
-  'WHERE translation_id = ? AND book_number = ? AND chapter = ? ' +
-  'ORDER BY verse';
-
-/**
- * SELECT espelhado de `EmbeddedSource::chapter_count`. Fonte (embedded.rs):
- *   "SELECT max(chapter) FROM verses WHERE translation_id = ?1 AND book_number = ?2"
- * `max(chapter)` é `NULL` quando o livro/tradução não tem versículos → 0 (idêntico
- * a `max.unwrap_or(0)` do core).
- */
-export const CHAPTER_COUNT_SELECT =
-  'SELECT max(chapter) FROM verses WHERE translation_id = ? AND book_number = ?';
-
-/**
- * SELECT espelhado de `EmbeddedSource::translations`. Fonte (embedded.rs):
- *   "SELECT id, abbrev, name, language, license, embeddable \
- *    FROM translations ORDER BY language, id"
- * A ordenação (en antes de pt; `kjv` antes de `alm1911`) vem do SQLite — nunca de
- * TS. `embeddable` é `int`; mapeia para `embeddable != 0` (igual ao core).
- */
-export const TRANSLATIONS_SELECT =
-  'SELECT id, abbrev, name, language, license, embeddable ' +
-  'FROM translations ORDER BY language, id';
-
-/**
- * SELECT espelhado de `EmbeddedSource::has_translation`. Fonte (embedded.rs):
- *   "SELECT 1 FROM translations WHERE id = ?1"
- * O core checa isto ANTES de `passage`; tradução ausente → `UnknownTranslation`.
- */
-export const HAS_TRANSLATION_SELECT = 'SELECT 1 FROM translations WHERE id = ?';
+export function bindPlanParams(
+  sqlite3: ReadingDb['sqlite3'],
+  stmt: number,
+  params: SqlParam[],
+): void {
+  params.forEach((p, i) => {
+    sqlite3.bind(stmt, i + 1, p.inner.value);
+  });
+}
 
 /**
  * Roda o SELECT de capítulo inteiro (espelho de `EmbeddedSource::passage` /
@@ -85,11 +70,10 @@ export async function queryChapter(
   chapter: number,
 ): Promise<ChapterRow[]> {
   const { sqlite3, db } = handle;
+  const { sql, params } = chapterQuery(book, chapter, translationId);
   const rows: ChapterRow[] = [];
-  for await (const stmt of sqlite3.statements(db, CHAPTER_SELECT_WHOLE)) {
-    sqlite3.bind(stmt, 1, translationId);
-    sqlite3.bind(stmt, 2, book);
-    sqlite3.bind(stmt, 3, chapter);
+  for await (const stmt of sqlite3.statements(db, sql)) {
+    bindPlanParams(sqlite3, stmt, params);
     while ((await sqlite3.step(stmt)) === SQLite.SQLITE_ROW) {
       rows.push({
         verse: sqlite3.column_int(stmt, 0),
@@ -111,10 +95,10 @@ export async function queryChapterCount(
   book: number,
 ): Promise<number> {
   const { sqlite3, db } = handle;
+  const { sql, params } = chapterCountQuery(book, translationId);
   let count = 0;
-  for await (const stmt of sqlite3.statements(db, CHAPTER_COUNT_SELECT)) {
-    sqlite3.bind(stmt, 1, translationId);
-    sqlite3.bind(stmt, 2, book);
+  for await (const stmt of sqlite3.statements(db, sql)) {
+    bindPlanParams(sqlite3, stmt, params);
     while ((await sqlite3.step(stmt)) === SQLite.SQLITE_ROW) {
       count = sqlite3.column_int(stmt, 0);
     }
@@ -129,8 +113,10 @@ export async function queryChapterCount(
  */
 export async function queryTranslations(handle: ReadingDb): Promise<Translation[]> {
   const { sqlite3, db } = handle;
+  const { sql, params } = translationsQuery();
   const rows: Translation[] = [];
-  for await (const stmt of sqlite3.statements(db, TRANSLATIONS_SELECT)) {
+  for await (const stmt of sqlite3.statements(db, sql)) {
+    bindPlanParams(sqlite3, stmt, params);
     while ((await sqlite3.step(stmt)) === SQLite.SQLITE_ROW) {
       rows.push({
         id: sqlite3.column_text(stmt, 0),
@@ -151,9 +137,10 @@ export async function queryTranslations(handle: ReadingDb): Promise<Translation[
  */
 export async function hasTranslation(handle: ReadingDb, id: string): Promise<boolean> {
   const { sqlite3, db } = handle;
+  const { sql, params } = hasTranslationQuery(id);
   let found = false;
-  for await (const stmt of sqlite3.statements(db, HAS_TRANSLATION_SELECT)) {
-    sqlite3.bind(stmt, 1, id);
+  for await (const stmt of sqlite3.statements(db, sql)) {
+    bindPlanParams(sqlite3, stmt, params);
     while ((await sqlite3.step(stmt)) === SQLite.SQLITE_ROW) {
       found = true;
     }

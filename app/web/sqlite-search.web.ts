@@ -21,9 +21,15 @@
 // do `assets/data/reading-sample.sqlite`. Ambos exercitam EXATAMENTE estas funções.
 import * as SQLite from 'wa-sqlite';
 
-import { HL_END, HL_START } from '../lib/highlight';
-import { VerseRange, type Reference, type SearchHit } from './generated/the_light_app_core';
-import { hasTranslation, type ReadingDb } from './sqlite-reading.web';
+import {
+  buildMatchQuery as coreBuildMatchQuery,
+  searchQuery,
+  VerseRange,
+  type Reference,
+  type SearchHit,
+  type SqlPlan,
+} from './generated/the_light_app_core';
+import { bindPlanParams, hasTranslation, type ReadingDb } from './sqlite-reading.web';
 
 /** Limite padrão de resultados (espelha `search::DEFAULT_LIMIT = 20` do core). */
 export const DEFAULT_LIMIT = 20;
@@ -42,71 +48,27 @@ export interface SearchRow {
 }
 
 /**
- * SELECT espelhado de `the_light_core::search::search` (search.rs, rev `8f66004`):
- *   "SELECT v.book_number, v.chapter, v.verse, v.text, \
- *    highlight(verses_fts, 0, ?, ?) AS hl, bm25(verses_fts) AS score \
- *    FROM verses_fts JOIN verses v ON v.id = verses_fts.verse_id \
- *    WHERE verses_fts MATCH ? AND verses_fts.translation_id = ?"
- * O filtro opcional de livro (`AND v.book_number = ?`) e o `ORDER BY score LIMIT ?`
- * são anexados em runtime, idênticos ao core. É a ÚNICA SQL de busca no web —
- * infraestrutura, não domínio (ranking/destaque são do FTS5, não de TS).
- */
-export const SEARCH_SELECT_BASE =
-  'SELECT v.book_number, v.chapter, v.verse, v.text, ' +
-  'highlight(verses_fts, 0, ?, ?) AS hl, bm25(verses_fts) AS score ' +
-  'FROM verses_fts JOIN verses v ON v.id = verses_fts.verse_id ' +
-  'WHERE verses_fts MATCH ? AND verses_fts.translation_id = ?';
-
-/**
- * Espelha `the_light_core::search::build_match_query` (search.rs): divide a query
- * por espaços, envolve CADA palavra em aspas (escapando `"` interna → `""`) e
- * junta por espaço (AND implícito do FTS5). Sem termo utilizável (vazia/só
- * espaços) → `null` (o chamador devolve `[]` sem erro). É INFRA (anti-injeção
- * FTS5 + semântica AND), NÃO ranqueamento — mirror obrigatório p/ paridade e p/
- * impedir injeção de sintaxe FTS5.
+ * Builder de expressão FTS5 seguro — DELEGA a `build_match_query` da fronteira
+ * (`the_light_core::query`, ADR-0062): divide por espaços, aspa cada termo (escapa
+ * `"`→`""`, AND implícito), `null` se sem termo. Fonte única no core; o `?? null`
+ * adapta o `Option<String>`→`string|null` do contrato antigo.
  */
 export function buildMatchQuery(input: string): string | null {
-  const terms = input
-    .split(/\s+/)
-    .filter((w) => w.length > 0)
-    .map((w) => `"${w.replace(/"/g, '""')}"`);
-  return terms.length === 0 ? null : terms.join(' ');
+  return coreBuildMatchQuery(input) ?? null;
 }
 
 /**
- * Roda o SELECT de busca (espelho de `search::search`) e devolve as linhas
- * `{ book, chapter, verse, text, highlighted, score }` JÁ ordenadas por `score`
- * (BM25, do SQLite). ISOLADA do VFS: funciona sobre o VFS OPFS (browser) e o de
- * memória (prova node). Bind na MESMA ordem do core: HL_START, HL_END, match_query,
- * translation, [book], limit. `limit` é clampado a `>= 1` (espelha o clamp do core
- * `[1, i64::MAX]`: evita LIMIT 0).
+ * EXECUTA um plano de busca (`SqlPlan` de `search_query`, ADR-0062) e devolve as
+ * linhas `{ book, chapter, verse, text, highlighted, score }` JÁ ordenadas por
+ * `score` (BM25, do SQLite). ISOLADA do VFS (OPFS no browser, memória na prova). O
+ * SQL, a ordem dos params (HL_START, HL_END, match_query, translation, [book], limit)
+ * e o clamp de limite vêm todos do core — o web só liga e lê as colunas.
  */
-export async function querySearch(
-  handle: ReadingDb,
-  matchQuery: string,
-  translation: string,
-  book?: number,
-  limit: number = DEFAULT_LIMIT,
-): Promise<SearchRow[]> {
+export async function querySearch(handle: ReadingDb, plan: SqlPlan): Promise<SearchRow[]> {
   const { sqlite3, db } = handle;
-  let sql = SEARCH_SELECT_BASE;
-  if (book !== undefined) {
-    sql += ' AND v.book_number = ?';
-  }
-  sql += ' ORDER BY score LIMIT ?';
-
-  const clampedLimit = Math.max(1, Math.trunc(limit));
   const rows: SearchRow[] = [];
-  for await (const stmt of sqlite3.statements(db, sql)) {
-    let i = 1;
-    sqlite3.bind(stmt, i++, HL_START);
-    sqlite3.bind(stmt, i++, HL_END);
-    sqlite3.bind(stmt, i++, matchQuery);
-    sqlite3.bind(stmt, i++, translation);
-    if (book !== undefined) {
-      sqlite3.bind(stmt, i++, book);
-    }
-    sqlite3.bind(stmt, i++, clampedLimit);
+  for await (const stmt of sqlite3.statements(db, plan.sql)) {
+    bindPlanParams(sqlite3, stmt, plan.params);
     while ((await sqlite3.step(stmt)) === SQLite.SQLITE_ROW) {
       rows.push({
         book: sqlite3.column_int(stmt, 0),
@@ -164,10 +126,12 @@ export async function searchOnHandle(
     // fronteira nativa propaga como `CoreError` — checado ANTES do SQL de busca.
     throw new Error(`versão desconhecida: ${translation}`);
   }
-  const matchQuery = buildMatchQuery(query);
-  if (matchQuery === null) {
+  // O plano (build_match_query + SQL + params + clamp) vem do core; `undefined` = sem
+  // termo utilizável ⇒ `[]` SEM erro (espelha `search_plan` → `None`).
+  const plan = searchQuery(query, translation, book, limit ?? DEFAULT_LIMIT);
+  if (plan === undefined) {
     return [];
   }
-  const rows = await querySearch(handle, matchQuery, translation, book, limit ?? DEFAULT_LIMIT);
+  const rows = await querySearch(handle, plan);
   return rows.map((row) => composeSearchHit(row, translation));
 }
