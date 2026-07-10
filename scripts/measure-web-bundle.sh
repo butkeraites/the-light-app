@@ -314,9 +314,17 @@ const BUDGET = {
   //   eager (i18n usa prefs; os paineis de IA/settings usam keystore). NAO e regressao: e a DE-
   //   DUPLICACAO (o LOC liquido cai). BYTES do entry INALTERADOS. Tolerancias INALTERADAS. Espelhado
   //   em web-bundle-budget.json (noteADR0073).
+  //
+  // NOTA ADR-0074 (deepening — AttributionBlock CC-BY) — re-baseline DELIBERADO: ESTRUTURAL moduleCount
+  //   918 -> 920 (+2 modulos eager EXATOS). A atribuicao STEP CC-BY (constante + fallback + render)
+  //   duplicada em ReaderStudyPanel/ReaderInterlinearPanel (com import painel->painel de
+  //   STEP_ATTRIBUTION) virou `lib/attribution.ts` (constante + attributionLinesFrom) + o kit
+  //   `components/ui/AttributionBlock.tsx`, importados pelos 2 paineis (eager nas rotas de leitura).
+  //   NAO e regressao: e a DE-DUPLICACAO (o LOC liquido cai; some o import painel->painel). BYTES do
+  //   entry INALTERADOS. Tolerancias INALTERADAS. Espelhado em web-bundle-budget.json (noteADR0074).
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 918,
+    moduleCount: 920,
     eagerBytes: { nominal: 1425377, tolerance: 1024 },
     eagerGzipBytes: { nominal: 366056, tolerance: 2048 },
     eagerBrotliBytes: { nominal: 289318, tolerance: 1024 },

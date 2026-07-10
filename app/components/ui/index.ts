@@ -12,4 +12,5 @@ export { ListRow } from './ListRow';
 export { BottomSheet } from './BottomSheet';
 export { CitedText } from './CitedText';
 export { InterpretationBlock } from './InterpretationBlock';
+export { AttributionBlock } from './AttributionBlock';
 export { Reveal } from './Reveal';
