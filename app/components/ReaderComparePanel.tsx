@@ -43,6 +43,7 @@ import {
 import { errMessage } from '../lib/errMessage';
 import { useI18n } from '../lib/i18n';
 import { getKey } from '../lib/keystore';
+import { goToProviderSettings } from '../lib/aiConfigure';
 import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { askAnchored, type AiAnswer } from '../web/reading';
 import { AiProviderNotice, useConfiguredAiProviders } from './AiProviderNotice';
@@ -101,10 +102,7 @@ export function ReaderComparePanel({
   const showNoProviderNotice = providersChecked && providersWithKey.length === 0;
 
   // F6.6: leva à tela de AJUSTES (hub canônico de chave BYOK, campos por provedor). Fecha antes.
-  function onConfigureProvider() {
-    onClose();
-    router.push('/settings');
-  }
+  const onConfigureProvider = () => goToProviderSettings(onClose);
 
   // Ao trocar de passagem (nova âncora) ou fechar, limpa os resultados — nunca persiste
   // texto entre passagens (a âncora é sempre a passagem corrente do store).

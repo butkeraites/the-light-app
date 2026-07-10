@@ -337,9 +337,16 @@ const BUDGET = {
   //   capitulo p/ `lib/useImmersiveChrome.ts`, importado pela rota de leitura (eager). E COESAO (1 caller),
   //   nao deepening; a tela renderiza <Animated.View {...overlayProps} style=[..., animatedStyle]>. NAO e
   //   regressao. BYTES do entry INALTERADOS. Tolerancias INALTERADAS. Espelhado em web-bundle-budget.json.
+  //
+  // NOTA ADR-0079 (deepening — ProviderNeedKeyCta + goToProviderSettings) — re-baseline DELIBERADO:
+  //   ESTRUTURAL moduleCount 922 -> 924 (+2 modulos eager EXATOS). O bloco CTA "provedor sem chave"
+  //   (View+erro+Button) duplicado em Study/Chat/Scope virou `components/ProviderNeedKeyCta.tsx`; o
+  //   handler `onConfigureProvider` (onClose+router.push, copiado nos 5 paineis) virou
+  //   `lib/aiConfigure.ts`. Importados pelos paineis de IA (eager nas rotas de leitura). NAO e regressao:
+  //   e a DE-DUPLICACAO. BYTES do entry INALTERADOS. Tolerancias INALTERADAS. Espelhado em web-bundle-budget.json.
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 922,
+    moduleCount: 924,
     eagerBytes: { nominal: 1425377, tolerance: 1024 },
     eagerGzipBytes: { nominal: 366056, tolerance: 2048 },
     eagerBrotliBytes: { nominal: 289318, tolerance: 1024 },

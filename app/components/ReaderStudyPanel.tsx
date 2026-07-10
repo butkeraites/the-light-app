@@ -33,6 +33,8 @@ import { useI18n, type MessageKey } from '../lib/i18n';
 import { buildStudyExport } from '../lib/studyExport';
 import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { AiProviderNotice } from './AiProviderNotice';
+import { ProviderNeedKeyCta } from './ProviderNeedKeyCta';
+import { goToProviderSettings } from '../lib/aiConfigure';
 import { ProviderChips, useProviderSelection } from './ProviderPicker';
 import { AiCostMeta } from './AiCostMeta';
 import { AttributionBlock, BottomSheet, Button, Chip, CitedText, InterpretationBlock, SectionLabel } from './ui';
@@ -167,10 +169,7 @@ export function ReaderStudyPanel({
   const [exportError, setExportError] = useState<string | null>(null);
 
   // F6.6: leva à tela de AJUSTES (hub canônico de chave BYOK, campos por provedor). Fecha antes.
-  function onConfigureProvider() {
-    onClose();
-    router.push('/settings');
-  }
+  const onConfigureProvider = () => goToProviderSettings(onClose);
 
   // Ao trocar de passagem ou fechar, limpa o resultado (nunca persiste texto entre refs).
   useEffect(() => {
@@ -295,17 +294,7 @@ export function ReaderStudyPanel({
       />
       {/* Provedor real sem chave → erro claro + CTA p/ Ajustes (não trava; envio desabilitado). */}
       {needsKey ? (
-        <View style={styles.needKeyBlock} testID="study-provider-needkey">
-          <Text style={styles.error}>{t('ask.needKeyError', { provider })}</Text>
-          <Button
-            title={t('ai.noProviderCta')}
-            variant="secondary"
-            onPress={onConfigureProvider}
-            testID="study-provider-configure"
-            accessibilityLabel={t('a11y.aiConfigure')}
-            style={styles.actionBtn}
-          />
-        </View>
+        <ProviderNeedKeyCta provider={provider} onConfigure={onConfigureProvider} testIDPrefix="study" buttonStyle={styles.actionBtn} />
       ) : null}
 
       {/* ── MODO ──────────────────────────────────────────────────────── */}
@@ -538,7 +527,6 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
     // interpretação em CitedText/InterpretationBlock; botões em <Button>. Aqui: layout dos grupos
     // de chips, inputs, e os blocos de aparato (avisos/citações/léxico/atribuição/meta).
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.xs },
-    needKeyBlock: { marginTop: space.sm, gap: space.xs },
     actionBtn: { marginTop: space.md },
     hint: { ...type.caption, color: colors.muted, marginTop: space.sm, fontStyle: 'italic' },
     keyInput: {

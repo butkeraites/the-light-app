@@ -25,6 +25,8 @@ import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { parseReference } from '../web/reference';
 import { askAnchoredStream, askMultiAnchored, type AiAnswer, type AiAnswerMulti } from '../web/reading';
 import { AiProviderNotice } from './AiProviderNotice';
+import { ProviderNeedKeyCta } from './ProviderNeedKeyCta';
+import { goToProviderSettings } from '../lib/aiConfigure';
 import { ProviderChips, useProviderSelection } from './ProviderPicker';
 import { PassageResultView } from './PassageResultView';
 import { BottomSheet, Button, CitedText, InterpretationBlock, SectionLabel } from './ui';
@@ -105,10 +107,7 @@ export function ScopeStudySheet({
     };
   }, [visible, chunks, translation, bookLabelOf]);
 
-  function onConfigureProvider() {
-    onClose();
-    router.push('/settings');
-  }
+  const onConfigureProvider = () => goToProviderSettings(onClose);
 
   const askDisabled = busy || question.trim().length === 0 || chunks.length === 0 || needsKey;
 
@@ -185,16 +184,7 @@ export function ScopeStudySheet({
         onSelect={setProvider}
       />
       {needsKey ? (
-        <View style={styles.needKey} testID="scope-provider-needkey">
-          <Text style={styles.error}>{t('ask.needKeyError', { provider })}</Text>
-          <Button
-            title={t('ai.noProviderCta')}
-            variant="secondary"
-            onPress={onConfigureProvider}
-            testID="scope-provider-configure"
-            style={styles.actionBtn}
-          />
-        </View>
+        <ProviderNeedKeyCta provider={provider} onConfigure={onConfigureProvider} testIDPrefix="scope" buttonStyle={styles.actionBtn} />
       ) : null}
 
       {/* PERGUNTA sobre o escopo inteiro. */}
@@ -261,7 +251,6 @@ export function ScopeStudySheet({
 
 function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
   return StyleSheet.create({
-    needKey: { marginTop: space.sm, gap: space.xs },
     hint: { ...type.caption, color: colors.muted, marginTop: space.xs, fontStyle: 'italic' },
     input: {
       minHeight: 64,
