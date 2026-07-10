@@ -22,7 +22,7 @@ import assert from 'node:assert/strict';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = join(__dirname, '..', '..'); // .../app
 const XREF_PANEL = join(APP_ROOT, 'components', 'ReaderXrefPanel.tsx');
-const STEP_PANEL = join(APP_ROOT, 'components', 'ReaderStudyPanel.tsx');
+const STEP_PANEL = join(APP_ROOT, 'lib', 'attribution.ts'); // ADR-0074: STEP_ATTRIBUTION saiu do painel p/ o lib
 const ABOUT_SCREEN = join(APP_ROOT, 'app', 'about.tsx'); // Rodada 3: BLIVRE_ATTRIBUTION (CC-BY BLIVRE)
 const I18N = join(APP_ROOT, 'lib', 'i18n.ts');
 

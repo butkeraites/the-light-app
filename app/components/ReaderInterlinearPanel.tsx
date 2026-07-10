@@ -16,8 +16,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useI18n } from '../lib/i18n';
 import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { interlinearVerse, type InterlinearTokenOut, type InterlinearVerseOut } from '../web/reading';
-import { STEP_ATTRIBUTION } from './ReaderStudyPanel';
-import { BottomSheet, SectionLabel } from './ui';
+import { AttributionBlock, BottomSheet, SectionLabel } from './ui';
 
 /** Sufixo legível do Strong + morfologia CRUA (quando etiquetada). Só do RETORNO real. */
 function tokenMeta(tk: InterlinearTokenOut): string {
@@ -109,7 +108,6 @@ export function ReaderInterlinearPanel({
   // Atribuição a exibir: as `sources` REAIS do retorno (verbatim do banco). Fallback à substring
   // canônica só se o retorno (por algum motivo) não trouxer nenhuma — o requisito de licença nunca cai.
   const sources = data?.sources ?? [];
-  const attributionLines = sources.length > 0 ? sources : [STEP_ATTRIBUTION];
 
   return (
     <BottomSheet
@@ -154,14 +152,8 @@ export function ReaderInterlinearPanel({
             {t('interlinear.note')}
           </Text>
 
-          {/* ATRIBUIÇÃO STEP CC-BY (ADR-0026, OBRIGATÓRIA) — string(s) REAIS do retorno. */}
-          <View style={styles.attributionBlock} testID="interlinear-attribution">
-            {attributionLines.map((s, i) => (
-              <Text key={i} style={styles.attribution}>
-                {s}
-              </Text>
-            ))}
-          </View>
+          {/* ATRIBUIÇÃO STEP CC-BY (ADR-0026, OBRIGATÓRIA) — string(s) REAIS do retorno via `<AttributionBlock>`. */}
+          <AttributionBlock sources={sources} testID="interlinear-attribution" />
         </>
       )}
     </BottomSheet>
@@ -191,13 +183,5 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
     gloss: { ...type.body, fontSize: 13, color: colors.text, marginTop: 2 },
     meta: { ...type.caption, color: colors.accent, marginTop: 2 },
     note: { ...type.caption, color: colors.muted, fontStyle: 'italic', marginTop: space.md },
-    attributionBlock: { marginTop: space.md },
-    attribution: {
-      ...type.caption,
-      color: colors.muted,
-      textAlign: 'center',
-      paddingHorizontal: space.sm,
-      paddingTop: space.xs,
-    },
   });
 }

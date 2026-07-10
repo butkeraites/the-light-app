@@ -35,7 +35,7 @@ import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { AiProviderNotice } from './AiProviderNotice';
 import { ProviderChips, useProviderSelection } from './ProviderPicker';
 import { AiCostMeta } from './AiCostMeta';
-import { BottomSheet, Button, Chip, CitedText, InterpretationBlock, SectionLabel } from './ui';
+import { AttributionBlock, BottomSheet, Button, Chip, CitedText, InterpretationBlock, SectionLabel } from './ui';
 import {
   deepStudy,
   lexicalEntries,
@@ -60,14 +60,8 @@ const TAVILY_BACKEND = 'tavily';
 /** Estado do seletor 3-vias de pesquisa web (off | Wikipedia keyless | Tavily BYOK). */
 type WebBackend = 'off' | 'wikipedia' | 'tavily';
 
-/**
- * Atribuição STEP CC-BY CANÔNICA (ADR-0026) — string verbatim de
- * `scholarly_sources.attribution`. A UI exibe as `sources` REAIS do retorno (não esta
- * constante), mas exportamos a substring canônica p/ o grep de verificação e como
- * fallback textual do requisito de licença. NÃO alterar/omitir "STEP Bible".
- */
-export const STEP_ATTRIBUTION =
-  "Credit it to 'STEP Bible' linked to www.STEPBible.org (data based on work at Tyndale House, Cambridge; CC BY 4.0)";
+// ADR-0074: `STEP_ATTRIBUTION` + o fallback saíram daqui para `lib/attribution` (fonte única); o render
+// é o `<AttributionBlock>` do kit — some o import painel→painel que o Interlinear fazia deste arquivo.
 
 // Opção de seletor: valor do enum (fronteira) + `key` estável p/ o `testID` + `labelKey`
 // (chave i18n do CROMO). O RÓTULO é traduzido em render via `t(o.labelKey)`; o `value`/enum
@@ -271,7 +265,6 @@ export function ReaderStudyPanel({
   // constante canônica só se o retorno vier sem fontes (mantém o requisito de licença
   // sempre visível quando o léxico/estudo aparece).
   const sources = lexicon?.sources ?? [];
-  const attributionLines = sources.length > 0 ? sources : [STEP_ATTRIBUTION];
   const showAttribution = result != null || (lexicon != null && lexicon.entries.length > 0);
 
   return (
@@ -502,15 +495,7 @@ export function ReaderStudyPanel({
       {/* ── ATRIBUIÇÃO STEP CC-BY (ADR-0026, OBRIGATÓRIA) ────────────────
           Exibida SEMPRE que o léxico/estudo aparece (requisito de licença, molde do
           xref/ADR-0016). Vem das `sources` REAIS do retorno (verbatim do banco). */}
-      {showAttribution ? (
-        <View style={styles.attributionBlock} testID="study-attribution">
-          {attributionLines.map((s, i) => (
-            <Text key={i} style={styles.attribution}>
-              {s}
-            </Text>
-          ))}
-        </View>
-      ) : null}
+      {showAttribution ? <AttributionBlock sources={sources} testID="study-attribution" /> : null}
 
       {/* ── PROVEDOR/MODELO + DISCLAIMER (anti-alucinação) ──────────────── */}
       {result ? (
@@ -589,7 +574,6 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
     },
     lexText: { ...type.body, fontSize: 14, color: colors.verseText, flexShrink: 1, paddingRight: space.sm },
     lexOcc: { ...type.caption, color: colors.muted },
-    attributionBlock: { marginTop: space.md },
     attribution: {
       ...type.caption,
       color: colors.muted,
