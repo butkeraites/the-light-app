@@ -523,29 +523,35 @@ export async function deepStudy(
     import('./sqlite-lexicon-opfs.web'),
     import('./study.web'),
   ]);
+  // ADR-0072: brackets ANINHADOS (não dois `open` fora do try). Antes o `handle` de leitura abria
+  // FORA do try, então se `openLexiconDbWeb()` lançasse, ele VAZAVA. Agora o try externo garante o
+  // fechamento do `handle` mesmo se o léxico falhar ao abrir; o interno fecha o `lexHandle`.
   const handle = await openReadingDbWeb();
-  const lexHandle = await openLexiconDbWeb();
   try {
-    return await deepStudyOnHandle(
-      handle,
-      lexHandle,
-      defaultFetch,
-      translation,
-      book,
-      chapter,
-      verse,
-      mode,
-      lens,
-      depth,
-      lang,
-      providerName,
-      key,
-      model,
-      researchBackend,
-      researchKey,
-    );
+    const lexHandle = await openLexiconDbWeb();
+    try {
+      return await deepStudyOnHandle(
+        handle,
+        lexHandle,
+        defaultFetch,
+        translation,
+        book,
+        chapter,
+        verse,
+        mode,
+        lens,
+        depth,
+        lang,
+        providerName,
+        key,
+        model,
+        researchBackend,
+        researchKey,
+      );
+    } finally {
+      await lexHandle.close();
+    }
   } finally {
-    await lexHandle.close();
     await handle.close();
   }
 }
