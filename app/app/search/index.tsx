@@ -24,7 +24,8 @@ import { studyScope, useStudyScope } from '../../lib/useStudyScope';
 import { versesForChapter } from '../../lib/studyScope';
 import { ensureReadingDb } from '../../lib/db';
 import { useI18n } from '../../lib/i18n';
-import { buildDidYouMean, type DidYouMean } from '../../lib/searchSuggest';
+import { type DidYouMean } from '../../lib/searchSuggest';
+import { resolveDidYouMean } from '../../lib/searchIntent';
 import { suggestBooks, type BookSuggestion } from '../../lib/searchReferenceSuggest';
 import { getRecentSearches, pushRecentSearch } from '../../lib/recentSearches';
 import { suggestFuzzy, suggestWords } from '../../lib/searchWordlist';
@@ -191,20 +192,12 @@ function SearchContent() {
         setError(null);
         setLoading(false);
         if (hits.length === 0) {
-          // Sonda de existência: nº de resultados de um termo (limit=1 → 0/1). Só no zero-path.
-          const probe = (cand: string) =>
-            search(dbPath, cand, effectiveTranslation, undefined, 1)
-              .then((r) => r.length)
-              .catch(() => 0);
-          // ADR-0064 Fase C (typo): candidatos por edit-distance ≤2 do dicionário do corpus buscado
-          // ("eternidde" → "eternidade"). São palavras REAIS do corpus → sondam > 0; o typo original
-          // sonda 0 e é filtrado. Degrada a [] sem o asset de wordlist (busca segue intacta).
-          const fuzzy = await suggestFuzzy(term, searchLang, 6).catch(() => []);
-          const dym = await buildDidYouMean({
-            query: term,
-            locale,
-            probe,
-            extraCandidates: () => fuzzy,
+          // ADR-0075: a orquestração do "você quis dizer?" (sonda de existência + fuzzy do corpus +
+          // composição) vive na costura PURA `resolveDidYouMean`; a tela só INJETA as portas (busca com
+          // `limit` / fuzzy) e aplica o resultado sob o race-guard. Timing/duas-fases INALTERADOS.
+          const dym = await resolveDidYouMean(term, effectiveTranslation, locale, searchLang, {
+            search: (cand, translation, limit) => search(dbPath, cand, translation, undefined, limit),
+            suggestFuzzy,
           });
           if (mySeq === seqRef.current) setSuggestions(dym);
         } else {
