@@ -95,6 +95,11 @@ export type {
 };
 export { StudyMode, StudyLens, StudyDepth, ChatRole };
 
+// ADR-0078: `parse_reference` SÍNCRONO do core (raw binding JSI) exposto pela COSTURA de leitura — o
+// `snapshotStore` (validação anti-alucinação de referência antes de escrever) o consome pela seam, sem
+// ramificar por plataforma. No web, `reading.web.ts` expõe o equivalente do wasm.
+export { parseReference as parseReferenceSync } from './native-generated/src/index';
+
 /** 66 livros canônicos (PURO — `reference::BOOKS`, independe do banco). */
 export function listBooks(): Book[] {
   return listBooksNative();
