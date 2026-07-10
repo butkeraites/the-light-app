@@ -17,12 +17,14 @@
 import * as SQLite from 'wa-sqlite';
 
 import {
+  passageQuery,
   VerseRange,
   VerseRange_Tags,
   type Passage,
   type Reference,
   type Verse,
 } from './generated/the_light_app_core';
+import { bindPlanParams } from './sqlite-reading.web';
 
 /** Conexão `wa-sqlite` aberta: a API low-level + o ponteiro do banco. */
 export interface PassageDb {
@@ -39,19 +41,9 @@ export interface PassageRow {
 }
 
 /**
- * SELECT espelhado de `EmbeddedSource::passage` (variante `Single`, fonte:
- * the-light-core/src/source/embedded.rs). É a ÚNICA SQL de leitura de passagem no
- * web — infraestrutura, não lógica de domínio.
- */
-export const PASSAGE_SELECT_SINGLE =
-  'SELECT verse, text FROM verses ' +
-  'WHERE translation_id = ? AND book_number = ? AND chapter = ? AND verse = ? ' +
-  'ORDER BY verse';
-
-/**
- * Roda o SELECT espelhado (caso `Single`) no `wa-sqlite` e devolve as linhas
- * `{ verse, text }`. ISOLADA do VFS: funciona tanto sobre o VFS OPFS (browser)
- * quanto sobre o VFS de memória (prova node), pois ambos expõem a mesma API.
+ * EXECUTA o plano da passagem `Single` (`passageQuery` → `query::passage_plan`,
+ * ADR-0062) no `wa-sqlite` e devolve as linhas `{ verse, text }`. ISOLADA do VFS
+ * (OPFS no browser, memória na prova). O SQL e os params vêm do core — o web só liga.
  */
 export async function queryPassage(
   handle: PassageDb,
@@ -61,12 +53,10 @@ export async function queryPassage(
   verse: number,
 ): Promise<PassageRow[]> {
   const { sqlite3, db } = handle;
+  const { sql, params } = passageQuery(singleReference(book, chapter, verse), translationId);
   const rows: PassageRow[] = [];
-  for await (const stmt of sqlite3.statements(db, PASSAGE_SELECT_SINGLE)) {
-    sqlite3.bind(stmt, 1, translationId);
-    sqlite3.bind(stmt, 2, book);
-    sqlite3.bind(stmt, 3, chapter);
-    sqlite3.bind(stmt, 4, verse);
+  for await (const stmt of sqlite3.statements(db, sql)) {
+    bindPlanParams(sqlite3, stmt, params);
     // `step` resolve para SQLITE_ROW/SQLITE_DONE (Promise no build async, valor
     // no build sync); `await` cobre os dois casos.
     while ((await sqlite3.step(stmt)) === SQLite.SQLITE_ROW) {

@@ -329,6 +329,110 @@ pub fn parse_note_slug(stem: String) -> Option<Reference> {
     the_light_core::userdata::note_slug::parse_slug(&stem).map(Reference::from)
 }
 
+// --- Store: planos de SQL DATA-ONLY (ADR-0062) -----------------------------
+// Espelham `the_light_core::query`: cada consulta vira `{sql, params}` de DADO, que o
+// web executa no `wa-sqlite` (o MESMO plano do nativo). `SqlParam` é o enum próprio do
+// core (nunca `rusqlite`) — o web só liga os valores posicionalmente. Colapsa os
+// `*_SELECT` + a montagem de params re-derivados no TS.
+
+/// Parâmetro de bind de uma consulta — espelha `the_light_core::query::SqlParam`.
+#[derive(uniffi::Enum)]
+pub enum SqlParam {
+    /// Texto (`?` ligado a uma string).
+    Text {
+        /// Valor.
+        value: String,
+    },
+    /// Inteiro de 64 bits (`?` ligado a um i64).
+    Int {
+        /// Valor.
+        value: i64,
+    },
+}
+
+impl From<the_light_core::query::SqlParam> for SqlParam {
+    fn from(p: the_light_core::query::SqlParam) -> Self {
+        match p {
+            the_light_core::query::SqlParam::Text(value) => SqlParam::Text { value },
+            the_light_core::query::SqlParam::Int(value) => SqlParam::Int { value },
+        }
+    }
+}
+
+/// Plano de consulta: SQL + params de bind (posicionais, na ordem `?`/`?1..?N`).
+#[derive(uniffi::Record)]
+pub struct SqlPlan {
+    /// SQL a executar.
+    pub sql: String,
+    /// Params de bind, na ordem posicional.
+    pub params: Vec<SqlParam>,
+}
+
+impl From<(String, Vec<the_light_core::query::SqlParam>)> for SqlPlan {
+    fn from((sql, params): (String, Vec<the_light_core::query::SqlParam>)) -> Self {
+        SqlPlan {
+            sql,
+            params: params.into_iter().map(SqlParam::from).collect(),
+        }
+    }
+}
+
+/// Plano da contagem de capítulos (`query::chapter_count_plan`). ADR-0062.
+#[uniffi::export]
+pub fn chapter_count_query(book: u8, translation: String) -> SqlPlan {
+    the_light_core::query::chapter_count_plan(book, &translation).into()
+}
+
+/// Plano da presença de tradução (`query::has_translation_plan`). ADR-0062.
+#[uniffi::export]
+pub fn has_translation_query(translation: String) -> SqlPlan {
+    the_light_core::query::has_translation_plan(&translation).into()
+}
+
+/// Plano das traduções (`query::translations_plan`, sem params). ADR-0062.
+#[uniffi::export]
+pub fn translations_query() -> SqlPlan {
+    the_light_core::query::translations_plan().into()
+}
+
+/// Plano de uma passagem (`query::passage_plan`; cobre WholeChapter/Single/Range). ADR-0062.
+#[uniffi::export]
+pub fn passage_query(reference: Reference, translation: String) -> SqlPlan {
+    the_light_core::query::passage_plan(&to_core_reference(reference), &translation).into()
+}
+
+/// Plano do capítulo INTEIRO (`passage_plan` sobre `WholeChapter`) — atalho do web, que
+/// lê capítulos inteiros sem montar uma `Reference`. ADR-0062.
+#[uniffi::export]
+pub fn chapter_query(book: u8, chapter: u16, translation: String) -> SqlPlan {
+    let reference = the_light_core::model::Reference::whole_chapter(book, chapter);
+    the_light_core::query::passage_plan(&reference, &translation).into()
+}
+
+/// Plano das referências cruzadas de um versículo (`query::xref_plan`, com clamp). ADR-0062.
+#[uniffi::export]
+pub fn xref_query(book: u8, chapter: u16, verse: u16, min_votes: i64, limit: u32) -> SqlPlan {
+    the_light_core::query::xref_plan(book, chapter, verse, min_votes, limit as usize).into()
+}
+
+/// Plano da busca FTS5 (`query::search_plan`); `None` se a consulta não tiver termos. ADR-0062.
+#[uniffi::export]
+pub fn search_query(
+    query: String,
+    translation: String,
+    book: Option<u8>,
+    limit: u32,
+) -> Option<SqlPlan> {
+    the_light_core::query::search_plan(&query, &translation, book, limit as usize)
+        .map(SqlPlan::from)
+}
+
+/// Builder de expressão FTS5 seguro (`query::build_match_query`); `None` se sem termos. ADR-0062.
+#[uniffi::export]
+pub fn build_match_query(input: String) -> Option<String> {
+    the_light_core::query::build_match_query(&input)
+}
+
 /// Analisa uma referência bíblica (PT ou EN) **delegando** ao `the-light-core`.
 ///
 /// O parsing, a tabela canônica e a resolução de ambiguidades vivem no core

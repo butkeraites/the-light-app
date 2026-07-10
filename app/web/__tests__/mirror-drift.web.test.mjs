@@ -101,13 +101,11 @@ const CONSTS = [
 ];
 
 const SELECTS = [
-  { name: 'xref for_verse', rustFile: 'xref.rs', include: ['from cross_references'], tsFile: 'app/web/sqlite-xref.web.ts', tsConst: 'XREF_SELECT' },
-  { name: 'chapter_count', rustFile: 'source/embedded.rs', include: ['max(chapter)'], tsFile: 'app/web/sqlite-reading.web.ts', tsConst: 'CHAPTER_COUNT_SELECT' },
-  { name: 'translations', rustFile: 'source/embedded.rs', include: ['abbrev, name, language'], tsFile: 'app/web/sqlite-reading.web.ts', tsConst: 'TRANSLATIONS_SELECT' },
-  { name: 'has_translation', rustFile: 'source/embedded.rs', include: ['select 1 from translations'], tsFile: 'app/web/sqlite-reading.web.ts', tsConst: 'HAS_TRANSLATION_SELECT' },
-  { name: 'chapter whole', rustFile: 'source/embedded.rs', include: ['verse, text from verses', 'order by verse'], exclude: ['verse = ?', 'between'], tsFile: 'app/web/sqlite-reading.web.ts', tsConst: 'CHAPTER_SELECT_WHOLE' },
-  { name: 'passage single', rustFile: 'source/embedded.rs', include: ['verse, text from verses', 'verse = ?'], exclude: ['between'], tsFile: 'app/web/sqlite.web.ts', tsConst: 'PASSAGE_SELECT_SINGLE' },
-  { name: 'search base', rustFile: 'search.rs', include: ['verses_fts match'], tsFile: 'app/web/sqlite-search.web.ts', tsConst: 'SEARCH_SELECT_BASE' },
+  // As 6 consultas de LEITURA/BUSCA/XREF (chapter/count/translations/has_translation/
+  // passage-single/search/xref) foram COLAPSADAS p/ `the_light_core::query` (ADR-0062,
+  // fatia SQL): o web importa `{sql, params}` da fronteira (`*_query`), não há mais
+  // espelho TS a guardar (fonte única no core). `interlinear` (lexicon) segue espelhado
+  // — a fatia lexicon (`collect`/`interlinear`/`attributions`) é a próxima.
   { name: 'interlinear tokens', rustFile: 'ai/lexicon.rs', include: ['from original_tokens', 'order by t.word_index'], tsFile: 'app/web/sqlite-lexicon.web.ts', tsConst: 'INTERLINEAR_SELECT' },
 ];
 
@@ -162,7 +160,7 @@ function main() {
 
   console.log(`PASS — mirror-drift: espelho TS FIEL ao the-light @ ${rev.slice(0, 10)} (${checked} itens):`);
   console.log(`  constantes numéricas (${CONSTS.length}): xref min_votes/limit (providers max_tokens colapsado p/ wasm — ADR-0062): OK`);
-  console.log(`  SQL SELECTs (${SELECTS.length}): xref, chapter_count, translations, has_translation, chapter-whole, passage-single, search-base: OK`);
+  console.log(`  SQL SELECTs (${SELECTS.length}): interlinear (leitura/busca/xref/passage colapsados p/ query.rs — ADR-0062): OK`);
 }
 
 try {
