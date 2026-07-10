@@ -19,6 +19,7 @@ import { useI18n } from '../../../lib/i18n';
 import { useTheme, type ThemeColors } from '../../../lib/theme';
 import { chapterCount, listBooks } from '../../../web/reading';
 import { defaultTranslationFor } from '../../../lib/translationDefault';
+import { readingChapterHref } from '../../../lib/readingNav';
 
 // Tradução default p/ a contagem de capítulos (o cânon é igual entre versões;
 // o seletor de versão atua na leitura do texto, na tela do capítulo).
@@ -91,10 +92,7 @@ function ChaptersContent() {
     <ReaderChapterGrid
       count={count}
       onSelect={(chapter) =>
-        router.push({
-          pathname: '/read/[book]/[chapter]',
-          params: { book: String(bookNumber), chapter: String(chapter), version: readingVersion },
-        })
+        router.push(readingChapterHref({ book: bookNumber, chapter, version: readingVersion }))
       }
     />
   );
