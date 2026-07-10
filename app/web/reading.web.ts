@@ -76,6 +76,9 @@ import { StudyMode, StudyLens, StudyDepth, ChatRole } from './generated/the_ligh
 // (zero drift; os self-tests exercitam as funções `*OnHandle` diretamente, intactas).
 // `AiFetch` é só TIPO (apagado na compilação) → não puxa `ai-anchored` p/ o entry.
 import type { AiFetch } from './ai-anchored.web';
+// Tipos-só (apagados) dos handles dos openers dinâmicos — p/ os brackets `withReadingDb`/`withLexiconDb`.
+import type { OpenReadingDb } from './sqlite-reading-opfs.web';
+import type { OpenLexiconDb } from './sqlite-lexicon-opfs.web';
 
 export type {
   Book,
@@ -112,22 +115,40 @@ export function listBooks(): Book[] {
   return listBooksWasm();
 }
 
+// ── BRACKETS de handle (ADR-0077) ─────────────────────────────────────────────────────────
+// O ciclo open→try→`finally close` do store web (leitura/léxico) estava re-tipado em ~12 funções — um
+// `finally` esquecido VAZA o handle wa-sqlite (o `deepStudy` chegou a ter esse bug, ADR-0072). Estes
+// brackets concentram a política de fechamento: `fn` roda sobre o handle e ele é SEMPRE fechado (leak-safe
+// por construção). O opener entra por `import()` dinâmico (code-split F5.9 preservado). `deepStudy` COMPÕE
+// os dois (léxico dentro de leitura) → fecha o léxico antes da leitura, sem vazar se o léxico falhar ao abrir.
+async function withReadingDb<T>(fn: (handle: OpenReadingDb) => Promise<T>): Promise<T> {
+  const { openReadingDbWeb } = await import('./sqlite-reading-opfs.web');
+  const handle = await openReadingDbWeb();
+  try {
+    return await fn(handle);
+  } finally {
+    await handle.close();
+  }
+}
+
+async function withLexiconDb<T>(fn: (handle: OpenLexiconDb) => Promise<T>): Promise<T> {
+  const { openLexiconDbWeb } = await import('./sqlite-lexicon-opfs.web');
+  const lexHandle = await openLexiconDbWeb();
+  try {
+    return await fn(lexHandle);
+  } finally {
+    await lexHandle.close();
+  }
+}
+
 /**
  * Traduções presentes no subset de leitura (`reading-lite.sqlite`): KJV (en) e Almeida 1911
  * (pt). Espelha `EmbeddedSource::translations` (ordem do SQLite). `_dbPath` é aceito
  * por paridade de assinatura com o nativo; o store web abre o subset internamente.
  */
 export async function listTranslations(_dbPath: string): Promise<Translation[]> {
-  const [{ openReadingDbWeb }, { queryTranslations }] = await Promise.all([
-    import('./sqlite-reading-opfs.web'),
-    import('./sqlite-reading.web'),
-  ]);
-  const handle = await openReadingDbWeb();
-  try {
-    return await queryTranslations(handle);
-  } finally {
-    await handle.close();
-  }
+  const { queryTranslations } = await import('./sqlite-reading.web');
+  return withReadingDb((handle) => queryTranslations(handle));
 }
 
 /**
@@ -144,20 +165,16 @@ export async function getChapter(
   book: number,
   chapter: number,
 ): Promise<Passage> {
-  const [{ openReadingDbWeb }, { hasTranslation, queryChapter, composeChapterPassage }] =
-    await Promise.all([import('./sqlite-reading-opfs.web'), import('./sqlite-reading.web')]);
-  const handle = await openReadingDbWeb();
-  try {
+  const { hasTranslation, queryChapter, composeChapterPassage } = await import('./sqlite-reading.web');
+  return withReadingDb(async (handle) => {
     if (!(await hasTranslation(handle, translation))) {
-      // Espelha `SourceError::UnknownTranslation` ("versão desconhecida: {id}")
-      // que a fronteira nativa propaga como `CoreError` em `getChapter`.
+      // Espelha `SourceError::UnknownTranslation` ("versão desconhecida: {id}") que a fronteira
+      // nativa propaga como `CoreError` em `getChapter`.
       throw new Error(`versão desconhecida: ${translation}`);
     }
     const rows = await queryChapter(handle, translation, book, chapter);
     return composeChapterPassage(book, chapter, rows, translation);
-  } finally {
-    await handle.close();
-  }
+  });
 }
 
 /**
@@ -170,16 +187,8 @@ export async function chapterCount(
   translation: string,
   book: number,
 ): Promise<number> {
-  const [{ openReadingDbWeb }, { queryChapterCount }] = await Promise.all([
-    import('./sqlite-reading-opfs.web'),
-    import('./sqlite-reading.web'),
-  ]);
-  const handle = await openReadingDbWeb();
-  try {
-    return await queryChapterCount(handle, translation, book);
-  } finally {
-    await handle.close();
-  }
+  const { queryChapterCount } = await import('./sqlite-reading.web');
+  return withReadingDb((handle) => queryChapterCount(handle, translation, book));
 }
 
 /**
@@ -200,16 +209,8 @@ export async function search(
   book?: number,
   limit?: number,
 ): Promise<SearchHit[]> {
-  const [{ openReadingDbWeb }, { searchOnHandle }] = await Promise.all([
-    import('./sqlite-reading-opfs.web'),
-    import('./sqlite-search.web'),
-  ]);
-  const handle = await openReadingDbWeb();
-  try {
-    return await searchOnHandle(handle, query, translation, book, limit);
-  } finally {
-    await handle.close();
-  }
+  const { searchOnHandle } = await import('./sqlite-search.web');
+  return withReadingDb((handle) => searchOnHandle(handle, query, translation, book, limit));
 }
 
 /**
@@ -234,16 +235,8 @@ export async function crossRefs(
   minVotes?: bigint,
   limit?: number,
 ): Promise<CrossRef[]> {
-  const [{ openReadingDbWeb }, { crossRefsOnHandle }] = await Promise.all([
-    import('./sqlite-reading-opfs.web'),
-    import('./sqlite-xref.web'),
-  ]);
-  const handle = await openReadingDbWeb();
-  try {
-    return await crossRefsOnHandle(handle, book, chapter, verse, minVotes, limit);
-  } finally {
-    await handle.close();
-  }
+  const { crossRefsOnHandle } = await import('./sqlite-xref.web');
+  return withReadingDb((handle) => crossRefsOnHandle(handle, book, chapter, verse, minVotes, limit));
 }
 
 // ── USERDATA (notas/highlights) — F1.16 (ADR-0022) ───────────────────────────
@@ -357,26 +350,10 @@ export async function askAnchored(
   model: string | undefined,
   lang: string,
 ): Promise<AiAnswer> {
-  const [{ openReadingDbWeb }, { askAnchoredOnHandle }] = await Promise.all([
-    import('./sqlite-reading-opfs.web'),
-    import('./ai-anchored.web'),
-  ]);
-  const handle = await openReadingDbWeb();
-  try {
-    return await askAnchoredOnHandle(
-      handle,
-      defaultFetch,
-      translation,
-      reference,
-      question,
-      provider,
-      key,
-      model,
-      lang,
-    );
-  } finally {
-    await handle.close();
-  }
+  const { askAnchoredOnHandle } = await import('./ai-anchored.web');
+  return withReadingDb((handle) =>
+    askAnchoredOnHandle(handle, defaultFetch, translation, reference, question, provider, key, model, lang),
+  );
 }
 
 /**
@@ -409,26 +386,10 @@ export async function askMultiAnchored(
   model: string | undefined,
   lang: string,
 ): Promise<AiAnswerMulti> {
-  const [{ openReadingDbWeb }, { askMultiAnchoredOnHandle }] = await Promise.all([
-    import('./sqlite-reading-opfs.web'),
-    import('./ai-anchored.web'),
-  ]);
-  const handle = await openReadingDbWeb();
-  try {
-    return await askMultiAnchoredOnHandle(
-      handle,
-      defaultFetch,
-      translation,
-      references,
-      question,
-      provider,
-      key,
-      model,
-      lang,
-    );
-  } finally {
-    await handle.close();
-  }
+  const { askMultiAnchoredOnHandle } = await import('./ai-anchored.web');
+  return withReadingDb((handle) =>
+    askMultiAnchoredOnHandle(handle, defaultFetch, translation, references, question, provider, key, model, lang),
+  );
 }
 
 /**
@@ -453,27 +414,10 @@ export async function askAnchoredStream(
   lang: string,
   onToken: (token: string) => void,
 ): Promise<AiAnswer> {
-  const [{ openReadingDbWeb }, { askAnchoredOnHandle }] = await Promise.all([
-    import('./sqlite-reading-opfs.web'),
-    import('./ai-anchored.web'),
-  ]);
-  const handle = await openReadingDbWeb();
-  try {
-    return await askAnchoredOnHandle(
-      handle,
-      defaultFetch,
-      translation,
-      reference,
-      question,
-      provider,
-      key,
-      model,
-      lang,
-      onToken,
-    );
-  } finally {
-    await handle.close();
-  }
+  const { askAnchoredOnHandle } = await import('./ai-anchored.web');
+  return withReadingDb((handle) =>
+    askAnchoredOnHandle(handle, defaultFetch, translation, reference, question, provider, key, model, lang, onToken),
+  );
 }
 
 // ── ESTUDO PROFUNDO + LÉXICO (deep_study/lexical_entries) — F3.12a (ADR-0031) ──────────
@@ -518,19 +462,12 @@ export async function deepStudy(
   // `openLexiconDbWeb` (lexicon-sample, léxico STEP CC-BY buscado só agora). Ambos são
   // assets LOCAIS (offline-first). A UX de carregamento do léxico vive no painel de
   // estudo (`busy`/aviso), já que este `import()`+fetch do léxico é a "descida" deferida.
-  const [{ openReadingDbWeb }, { openLexiconDbWeb }, { deepStudyOnHandle }] = await Promise.all([
-    import('./sqlite-reading-opfs.web'),
-    import('./sqlite-lexicon-opfs.web'),
-    import('./study.web'),
-  ]);
-  // ADR-0072: brackets ANINHADOS (não dois `open` fora do try). Antes o `handle` de leitura abria
-  // FORA do try, então se `openLexiconDbWeb()` lançasse, ele VAZAVA. Agora o try externo garante o
-  // fechamento do `handle` mesmo se o léxico falhar ao abrir; o interno fecha o `lexHandle`.
-  const handle = await openReadingDbWeb();
-  try {
-    const lexHandle = await openLexiconDbWeb();
-    try {
-      return await deepStudyOnHandle(
+  const { deepStudyOnHandle } = await import('./study.web');
+  // Brackets COMPOSTOS (ADR-0077): léxico DENTRO de leitura → fecha o léxico antes da leitura; se o léxico
+  // falhar ao ABRIR, o bracket externo fecha a leitura (o vazamento que a ADR-0072 corrigiu à mão vira grátis).
+  return withReadingDb((handle) =>
+    withLexiconDb((lexHandle) =>
+      deepStudyOnHandle(
         handle,
         lexHandle,
         defaultFetch,
@@ -547,13 +484,9 @@ export async function deepStudy(
         model,
         researchBackend,
         researchKey,
-      );
-    } finally {
-      await lexHandle.close();
-    }
-  } finally {
-    await handle.close();
-  }
+      ),
+    ),
+  );
 }
 
 /**
@@ -573,16 +506,8 @@ export async function lexicalEntries(
   // F5.15 (ADR-0044): o léxico é INDEPENDENTE do texto — abre SÓ o store de léxico
   // on-demand (`lexicon-sample.sqlite`, ~9 MB), nunca o subset de leitura. Leitores
   // puros jamais chegam aqui, então o léxico só "desce" ao abrir o léxico/estudo.
-  const [{ openLexiconDbWeb }, { lexicalEntriesOnHandle }] = await Promise.all([
-    import('./sqlite-lexicon-opfs.web'),
-    import('./study.web'),
-  ]);
-  const lexHandle = await openLexiconDbWeb();
-  try {
-    return await lexicalEntriesOnHandle(lexHandle, book, chapter, verse, limit);
-  } finally {
-    await lexHandle.close();
-  }
+  const { lexicalEntriesOnHandle } = await import('./study.web');
+  return withLexiconDb((lexHandle) => lexicalEntriesOnHandle(lexHandle, book, chapter, verse, limit));
 }
 
 /**
@@ -596,16 +521,8 @@ export async function interlinearVerse(
   chapter: number,
   verse: number,
 ): Promise<InterlinearVerseOut> {
-  const [{ openLexiconDbWeb }, { interlinearVerseOnHandle }] = await Promise.all([
-    import('./sqlite-lexicon-opfs.web'),
-    import('./study.web'),
-  ]);
-  const lexHandle = await openLexiconDbWeb();
-  try {
-    return await interlinearVerseOnHandle(lexHandle, book, chapter, verse);
-  } finally {
-    await lexHandle.close();
-  }
+  const { interlinearVerseOnHandle } = await import('./study.web');
+  return withLexiconDb((lexHandle) => interlinearVerseOnHandle(lexHandle, book, chapter, verse));
 }
 
 // ── CONVERSA/FOLLOW-UP ANCORADO (ask_session_anchored) — F3.12b (ADR-0032) ─────────────
@@ -640,13 +557,9 @@ export async function askSessionAnchored(
   key: string | undefined,
   model: string | undefined,
 ): Promise<AiAnswer> {
-  const [{ openReadingDbWeb }, { askSessionAnchoredOnHandle }] = await Promise.all([
-    import('./sqlite-reading-opfs.web'),
-    import('./session.web'),
-  ]);
-  const handle = await openReadingDbWeb();
-  try {
-    return await askSessionAnchoredOnHandle(
+  const { askSessionAnchoredOnHandle } = await import('./session.web');
+  return withReadingDb((handle) =>
+    askSessionAnchoredOnHandle(
       handle,
       defaultFetch,
       translation,
@@ -660,10 +573,8 @@ export async function askSessionAnchored(
       providerName,
       key,
       model,
-    );
-  } finally {
-    await handle.close();
-  }
+    ),
+  );
 }
 
 // ── PLANOS DE LEITURA (list/day/day_index) — F5.10 (geração REAL/wasm) ─────────
