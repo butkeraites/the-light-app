@@ -30,6 +30,8 @@ import { useI18n } from '../lib/i18n';
 import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { askSessionAnchored, ChatRole, type AiAnswer, type ChatTurn } from '../web/reading';
 import { AiProviderNotice } from './AiProviderNotice';
+import { ProviderNeedKeyCta } from './ProviderNeedKeyCta';
+import { goToProviderSettings } from '../lib/aiConfigure';
 import { ProviderChips, useProviderSelection } from './ProviderPicker';
 import { BottomSheet, Button, CitedText, InterpretationBlock, SectionLabel } from './ui';
 
@@ -87,10 +89,7 @@ export function ReaderChatPanel({
   const [error, setError] = useState<string | null>(null);
 
   // F6.6: leva à tela de AJUSTES (hub canônico de chave BYOK, campos por provedor). Fecha antes.
-  function onConfigureProvider() {
-    onClose();
-    router.push('/settings');
-  }
+  const onConfigureProvider = () => goToProviderSettings(onClose);
 
   // Ao trocar de passagem (nova âncora) ou fechar, limpa a conversa inteira — o histórico
   // NUNCA persiste texto entre passagens (a âncora é sempre a passagem corrente do store).
@@ -181,17 +180,7 @@ export function ReaderChatPanel({
       />
       {/* Provedor real sem chave → erro claro + CTA p/ Ajustes (não trava; envio desabilitado). */}
       {needsKey ? (
-        <View style={styles.needKeyBlock} testID="chat-provider-needkey">
-          <Text style={styles.error}>{t('ask.needKeyError', { provider })}</Text>
-          <Button
-            title={t('ai.noProviderCta')}
-            variant="secondary"
-            onPress={onConfigureProvider}
-            testID="chat-provider-configure"
-            accessibilityLabel={t('a11y.aiConfigure')}
-            style={styles.actionBtn}
-          />
-        </View>
+        <ProviderNeedKeyCta provider={provider} onConfigure={onConfigureProvider} testIDPrefix="chat" buttonStyle={styles.actionBtn} />
       ) : null}
 
       {/* ── PASSAGEM (texto bíblico, verbatim do store — a ÂNCORA) ─────────
@@ -272,7 +261,6 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
     // Chips de provedor em `<ProviderChips>` (ADR-0059); âncora/interpretação em CitedText/
     // InterpretationBlock (kit) — anti-alucinação. Aqui só a thread, o input e a meta.
     hint: { ...type.caption, color: colors.muted, marginTop: space.sm, fontStyle: 'italic' },
-    needKeyBlock: { marginTop: space.sm, gap: space.xs },
     thread: { marginTop: space.md, gap: space.sm },
     userTurn: {
       alignSelf: 'flex-end',

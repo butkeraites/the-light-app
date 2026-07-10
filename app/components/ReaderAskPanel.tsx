@@ -22,6 +22,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { errMessage } from '../lib/errMessage';
 import { useI18n } from '../lib/i18n';
 import { setKey } from '../lib/keystore';
+import { goToProviderSettings } from '../lib/aiConfigure';
 import { useTheme, type ThemeContextValue } from '../lib/theme';
 import { askAnchoredStream, type AiAnswer } from '../web/reading';
 import { AiProviderNotice } from './AiProviderNotice';
@@ -95,10 +96,7 @@ export function ReaderAskPanel({
 
   // F6.6: leva à tela de AJUSTES (hub canônico de chave BYOK, com campos por provedor). Fecha o
   // painel antes de navegar. A entrada inline abaixo permanece (complementa; Ajustes é o hub).
-  function onConfigureProvider() {
-    onClose();
-    router.push('/settings');
-  }
+  const onConfigureProvider = () => goToProviderSettings(onClose);
 
   async function onAsk() {
     if (askDisabled || dbPath == null) {
