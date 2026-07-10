@@ -298,9 +298,17 @@ const BUDGET = {
   //   DE-DUPLICACAO (o LOC liquido CAI). BYTES do entry INALTERADOS (3 modulos pequenos puros/hook,
   //   dentro da banda existente) — so o moduleCount re-baseado. Tolerancias INALTERADAS. Espelhado em
   //   web-bundle-budget.json (noteADR0070).
+  //
+  // NOTA ADR-0071 (deepening — costura dos gestos de virar-capítulo) — re-baseline DELIBERADO:
+  //   ESTRUTURAL moduleCount 914 -> 916 (+2 modulos eager EXATOS). Os 3 efeitos de `window` (teclado/
+  //   clique-lateral/swipe) da tela do capitulo viraram `lib/useChapterTurnGestures.ts` (hook) +
+  //   `lib/gestureNav.ts` (decisoes puras swipeIntent/sideNavZone), importados pela rota de leitura
+  //   (eager, web output:static). NAO e regressao: e a extracao (o LOC liquido cai; a cinematica do
+  //   swipe/zona ganha teste headless). BYTES do entry INALTERADOS. Tolerancias INALTERADAS. Espelhado
+  //   em web-bundle-budget.json (noteADR0071).
   entry: {
     glob: '_expo/static/js/web/entry-*.js',
-    moduleCount: 914,
+    moduleCount: 916,
     eagerBytes: { nominal: 1425377, tolerance: 1024 },
     eagerGzipBytes: { nominal: 366056, tolerance: 2048 },
     eagerBrotliBytes: { nominal: 289318, tolerance: 1024 },

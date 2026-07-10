@@ -17,6 +17,7 @@
     "test:web:notes": "node web/__tests__/notes.web.test.mjs",
     "test:web:verse-markers": "node web/__tests__/verseMarkers.test.mjs",
     "test:web:translation-resolve": "node web/__tests__/translationResolve.test.mjs",
+    "test:web:gesture-nav": "node web/__tests__/gestureNav.test.mjs",
     "test:web:plans": "node web/__tests__/plans.web.test.mjs",
     "test:web:snapshot": "node web/__tests__/snapshot.web.test.mjs",
     "test:web:driveauth": "node web/__tests__/driveAuth.web.test.mjs",
