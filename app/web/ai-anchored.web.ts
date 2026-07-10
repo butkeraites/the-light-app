@@ -27,6 +27,8 @@ import {
   aiMultiWebPrepare,
   aiWebFinalize,
   aiWebPrepare,
+  llmDefaultMaxTokens,
+  llmEndpointUrl,
   parseReference,
   type AiAnswer,
   type AiAnswerMulti,
@@ -57,22 +59,14 @@ export interface LlmRequestParts {
   model: string;
 }
 
-// `DEFAULT_MAX_TOKENS` do core (providers.rs:29) — o corpo Gemini o inclui em
-// `generationConfig.maxOutputTokens`, espelhando `gemini_body`.
-const GEMINI_MAX_TOKENS = 8192;
-
-// `DEFAULT_MAX_TOKENS` do core (providers.rs:29) — `anthropic_body`/`openai_body` o incluem
-// em `max_tokens` (mesmo valor que o Gemini usa em `maxOutputTokens`). O `ollama_body` NÃO
-// tem `max_tokens` (espelha `ollama_body` do core). O `model` já vem RESOLVIDO no
-// `request.model` (o `ai_web_prepare` aplica o `default_model` por provedor).
-const DEFAULT_MAX_TOKENS = 8192;
-
-// Endpoints FIXOS por provedor (transporte = infra, ADR-0025). A chave BYOK NUNCA aparece na
-// URL — vai SÓ no header apropriado (ver `*Headers`). Ollama é LOCAL (localhost) e não usa
-// BYOK: no web não há env `LIGHT_OLLAMA_HOST` → host default `http://localhost:11434`.
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
-const OLLAMA_URL = 'http://localhost:11434/api/chat';
+// Transporte = DADO do core via a fronteira wasm (ADR-0062), não mais hard-coded no TS:
+//   - `llmDefaultMaxTokens()` → `DEFAULT_MAX_TOKENS` do core (8192) que o corpo inclui em
+//     `max_tokens`/`maxOutputTokens`. O `ollama_body` NÃO tem `max_tokens` (espelha o core).
+//   - `llmEndpointUrl(provider, model, stream, host?)` → URL do endpoint (fixa p/ anthropic/
+//     openai; ollama = `http://localhost:11434/api/chat`; gemini embute model+stream). O
+//     `model` já vem RESOLVIDO em `request.model` (o `ai_web_prepare` aplica o `default_model`).
+// Ambas são SÍNCRONAS e só rodam no transporte (após o wasm pronto). A chave BYOK NUNCA
+// entra na URL — vai SÓ no header apropriado (ver `*Headers`).
 
 /**
  * Resposta determinística OFFLINE do provedor `"mock"` (sem rede/chave), ESPELHANDO a
@@ -144,7 +138,7 @@ function geminiBody(request: LlmRequestParts): string {
   return JSON.stringify({
     contents: [{ role: 'user', parts: [{ text: request.user }] }],
     system_instruction: { parts: [{ text: request.system }] },
-    generationConfig: { maxOutputTokens: GEMINI_MAX_TOKENS },
+    generationConfig: { maxOutputTokens: llmDefaultMaxTokens() },
   });
 }
 
@@ -237,7 +231,7 @@ async function geminiComplete(
   key: string,
   request: LlmRequestParts,
 ): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${request.model}:generateContent`;
+  const url = llmEndpointUrl('gemini', request.model, false, undefined);
   const res = await postJson(
     fetchImpl,
     'gemini',
@@ -266,7 +260,7 @@ async function geminiCompleteStream(
   request: LlmRequestParts,
   onToken: (token: string) => void,
 ): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${request.model}:streamGenerateContent?alt=sse`;
+  const url = llmEndpointUrl('gemini', request.model, true, undefined);
   const res = await postJson(
     fetchImpl,
     'gemini',
@@ -334,7 +328,7 @@ function anthropicHeaders(key: string): Record<string, string> {
 function anthropicBody(request: LlmRequestParts, stream: boolean): string {
   const body: Record<string, unknown> = {
     model: request.model,
-    max_tokens: DEFAULT_MAX_TOKENS,
+    max_tokens: llmDefaultMaxTokens(),
     system: request.system,
     thinking: { type: 'adaptive' },
     messages: [{ role: 'user', content: request.user }],
@@ -398,7 +392,7 @@ async function anthropicComplete(
   const res = await postJson(
     fetchImpl,
     'anthropic',
-    ANTHROPIC_URL,
+    llmEndpointUrl('anthropic', '', false, undefined),
     anthropicHeaders(key),
     anthropicBody(request, false),
   );
@@ -421,7 +415,7 @@ async function anthropicCompleteStream(
   const res = await postJson(
     fetchImpl,
     'anthropic',
-    ANTHROPIC_URL,
+    llmEndpointUrl('anthropic', '', false, undefined),
     anthropicHeaders(key),
     anthropicBody(request, true),
   );
@@ -467,7 +461,7 @@ function openaiHeaders(key: string): Record<string, string> {
 function openaiBody(request: LlmRequestParts, stream: boolean): string {
   const body: Record<string, unknown> = {
     model: request.model,
-    max_tokens: DEFAULT_MAX_TOKENS,
+    max_tokens: llmDefaultMaxTokens(),
     messages: [
       { role: 'system', content: request.system },
       { role: 'user', content: request.user },
@@ -514,7 +508,7 @@ async function openaiComplete(
   const res = await postJson(
     fetchImpl,
     'openai',
-    OPENAI_URL,
+    llmEndpointUrl('openai', '', false, undefined),
     openaiHeaders(key),
     openaiBody(request, false),
   );
@@ -536,7 +530,7 @@ async function openaiCompleteStream(
   const res = await postJson(
     fetchImpl,
     'openai',
-    OPENAI_URL,
+    llmEndpointUrl('openai', '', false, undefined),
     openaiHeaders(key),
     openaiBody(request, true),
   );
@@ -619,7 +613,7 @@ async function ollamaComplete(fetchImpl: AiFetch, request: LlmRequestParts): Pro
   const res = await postJson(
     fetchImpl,
     'ollama',
-    OLLAMA_URL,
+    llmEndpointUrl('ollama', '', false, undefined),
     ollamaHeaders(),
     ollamaBody(request, false),
   );
@@ -640,7 +634,7 @@ async function ollamaCompleteStream(
   const res = await postJson(
     fetchImpl,
     'ollama',
-    OLLAMA_URL,
+    llmEndpointUrl('ollama', '', false, undefined),
     ollamaHeaders(),
     ollamaBody(request, true),
   );

@@ -94,7 +94,10 @@ function tsNum(src, name) {
 const CONSTS = [
   { name: 'xref DEFAULT_MIN_VOTES', rustFile: 'xref.rs', rustConst: 'DEFAULT_MIN_VOTES', tsFile: 'app/web/sqlite-xref.web.ts', tsConst: 'DEFAULT_MIN_VOTES' },
   { name: 'xref DEFAULT_LIMIT', rustFile: 'xref.rs', rustConst: 'DEFAULT_LIMIT', tsFile: 'app/web/sqlite-xref.web.ts', tsConst: 'DEFAULT_LIMIT' },
-  { name: 'providers DEFAULT_MAX_TOKENS', rustFile: 'ai/providers.rs', rustConst: 'DEFAULT_MAX_TOKENS', tsFile: 'app/web/ai-anchored.web.ts', tsConst: 'DEFAULT_MAX_TOKENS' },
+  // `providers DEFAULT_MAX_TOKENS` RETIRADO (ADR-0062, fatia transporte-URLs/max_tokens): o
+  // espelho TS `DEFAULT_MAX_TOKENS = 8192` de `ai-anchored.web.ts` FOI COLAPSADO — o valor
+  // agora vem da fronteira wasm `llmDefaultMaxTokens()` (fonte única no core). Sem espelho =
+  // sem drift a guardar. As URLs (anthropic/openai/ollama/gemini) idem, via `llmEndpointUrl`.
 ];
 
 const SELECTS = [
@@ -158,7 +161,7 @@ function main() {
   }
 
   console.log(`PASS — mirror-drift: espelho TS FIEL ao the-light @ ${rev.slice(0, 10)} (${checked} itens):`);
-  console.log(`  constantes numéricas (${CONSTS.length}): xref min_votes/limit + providers max_tokens: OK`);
+  console.log(`  constantes numéricas (${CONSTS.length}): xref min_votes/limit (providers max_tokens colapsado p/ wasm — ADR-0062): OK`);
   console.log(`  SQL SELECTs (${SELECTS.length}): xref, chapter_count, translations, has_translation, chapter-whole, passage-single, search-base: OK`);
 }
 
