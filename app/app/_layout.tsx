@@ -17,12 +17,14 @@ import { useEffect } from 'react';
 import { Stack, router } from 'expo-router';
 import { View } from 'react-native';
 
+import { DevotionalNudge } from '../components/DevotionalNudge';
 import { LanguageToggleButton } from '../components/LanguageToggleButton';
 import { ReadingDbBanner } from '../components/ReadingDbBanner';
 import { ThemeModeSelector } from '../components/ThemeModeSelector';
 import { IconButton } from '../components/ui';
 import { I18nProvider, useI18n } from '../lib/i18n';
 import { ThemeProvider, useTheme } from '../lib/theme';
+import { useDevotionalNudgeController } from '../lib/useDevotionalNudgeController';
 import { ensureWasmReady } from '../web/wasm';
 
 export default function RootLayout() {
@@ -80,6 +82,10 @@ function RootNavigator() {
   useEffect(() => {
     void ensureWasmReady();
   }, []);
+  // Rodada 5: orquestra o NUDGE devocional (lembrete in-app de orar & ler). A cada abertura/
+  // volta ao primeiro plano, decide (puro) e aciona o card <DevotionalNudge/> abaixo. Opt-in
+  // (OFF por padrão, via Ajustes); no-op enquanto desligado. Sem notificação de sistema/servidor.
+  useDevotionalNudgeController();
   // Opções comuns a todas as telas: header e fundo seguindo os tokens de tema, com os
   // toggles (idioma + tema) visíveis no header.
   const screenChrome = {
@@ -138,6 +144,9 @@ function RootNavigator() {
       </Stack>
       {/* Aviso GLOBAL do 1º download da Bíblia no web (~64 MB, uso offline). No nativo → null. */}
       <ReadingDbBanner />
+      {/* NUDGE devocional (lembrete in-app de orar & ler + versículo do dia). Opt-in; oculto até
+          o controlador acima decidir mostrar. Card não-bloqueante pinado embaixo. */}
+      <DevotionalNudge />
     </View>
   );
 }

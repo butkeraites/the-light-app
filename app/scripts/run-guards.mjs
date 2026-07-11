@@ -28,6 +28,7 @@ const CI = [
   'test:web:aiproviders',
   'test:web:reminders',
   'test:web:mirror-drift',
+  'test:web:engagement-nudge',
   'test:web:verse-markers',
   'test:web:translation-resolve',
   'test:web:gesture-nav',

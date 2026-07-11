@@ -440,6 +440,9 @@ async function main() {
     // original (surface/translit/glosa/Strong) vem do STORE via `interlinearVerse` — nunca destas
     // strings. Só rótulos de UI aqui.
     'interlinear',
+    // Rodada 5: CROMO do LEMBRETE devocional in-app (saudação/convite/botões + seção de Ajustes).
+    // O TEXTO do versículo do dia vem VERBATIM do store (getChapter), nunca destas strings.
+    'reminders',
   ]);
   for (const key of MESSAGE_KEYS) {
     const ns = key.split('.')[0];

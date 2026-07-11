@@ -113,6 +113,17 @@ export type MessageKey =
   | 'plans.reminderChannel'
   | 'plans.reminderTimeLabel'
   | 'plans.reminderPermissionHint'
+  // Rodada 5: LEMBRETE devocional in-app (nudge de orar & ler + versículo do dia). Opt-in.
+  | 'reminders.title'
+  | 'reminders.description'
+  | 'reminders.enableLabel'
+  | 'reminders.timeLabel'
+  | 'reminders.morningGreeting'
+  | 'reminders.idleGreeting'
+  | 'reminders.invite'
+  | 'reminders.open'
+  | 'reminders.pray'
+  | 'reminders.later'
   | 'a11y.startPlan'
   | 'a11y.openDay'
   | 'a11y.markDone'
@@ -520,6 +531,17 @@ const pt: Record<MessageKey, string> = {
   'plans.reminderTimeLabel': 'Horário',
   'plans.reminderPermissionHint':
     'Permita notificações no aparelho para receber o lembrete diário (o lembrete é local, sem conta nem internet).',
+  'reminders.title': 'Lembrete devocional',
+  'reminders.description':
+    'Um convite gentil para orar e ler a Palavra quando você abre o app, com o versículo do dia. Fica no app — sem notificação do sistema, sem conta, sem internet.',
+  'reminders.enableLabel': 'Lembrar de orar e ler',
+  'reminders.timeLabel': 'De manhã, a partir de',
+  'reminders.morningGreeting': 'Bom dia — um momento com Deus',
+  'reminders.idleGreeting': 'Que bom te ver de volta',
+  'reminders.invite': 'Reserve um momento para orar e ler a Palavra hoje.',
+  'reminders.open': 'Abrir no leitor',
+  'reminders.pray': 'Orar',
+  'reminders.later': 'Agora não',
   'read.parallel': 'Lado a lado',
   'read.nextChapter': 'Próximo · {label}',
   'read.prevChapter': 'Anterior · {label}',
@@ -884,6 +906,17 @@ const en: Record<MessageKey, string> = {
   'plans.reminderTimeLabel': 'Time',
   'plans.reminderPermissionHint':
     'Allow notifications on your device to receive the daily reminder (the reminder is local, no account or internet).',
+  'reminders.title': 'Devotional reminder',
+  'reminders.description':
+    'A gentle invitation to pray and read the Word when you open the app, with the verse of the day. It stays in the app — no system notification, no account, no internet.',
+  'reminders.enableLabel': 'Remind me to pray and read',
+  'reminders.timeLabel': 'In the morning, from',
+  'reminders.morningGreeting': 'Good morning — a moment with God',
+  'reminders.idleGreeting': 'Good to see you back',
+  'reminders.invite': 'Take a moment to pray and read the Word today.',
+  'reminders.open': 'Open in reader',
+  'reminders.pray': 'Pray',
+  'reminders.later': 'Not now',
   'read.parallel': 'Side by side',
   'read.nextChapter': 'Next · {label}',
   'read.prevChapter': 'Previous · {label}',
