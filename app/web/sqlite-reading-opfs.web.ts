@@ -4,18 +4,25 @@
 //
 // Backend de RUNTIME do store web de LEITURA (BROWSER). Par exato de
 // `sqlite-opfs.web.ts`, porém sobre o SUBSET WEB de LEITURA `reading-lite.sqlite`
-// (~4,3 MB — F5.15/ADR-0044: translations/books/verses/cross_references/verses_fts,
-// SEM as tabelas de léxico). O DADO do léxico (~9 MB: original_tokens/lexicon/
-// scholarly_sources/morph_legend) SAIU deste arquivo e virou `lexicon-sample.sqlite`,
-// carregado ON-DEMAND só ao abrir estudo/léxico (`sqlite-lexicon-opfs.web.ts`). Assim
-// leitores puros baixam ~4,3 MB (não ~14,4 MB) — a LEITURA funciona 100% offline SEM
-// jamais tocar o léxico. O NATIVO segue no combinado `reading-sample.sqlite` (F1.3/
+// (a Bíblia completa em 4 versões, ~64 MB — F5.15/ADR-0044: translations/books/verses/
+// cross_references/verses_fts, SEM as tabelas de léxico). O DADO do léxico (~27 MB:
+// original_tokens/lexicon/scholarly_sources/morph_legend) SAIU deste arquivo e virou
+// `lexicon-sample.sqlite`, carregado ON-DEMAND só ao abrir estudo/léxico
+// (`sqlite-lexicon-opfs.web.ts`). Assim leitores puros baixam só o subset de leitura (não
+// o léxico) — a LEITURA funciona 100% offline SEM jamais tocar o léxico. O NATIVO segue no
+// combinado `reading-sample.sqlite` (F1.3/
 // ADR-0014; o split é WEB-scoped). O `reading-lite.sqlite` NÃO tem as tabelas de léxico:
 // uma consulta de léxico neste handle FALHA por design (não retorna vazio silencioso).
 // Responsabilidades:
-//   - CARGA OFFLINE-FIRST: a cada sessão faz `fetch` do asset LOCAL EMPACOTADO
-//     `reading-lite.sqlite` (mesma origem, zero rede externa) DIRETO para um VFS de
-//     MEMÓRIA — sem round-trip OPFS (F5.38/ADR-0057; ver justificativa abaixo).
+//   - CARGA OFFLINE-FIRST, UMA VEZ POR SESSÃO: `openReadingDbWeb` é MEMOIZADO num
+//     singleton de módulo (`cachedReadingDb`). O 1º `getChapter`/`search`/xref da sessão
+//     faz `fetch` do asset LOCAL EMPACOTADO `reading-lite.sqlite` (mesma origem, zero rede
+//     externa) DIRETO para um VFS de MEMÓRIA — sem round-trip OPFS (F5.38/ADR-0057); TODAS
+//     as leituras seguintes REUSAM esse handle, sem re-baixar/re-parsear os ~64 MB. ANTES o
+//     handle era aberto/fechado a CADA chamada (open→query→close), o que re-fazia o
+//     fetch+parse de 64 MB por navegação de capítulo (e 2× no modo paralelo) — lento no
+//     celular. Agora é 1× (o browser libera na descarga da página). O download inicial
+//     REPORTA progresso (Content-Length + stream) ao bus `readingDbLoad` → aviso na UI.
 //   - LEITURA via `wa-sqlite`: instancia o SQLite-wasm (build SYNC, sem
 //     SharedArrayBuffer/COOP-COEP) sobre esse VFS de MEMÓRIA, e roda as MESMAS
 //     `queryChapter`/`queryChapterCount`/`queryTranslations` de
@@ -61,6 +68,7 @@ import waSqliteWasmUri from './vendor/wa-sqlite-fts5/wa-sqlite.wasm';
 // eslint-disable-next-line import/no-unresolved
 import readingDbUri from '../assets/data/reading-lite.sqlite';
 
+import { setReadingDbLoad } from '../lib/readingDbLoad';
 import type { ReadingDb } from './sqlite-reading.web';
 
 /** Nome lógico do banco no VFS de memória do `wa-sqlite`. */
@@ -80,15 +88,82 @@ async function fetchBytes(uri: string): Promise<ArrayBuffer> {
 }
 
 /**
- * Abre o store web de LEITURA no BROWSER: faz `fetch` do asset LOCAL empacotado
- * `reading-lite.sqlite` (subset SEM léxico, F5.15/ADR-0044) DIRETO para um `wa-sqlite`
- * (VFS de memória hidratado com esses bytes) pronto para
- * `queryChapter`/`queryChapterCount`/`queryTranslations`. NÃO usa OPFS (F5.38/ADR-0057:
- * dado read-only de asset local — OPFS só quebrava em 38 MB / janela anônima). NÃO
- * carrega o léxico (~9 MB) — esse é on-demand via `openLexiconDbWeb`. Lança fora de um
- * browser (node/SSR) para não quebrar de forma obscura.
+ * Como `fetchBytes`, mas STREAMA o corpo reportando o progresso (`loaded`/`total`) — usado
+ * no download único do banco de leitura (~64 MB), para o aviso de "preparando offline". O
+ * `total` vem de `Content-Length`; se ausente (ou se o host serve com `Content-Encoding`,
+ * caso em que o length é o COMPRIMIDO e os bytes lidos são os DESCOMPRIMIDOS), reporta
+ * `total = 0` (progresso indeterminado) — o consumidor mostra só a mensagem. Degrada para
+ * `arrayBuffer()` se o corpo não for streamável.
  */
-export async function openReadingDbWeb(): Promise<OpenReadingDb> {
+async function fetchBytesWithProgress(
+  uri: string,
+  onProgress: (loaded: number, total: number) => void,
+): Promise<ArrayBuffer> {
+  const res = await fetch(uri);
+  if (!res.ok) {
+    throw new Error(`Falha ao carregar asset local (${uri}): HTTP ${res.status}`);
+  }
+  const lenHeader = res.headers.get('Content-Length');
+  const total = lenHeader ? Number(lenHeader) : 0;
+  if (!res.body || typeof res.body.getReader !== 'function') {
+    const buf = await res.arrayBuffer();
+    onProgress(buf.byteLength, buf.byteLength);
+    return buf;
+  }
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done || value == null) {
+      break;
+    }
+    chunks.push(value);
+    loaded += value.byteLength;
+    // Se o body veio descomprimido (loaded > total do header comprimido), trata total como
+    // desconhecido (0) para não passar de 100%.
+    onProgress(loaded, total >= loaded ? total : 0);
+  }
+  const out = new Uint8Array(loaded);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out.buffer;
+}
+
+/**
+ * Singleton de sessão: o banco de leitura é aberto UMA VEZ (fetch + parse dos ~64 MB) e
+ * reusado por todas as leituras — resetado a `null` se a carga falhar (permite retry numa
+ * chamada futura, ex.: falha transitória de fetch).
+ */
+let cachedReadingDb: Promise<OpenReadingDb> | null = null;
+
+/**
+ * Abre (ou reusa) o store web de LEITURA no BROWSER: no 1º uso da sessão faz `fetch` do
+ * asset LOCAL empacotado `reading-lite.sqlite` (subset SEM léxico, F5.15/ADR-0044) DIRETO
+ * para um `wa-sqlite` (VFS de memória) pronto para
+ * `queryChapter`/`queryChapterCount`/`queryTranslations`, e MEMOIZA o handle — as leituras
+ * seguintes reusam sem re-baixar/re-parsear (fix da lentidão no celular). NÃO usa OPFS
+ * (F5.38/ADR-0057). NÃO carrega o léxico (on-demand via `openLexiconDbWeb`). Lança fora de
+ * um browser (node/SSR) para não quebrar de forma obscura.
+ *
+ * O `close()` do handle retornado é NO-OP: o singleton pertence à sessão (asset read-only;
+ * o browser o libera ao descarregar a página) — os brackets `withReadingDb` chamam `close`
+ * por construção (ADR-0077), mas aqui isso não deve derrubar a conexão compartilhada.
+ */
+export function openReadingDbWeb(): Promise<OpenReadingDb> {
+  if (!cachedReadingDb) {
+    cachedReadingDb = loadReadingDb().catch((err) => {
+      cachedReadingDb = null;
+      throw err;
+    });
+  }
+  return cachedReadingDb;
+}
+
+async function loadReadingDb(): Promise<OpenReadingDb> {
   if (typeof navigator === 'undefined' || typeof fetch === 'undefined') {
     throw new Error(
       'Store web de leitura indisponível: requer um browser (navigator/fetch). ' +
@@ -96,8 +171,22 @@ export async function openReadingDbWeb(): Promise<OpenReadingDb> {
     );
   }
 
-  // Bytes do asset LOCAL (fetch da própria origem — offline-first, sem round-trip OPFS; F5.38/ADR-0057).
-  // O boot do wa-sqlite (+ o workaround DEV `locateFile`) vive na costura `openSqliteMemVfs` (ADR-0072).
-  const [wasmBytes, dbBytes] = await Promise.all([fetchBytes(waSqliteWasmUri), fetchBytes(readingDbUri)]);
-  return openSqliteMemVfs({ wasmBytes, dbBytes, dbName: MEM_DB_NAME, locateFile: (path) => path });
+  setReadingDbLoad({ phase: 'loading', loaded: 0, total: 0 });
+  try {
+    // Bytes do asset LOCAL (fetch da própria origem — offline-first, sem round-trip OPFS; F5.38/ADR-0057).
+    // O boot do wa-sqlite (+ o workaround DEV `locateFile`) vive na costura `openSqliteMemVfs` (ADR-0072).
+    const [wasmBytes, dbBytes] = await Promise.all([
+      fetchBytes(waSqliteWasmUri),
+      fetchBytesWithProgress(readingDbUri, (loaded, total) =>
+        setReadingDbLoad({ phase: 'loading', loaded, total }),
+      ),
+    ]);
+    const handle = await openSqliteMemVfs({ wasmBytes, dbBytes, dbName: MEM_DB_NAME, locateFile: (path) => path });
+    setReadingDbLoad({ phase: 'ready' });
+    // Handle de SESSÃO: `close` vira no-op (não derruba a conexão compartilhada; ver acima).
+    return { sqlite3: handle.sqlite3, db: handle.db, close: async () => {} };
+  } catch (err) {
+    setReadingDbLoad({ phase: 'error' });
+    throw err;
+  }
 }
