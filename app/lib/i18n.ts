@@ -156,6 +156,10 @@ export type MessageKey =
   | 'reading.font.serif'
   | 'reading.font.sans'
   | 'reading.justify'
+  // Aviso do 1º download do banco de leitura no WEB (a Bíblia ~64 MB é baixada uma vez p/
+  // uso offline). O progresso `{percent}` é montado na UI (dado, não domínio).
+  | 'reading.preparingOffline'
+  | 'reading.preparingOfflineHint'
   // Estados-VAZIO das telas/componentes de navegação (F5.8) — CROMO puro (sem texto
   // bíblico): grade de capítulos sem itens e capítulo ausente do banco de leitura.
   | 'read.emptyChapters'
@@ -549,6 +553,8 @@ const pt: Record<MessageKey, string> = {
   'reading.font.serif': 'Serifa',
   'reading.font.sans': 'Sem serifa',
   'reading.justify': 'Justificar texto',
+  'reading.preparingOffline': 'Preparando a Bíblia para uso offline…',
+  'reading.preparingOfflineHint': 'Só na primeira vez — depois a leitura funciona sem internet.',
   'read.bookFallback': 'Livro {number}',
   'read.emptyChapters': 'Nenhum capítulo disponível nesta versão do banco de leitura.',
   'read.chapterNotFound': 'Capítulo não encontrado no banco de leitura.',
@@ -911,6 +917,8 @@ const en: Record<MessageKey, string> = {
   'reading.font.serif': 'Serif',
   'reading.font.sans': 'Sans-serif',
   'reading.justify': 'Justify text',
+  'reading.preparingOffline': 'Preparing the Bible for offline use…',
+  'reading.preparingOfflineHint': 'First time only — reading then works with no internet.',
   'read.bookFallback': 'Book {number}',
   'read.emptyChapters': 'No chapters available in this version of the reading database.',
   'read.chapterNotFound': 'Chapter not found in the reading database.',

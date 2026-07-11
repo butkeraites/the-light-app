@@ -125,14 +125,29 @@ export function listBooks(): Book[] {
 // brackets concentram a política de fechamento: `fn` roda sobre o handle e ele é SEMPRE fechado (leak-safe
 // por construção). O opener entra por `import()` dinâmico (code-split F5.9 preservado). `deepStudy` COMPÕE
 // os dois (léxico dentro de leitura) → fecha o léxico antes da leitura, sem vazar se o léxico falhar ao abrir.
-async function withReadingDb<T>(fn: (handle: OpenReadingDb) => Promise<T>): Promise<T> {
-  const { openReadingDbWeb } = await import('./sqlite-reading-opfs.web');
-  const handle = await openReadingDbWeb();
-  try {
-    return await fn(handle);
-  } finally {
-    await handle.close();
-  }
+// Fix de perf (celular) + ADR-0057/0077: o banco de leitura é um SINGLETON de sessão
+// (`openReadingDbWeb` memoiza a abertura — ~64 MB baixados/parseados UMA vez; antes era
+// open→query→close a CADA chamada, re-fazendo o fetch+parse de 64 MB por capítulo, 2× no
+// paralelo). Como é UMA conexão wa-sqlite compartilhada, os efeitos CONCORRENTES da tela
+// (getChapter primário + paralelo + xref + traduções) NÃO podem intercalar statements
+// nela — então SERIALIZAMOS os ops numa fila (promise chain). O `close` do handle é no-op
+// (a sessão é dona do handle; nada a fechar por chamada → o vazamento que os brackets da
+// ADR-0077 evitavam não se aplica). A fila prossegue mesmo se um op falhar (o erro vai só
+// ao chamador). A resolução do opener (import dinâmico, code-split F5.9) roda DENTRO do
+// passo serializado, então a montagem da fila é síncrona (ordem determinística).
+let readingOpChain: Promise<unknown> = Promise.resolve();
+
+function withReadingDb<T>(fn: (handle: OpenReadingDb) => Promise<T>): Promise<T> {
+  const run = readingOpChain.then(async () => {
+    const { openReadingDbWeb } = await import('./sqlite-reading-opfs.web');
+    const handle = await openReadingDbWeb();
+    return fn(handle);
+  });
+  readingOpChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run as Promise<T>;
 }
 
 async function withLexiconDb<T>(fn: (handle: OpenLexiconDb) => Promise<T>): Promise<T> {
