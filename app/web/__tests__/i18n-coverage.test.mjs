@@ -276,6 +276,9 @@ async function main() {
     // Rodada 2: cromo do painel INTERLINEAR — seção/loading/empty/nota. O texto original
     // (surface/translit/glosa/Strong) vem do STORE via `interlinearVerse`, nunca de t().
     'interlinear',
+    // Rodada 5: cromo do LEMBRETE devocional in-app (saudação/convite/botões + seção de Ajustes).
+    // O texto do versículo do dia vem VERBATIM do store, nunca destas strings.
+    'reminders',
   ]);
   for (const key of MESSAGE_KEYS) {
     assert.ok(

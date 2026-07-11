@@ -24,12 +24,14 @@
 // estruturalmente distintas, então a regra "só-nomes / secure-entry / nunca-vazar-valor" é
 // espelhada aqui em vez de extrair um componente que serviria mal os dois formatos.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
+import { NUDGE_HOUR_PRESETS } from '../lib/engagementNudge.shared';
 import { useI18n, type MessageKey, type TranslateFn } from '../lib/i18n';
 import { deleteKey, listProviders, setKey, SUPPORTED_PROVIDERS } from '../lib/keystore';
 import { useTheme, type ThemeColors, type ThemeContextValue } from '../lib/theme';
-import { Button, Surface } from '../components/ui';
+import { useDevotionalNudgePref } from '../lib/useDevotionalNudgePref';
+import { Button, Chip, Surface } from '../components/ui';
 
 // F6.8 (ADR-0058): rótulo HONESTO da capacidade de cada provedor no alvo CORRENTE. No WEB, os
 // provedores de nuvem (anthropic/openai/gemini) alcançam o navegador — a Anthropic via o header
@@ -113,7 +115,73 @@ export default function SettingsScreen() {
           />
         ))}
       </View>
+
+      {/* Rodada 5: LEMBRETES devocionais in-app (orar & ler + versículo do dia). Cross-plataforma
+          (é NUDGE ao abrir/voltar ao app, NÃO notificação de sistema — o web estático não pode sem
+          servidor, ADR-0042). Opt-in, OFF por padrão. Sem rede/conta/permissão. */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle} accessibilityRole="header">
+          {t('reminders.title')}
+        </Text>
+        <Text style={styles.note}>{t('reminders.description')}</Text>
+        <ReminderSettings styles={styles} colors={colors} t={t} />
+      </View>
     </ScrollView>
+  );
+}
+
+/**
+ * Controle do LEMBRETE devocional in-app: liga/desliga + horário da manhã (chips). Lê/persiste via
+ * `useDevotionalNudgePref` (KV offline). Aparece nas DUAS plataformas (o nudge é in-app). Não pede
+ * permissão (não há notificação de sistema). Não pisca controles enquanto a pref não re-hidratou.
+ */
+function ReminderSettings({
+  styles,
+  colors,
+  t,
+}: {
+  styles: ReturnType<typeof makeStyles>;
+  colors: ThemeColors;
+  t: TranslateFn;
+}) {
+  const { loaded, enabled, hour, setEnabled, setHour } = useDevotionalNudgePref();
+
+  if (!loaded) {
+    return null;
+  }
+
+  return (
+    <Surface padded style={styles.row} testID="reminder-settings">
+      <View style={styles.rowHeader}>
+        <Text style={styles.providerName}>{t('reminders.enableLabel')}</Text>
+        <Switch
+          value={enabled}
+          onValueChange={setEnabled}
+          accessibilityRole="switch"
+          accessibilityLabel={t('reminders.enableLabel')}
+          trackColor={{ true: colors.accent, false: colors.divider }}
+          testID="reminder-nudge-toggle"
+        />
+      </View>
+      {enabled ? (
+        <View style={styles.timesRow}>
+          <Text style={styles.timeLabel}>{t('reminders.timeLabel')}</Text>
+          {NUDGE_HOUR_PRESETS.map((h) => {
+            const label = `${String(h).padStart(2, '0')}:00`;
+            return (
+              <Chip
+                key={h}
+                label={label}
+                active={h === hour}
+                onPress={() => setHour(h)}
+                accessibilityLabel={t('a11y.reminderTime', { time: label })}
+                testID={`reminder-hour-${h}`}
+              />
+            );
+          })}
+        </View>
+      ) : null}
+    </Surface>
   );
 }
 
@@ -273,5 +341,8 @@ function makeStyles({ colors, type, space, radius }: ThemeContextValue) {
     },
     rowActions: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
     error: { ...type.caption, color: colors.error, lineHeight: 18 },
+    // Linha de horários do lembrete (rótulo + chips de preset), como em plans/ReminderControls.
+    timesRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm },
+    timeLabel: { ...type.caption, color: colors.muted },
   });
 }

@@ -49,3 +49,11 @@ export function ThemeModeSelector() {
 export function IconButton() {
   return React.createElement('IconButton', null);
 }
+
+// ../components/DevotionalNudge — card do nudge devocional (Rodada 5). No-op no 1º paint: o card real
+// importa dinamicamente a camada de leitura (→ @expo/vector-icons via o kit) e não faz parte do SHELL.
+export function DevotionalNudge() {
+  return React.createElement('DevotionalNudge', null);
+}
+// ../lib/useDevotionalNudgeController — orquestrador do nudge (efeito). No-op no 1º paint (chrome).
+export function useDevotionalNudgeController() {}
