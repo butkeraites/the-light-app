@@ -53,7 +53,13 @@ TARGET="$ROOT/.cache/xtask-target"          # CARGO_TARGET_DIR fora do checkout 
 # `import-scholarly` (dados de léxico STEP). Ver ADR-0026.
 # Rodada 3 (ADR-0012): bump p/ 76636af — o rev que registra BSB + BLIVRE no SPECS do xtask,
 # convergido com o pin do core/Cargo.toml (mesmo rev; the-light-core é byte-idêntico ao fb09631).
-REV="76636af"
+# Convergência ADR-0062 (fatia LÉXICO): quando `core/Cargo.toml` avança p/ um rev do the-light
+# COMPATÍVEL byte-a-byte com o pipeline de importadores (verses/xref/scholarly), este REV segue
+# junto — pipeline ÚNICO exige o MESMO checkout do cargo. Bump p/ 80aa1a7 (o rev consumido por
+# `core/Cargo.toml` desde #49); `Swatinem/rust-cache` mascarou o drift enquanto o cache do rev
+# antigo sobreviveu, mas cargo só baixa o rev que o `Cargo.toml` pede — sem realinhar aqui,
+# `xtask/Cargo.toml` do rev antigo some do runner e o deploy falha (o que aconteceu no run #10).
+REV="80aa1a7"
 XTASK_MANIFEST="$HOME/.cargo/git/checkouts/the-light-9eb8809a6d68281a/$REV/xtask/Cargo.toml"
 
 # Repasse seletivo de flags conhecidas do `xtask import` (não aceita arbitrário).
