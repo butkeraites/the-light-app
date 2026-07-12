@@ -151,6 +151,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Sincroniza o fundo de `html/body` (SÓ no WEB) com o modo EFETIVO. O shell SSR já pinta
+  // `html/body` conforme `prefers-color-scheme` (evita flash branco no 1º frame). Este efeito
+  // cobre o CASO EM QUE o usuário FORÇA um modo diferente do sistema: sem ele, iOS instalado
+  // mostraria a paleta do sistema na área de safe-area (home indicator) e a do app no resto —
+  // dissonância visível. No nativo (`Platform.OS !== 'web'`) o efeito é no-op.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (typeof document === 'undefined') return;
+    const bg = PALETTES[mode].background;
+    document.documentElement.style.backgroundColor = bg;
+    if (document.body) document.body.style.backgroundColor = bg;
+  }, [mode]);
+
   // Fixa (ou limpa) o modo e PERSISTE a escolha offline (fire-and-forget; falha tolerada).
   const setMode = useCallback((next: ThemeMode | null) => {
     setOverride(next);

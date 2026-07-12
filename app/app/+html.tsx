@@ -35,6 +35,24 @@ export default function Root({ children }: PropsWithChildren) {
         {/* PWA: manifest + cor do tema (barra do navegador / splash no dark-first "Vigil"). */}
         <link rel="manifest" href={`${BASE}/manifest.webmanifest`} />
         <meta name="theme-color" content="#0b0b0f" />
+        {/* Ambos os esquemas suportados — o UA pinta widgets/rolagem coerentes com o tema
+            do app (sem borda branca em <select>, barras de rolagem, etc.). */}
+        <meta name="color-scheme" content="dark light" />
+
+        {/* iOS PWA (standalone + viewport-fit=cover): SEM esta regra, a área de safe-area
+            embaixo (home indicator) e a de overscroll mostram o fundo PADRÃO do documento
+            (branco) — a "faixa branca" que aparece no iPhone instalado. Fixamos `html/body`
+            no tom da paleta ATIVA (dark-first, com override p/ `prefers-color-scheme:light`)
+            já no shell SSR, então o 1º frame nunca "flasha" branco. Quando o usuário força um
+            modo (override do ThemeProvider) que difere do sistema, o próprio provider sincroniza
+            `document.documentElement/body` — mantém a coerência em qualquer combinação. */}
+        <style
+          dangerouslySetInnerHTML={{
+            __html:
+              'html,body{background-color:#0b0b0f;}' +
+              '@media (prefers-color-scheme: light){html,body{background-color:#faf6ec;}}',
+          }}
+        />
 
         {/* Ícones: favicon (aba) + SVG escalável + apple-touch (tela de início do iOS). */}
         <link rel="icon" href={`${BASE}/favicon.png`} type="image/png" sizes="32x32" />
