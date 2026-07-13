@@ -47,14 +47,24 @@ SEED="$ROOT/.cache/seed"                   # datasets brutos JSON baixados — S
 SEED_SCHOLARLY="$ROOT/.cache/seed/scholarly" # TSV STEPBible brutos (léxico) — SEMPRE ignorado
 TARGET="$ROOT/.cache/xtask-target"          # CARGO_TARGET_DIR fora do checkout — ignorado
 
-# rev PINADO do the-light (mesmo consumido por core/Cargo.toml — ADR-0002). Alinhado a
-# c8ecb2f (rev do app) p/ um pipeline único: verses + xref + léxico no MESMO rev pinado.
-# `import`/`import-xref` são byte-idênticos a 8f66004; c8ecb2f acrescenta
-# `import-scholarly` (dados de léxico STEP). Ver ADR-0026.
-# Rodada 3 (ADR-0012): bump p/ 76636af — o rev que registra BSB + BLIVRE no SPECS do xtask,
-# convergido com o pin do core/Cargo.toml (mesmo rev; the-light-core é byte-idêntico ao fb09631).
-REV="76636af"
-XTASK_MANIFEST="$HOME/.cargo/git/checkouts/the-light-9eb8809a6d68281a/$REV/xtask/Cargo.toml"
+# rev PINADO do the-light — DERIVADO de core/Cargo.toml (FONTE ÚNICA), não hardcoded, p/ NUNCA
+# divergir do que o build baixa (ADR-0002/ADR-0062). O `gen-bindings-ts.sh` (rodado ANTES, no CI)
+# compila o core no pin e o cargo cria o checkout desse rev; aqui usamos o MESMO. Antes o rev era
+# fixo (76636af) e só funcionava enquanto aquele checkout estava no cache — a ADR-0062 re-pinou o core
+# e o pipeline de dados ficou preso num rev que o build não baixa mais. O xtask (importadores de
+# dados) é BYTE-IDÊNTICO entre os revs da ADR-0062 (76636af é ancestral) ⇒ os dados gerados são idênticos.
+FULL_REV="$(grep -oE 'rev = "[0-9a-f]{40}"' "$ROOT/core/Cargo.toml" | grep -oE '[0-9a-f]{40}' | head -1)"
+if [ -z "$FULL_REV" ]; then
+  echo "gen-bible-db.sh: rev pinado (40 hex) não encontrado em core/Cargo.toml" >&2
+  exit 1
+fi
+REV="${FULL_REV:0:7}"
+CHECKOUTS="$HOME/.cargo/git/checkouts/the-light-9eb8809a6d68281a"
+# O cargo nomeia o checkout pelo short hash (≥7 chars); casa por PREFIXO p/ robustez de tamanho.
+XTASK_MANIFEST="$CHECKOUTS/$REV/xtask/Cargo.toml"
+for d in "$CHECKOUTS/$REV"*/xtask/Cargo.toml; do
+  [ -f "$d" ] && XTASK_MANIFEST="$d" && break
+done
 
 # Repasse seletivo de flags conhecidas do `xtask import` (não aceita arbitrário).
 EXTRA=""
@@ -69,9 +79,9 @@ for a in "$@"; do
 done
 
 if [ ! -f "$XTASK_MANIFEST" ]; then
-  echo "gen-bible-db.sh: xtask do rev $REV não encontrado em:" >&2
+  echo "gen-bible-db.sh: xtask do rev $REV (de core/Cargo.toml) não encontrado em:" >&2
   echo "  $XTASK_MANIFEST" >&2
-  echo "  (resolva a git dep pinada: \`cargo fetch\` em core/ baixa o checkout 8f66004)" >&2
+  echo "  (rode \`bash scripts/gen-bindings-ts.sh\` antes — ele compila o core no pin e o cargo cria o checkout)" >&2
   exit 1
 fi
 
