@@ -3,7 +3,7 @@
 // LÊ/PERSISTE a preferência do lembrete diário in-app (ligado + hora da manhã) no KV de prefs OFFLINE
 // (F5.2), reusando a lógica PURA de `engagementNudge.shared.ts` (parse/chave/default). Molde de
 // `useReadingPrefs.ts`: no boot re-hidrata o salvo; os setters gravam fire-and-forget. É o ponto com
-// `react`/estado da preferência; a decisão do nudge fica pura/testável. Opt-in (OFF por padrão).
+// `react`/estado da preferência; a decisão do nudge fica pura/testável. LIGADO por padrão (Ajustes).
 import { useCallback, useEffect, useState } from 'react';
 
 import {

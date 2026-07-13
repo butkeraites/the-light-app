@@ -84,7 +84,7 @@ function RootNavigator() {
   }, []);
   // Rodada 5: orquestra o NUDGE devocional (lembrete in-app de orar & ler). A cada abertura/
   // volta ao primeiro plano, decide (puro) e aciona o card <DevotionalNudge/> abaixo. Opt-in
-  // (OFF por padrão, via Ajustes); no-op enquanto desligado. Sem notificação de sistema/servidor.
+  // (LIGADO por padrão; desligável em Ajustes); no-op enquanto desligado. Sem notificação/servidor.
   useDevotionalNudgeController();
   // Opções comuns a todas as telas: header e fundo seguindo os tokens de tema, com os
   // toggles (idioma + tema) visíveis no header.

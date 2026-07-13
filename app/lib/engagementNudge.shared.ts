@@ -36,8 +36,8 @@ export interface NudgeState {
 
 export type NudgeKind = 'morning' | 'idleReturn';
 
-/** Default: OFF, manhã às 7h (opt-in). */
-export const DEFAULT_NUDGE_PREF: NudgePref = { enabled: false, hour: 7 };
+/** Default: LIGADO, manhã às 7h (o usuário pediu ON por padrão; desligável em Ajustes). */
+export const DEFAULT_NUDGE_PREF: NudgePref = { enabled: true, hour: 7 };
 export const EMPTY_NUDGE_STATE: NudgeState = { lastShownDay: 0, lastShownAtMs: 0, engagedDay: 0 };
 
 /** Ausência mínima p/ o nudge de "voltou depois de um tempo" (3h). */

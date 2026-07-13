@@ -118,7 +118,7 @@ export default function SettingsScreen() {
 
       {/* Rodada 5: LEMBRETES devocionais in-app (orar & ler + versículo do dia). Cross-plataforma
           (é NUDGE ao abrir/voltar ao app, NÃO notificação de sistema — o web estático não pode sem
-          servidor, ADR-0042). Opt-in, OFF por padrão. Sem rede/conta/permissão. */}
+          servidor, ADR-0042). LIGADO por padrão; desligável aqui. Sem rede/conta/permissão. */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle} accessibilityRole="header">
           {t('reminders.title')}
