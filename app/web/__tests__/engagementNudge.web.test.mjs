@@ -145,8 +145,8 @@ async function main() {
   );
 
   // ══ (6) parse* tolerante ═════════════════════════════════════════════════════════════════
-  assert.deepEqual(parseNudgePref(null), DEFAULT_NUDGE_PREF, 'pref null → default (OFF)');
-  assert.equal(DEFAULT_NUDGE_PREF.enabled, false, 'default é OPT-IN OFF');
+  assert.deepEqual(parseNudgePref(null), DEFAULT_NUDGE_PREF, 'pref null → default');
+  assert.equal(DEFAULT_NUDGE_PREF.enabled, true, 'default é LIGADO (o usuário pediu ON por padrão)');
   assert.deepEqual(parseNudgePref('{"enabled":true,"hour":6}'), { enabled: true, hour: 6 }, 'pref parse ok');
   assert.deepEqual(parseNudgePref('{"enabled":"yes","hour":99}'), { enabled: false, hour: 7 }, 'pref coerção: enabled não-bool→false, hour fora de faixa→default');
   assert.deepEqual(parseNudgePref('not json'), DEFAULT_NUDGE_PREF, 'pref corrompida → default');

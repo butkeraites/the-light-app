@@ -3,7 +3,7 @@
 // Card GENTIL, não-bloqueante (pinado embaixo), que convida a ORAR e LER e mostra o VERSÍCULO DO DIA.
 // Aparece quando o controlador (`useDevotionalNudgeController` no `_layout`) decide — no web ao ABRIR/
 // voltar ao app (o único mecanismo honesto sem servidor; ADR-0042), no nativo idem (mesmo card, NÃO é
-// notificação de sistema). Some ao dispensar/atuar. Opt-in via Ajustes (OFF por padrão).
+// notificação de sistema). Some ao dispensar/atuar. LIGADO por padrão; desligável em Ajustes.
 //
 // ANTI-ALUCINAÇÃO: a saudação/convite são CROMO i18n; o TEXTO do versículo vem VERBATIM do store
 // (`getChapter`, molde de `HomeVerseOfDay`) — nunca gerado. Se o store não carregou, mostra só o
