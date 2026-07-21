@@ -128,7 +128,7 @@ const CFG = {
   rows: 33,
   trailLifeBase: 3.2,     // seconds a trail segment persists (phase I)
   playerSpeedBase: 5.2,   // cells / second (phase I)
-  enemyCount: [2, 3, 4],  // per phase
+  enemyCount: [1, 3, 4],  // per phase
   fragmentsGoal: [15, 25, 20], // per phase; final phase is "escape"
   fragmentSpawn: 6,       // max fragments on grid
   turnCooldown: 0.09,     // s between turns (prevents 180 flip)
@@ -555,19 +555,24 @@ function makePlayer(){
     speed: CFG.playerSpeedBase,
     trailColor: '#7ffcff',
     isPlayer: true,
-    invuln: 0.5,
+    invuln: 1.6,
     boostT: 0,
   };
 }
 
 function makeEnemy(color){
-  // Spawn on an edge, moving inward
-  const side = irand(0,4);
+  // Spawn on an edge, moving inward — but always far from the player
+  const px = G.player ? G.player.gx : Math.floor(CFG.cols/2);
+  const py = G.player ? G.player.gy : Math.floor(CFG.rows/2);
   let gx, gy, d;
-  if(side===0){ gx=irand(1,CFG.cols-1); gy=1; d=DIR.DOWN.slice() }
-  else if(side===1){ gx=CFG.cols-2; gy=irand(1,CFG.rows-1); d=DIR.LEFT.slice() }
-  else if(side===2){ gx=irand(1,CFG.cols-1); gy=CFG.rows-2; d=DIR.UP.slice() }
-  else { gx=1; gy=irand(1,CFG.rows-1); d=DIR.RIGHT.slice() }
+  for(let tries=0; tries<20; tries++){
+    const side = irand(0,4);
+    if(side===0){ gx=irand(1,CFG.cols-1); gy=1; d=DIR.DOWN.slice() }
+    else if(side===1){ gx=CFG.cols-2; gy=irand(1,CFG.rows-1); d=DIR.LEFT.slice() }
+    else if(side===2){ gx=irand(1,CFG.cols-1); gy=CFG.rows-2; d=DIR.UP.slice() }
+    else { gx=1; gy=irand(1,CFG.rows-1); d=DIR.RIGHT.slice() }
+    if(Math.hypot(gx-px, gy-py) >= 8) break;
+  }
   return {
     gx, gy, x:gx+0.5, y:gy+0.5,
     dir: d, nextDir: d.slice(),
@@ -824,22 +829,21 @@ function step(dt){
 function stepPlayer(dt){
   const p = G.player;
   if(p.invuln>0) p.invuln = Math.max(0, p.invuln - dt);
+  const inv = p.invuln > 0;
 
-  // Move continuously; on cell-center crossing, drop a trail and honor turn
-  const prevX = p.x, prevY = p.y;
+  // Move continuously; on cell-center crossing, drop a trail on the cell we JUST LEFT and honor turn
   p.x += p.dir[0] * p.speed * dt;
   p.y += p.dir[1] * p.speed * dt;
 
   const cx = Math.floor(p.x);
   const cy = Math.floor(p.y);
   if(cx !== p.gx || cy !== p.gy){
-    // Entered a new cell
+    // Leaving old cell — drop trail on it (never on the cell we now occupy)
+    dropTrailAt(p, p.gx, p.gy);
     p.gx = cx; p.gy = cy;
-    dropTrail(p);
     // apply pending turn on cell boundary if valid
     if(p.nextDir[0]!==p.dir[0] || p.nextDir[1]!==p.dir[1]){
       p.dir = p.nextDir.slice();
-      // Nudge to cell center perpendicular to new dir
       p.x = p.gx + 0.5;
       p.y = p.gy + 0.5;
     }
@@ -847,20 +851,26 @@ function stepPlayer(dt){
 
   // Wall collision
   if(p.gx < 0 || p.gy < 0 || p.gx >= CFG.cols || p.gy >= CFG.rows){
-    return die('wall');
+    if(inv){
+      // clamp back inside instead of dying while spawning
+      p.gx = clamp(p.gx, 0, CFG.cols-1);
+      p.gy = clamp(p.gy, 0, CFG.rows-1);
+      p.x  = p.gx + 0.5; p.y = p.gy + 0.5;
+    } else {
+      return die('wall');
+    }
   }
   // Trail collision
   for(let i=0;i<G.trails.length;i++){
     const t = G.trails[i];
     if(t.gx === p.gx && t.gy === p.gy){
-      // Ignore player's own most-recent-cell to avoid instant death on the tile you just left
       if(t.who === 'player' && (G.time - t.born) < 0.15) continue;
-      // Phase 3 grants derezz: destroys enemy trails on contact
       if(G.phase >= 2 && t.who === 'enemy'){
         G.trails.splice(i,1); i--;
         spawnBurst(p.x, p.y, '#ffd06a', 8);
         continue;
       }
+      if(inv) continue;
       return die(t.who === 'player' ? 'self' : 'enemy-trail');
     }
   }
@@ -869,14 +879,13 @@ function stepPlayer(dt){
     const e = G.enemies[i];
     if(Math.hypot(e.x-p.x, e.y-p.y) < 0.7){
       if(G.phase >= 2){
-        // Derezz the enemy
         spawnBurst(e.x, e.y, '#ffd06a', 26);
         G.enemies.splice(i,1); i--;
         audio.sfxFragment();
-        // Respawn a new one shortly
         setTimeout(()=>{ if(G.state==='play') G.enemies.push(makeEnemy()) }, 1400);
         continue;
       }
+      if(inv) continue;
       return die('enemy');
     }
   }
@@ -908,8 +917,8 @@ function stepEnemies(dt){
     const cx = Math.floor(e.x);
     const cy = Math.floor(e.y);
     if(cx !== e.gx || cy !== e.gy){
+      dropTrailAt(e, e.gx, e.gy);
       e.gx = cx; e.gy = cy;
-      dropTrail(e);
       // AI turn decision at cell boundary
       const idx = dirIndex(e.dir);
       const opts = [DIRS[idx], DIRS[(idx+1)%4], DIRS[(idx+3)%4]];
@@ -957,10 +966,10 @@ function stepFragments(dt){
   }
 }
 
-function dropTrail(entity){
+function dropTrailAt(entity, gx, gy){
+  if(gx<0 || gy<0 || gx>=CFG.cols || gy>=CFG.rows) return;
   G.trails.push({
-    gx: entity.gx,
-    gy: entity.gy,
+    gx, gy,
     born: G.time,
     life: (entity.trailLife || (entity.isPlayer ? CFG.trailLifeBase : CFG.trailLifeBase*0.9)),
     color: entity.trailColor,
