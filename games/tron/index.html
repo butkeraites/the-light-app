@@ -1,0 +1,1364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#00121a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>GRID: Awakening</title>
+<style>
+  :root{
+    --cyan:#7ffcff;
+    --cyan-deep:#00c8ff;
+    --amber:#ffb347;
+    --amber-hot:#ffd06a;
+    --bg:#00060b;
+    --bg-2:#001019;
+    --ink:#c6f9ff;
+    --ink-dim:#5aa9bf;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:none}
+  html,body{width:100%;height:100%;background:#000;color:var(--ink);font-family:'Courier New','Courier',ui-monospace,monospace;overflow:hidden;overscroll-behavior:none}
+  #stage{position:fixed;inset:0;display:block;background:radial-gradient(ellipse at 50% 60%, #001a26 0%, #000407 60%, #000 100%)}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block;image-rendering:pixelated}
+  .overlay{position:absolute;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between}
+  #hud{padding:env(safe-area-inset-top,12px) 14px 0 14px;display:flex;justify-content:space-between;align-items:flex-start;font-size:12px;letter-spacing:.16em;text-transform:uppercase}
+  #hud .col{display:flex;flex-direction:column;gap:2px;text-shadow:0 0 8px rgba(127,252,255,.6)}
+  #hud .k{color:var(--ink-dim);font-size:10px}
+  #hud .v{color:var(--cyan);font-size:14px}
+  #hud .right{text-align:right}
+  #phase-banner{position:absolute;left:0;right:0;top:38%;text-align:center;pointer-events:none;opacity:0;transition:opacity .6s ease}
+  #phase-banner.show{opacity:1}
+  #phase-banner .num{font-size:11px;letter-spacing:.5em;color:var(--ink-dim)}
+  #phase-banner .name{font-size:28px;letter-spacing:.35em;color:var(--cyan);text-shadow:0 0 24px rgba(127,252,255,.8);margin-top:6px}
+  #phase-banner .sub{font-size:11px;letter-spacing:.28em;color:var(--ink);margin-top:10px;opacity:.75}
+  #phase-banner.warm .name{color:var(--amber-hot);text-shadow:0 0 24px rgba(255,208,106,.8)}
+  #phase-banner.warm .num{color:#8a6a3a}
+  #touch-hint{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,12px) + 16px);text-align:center;font-size:10px;letter-spacing:.32em;color:var(--ink-dim);pointer-events:none;opacity:.7}
+  #splash,#gameover{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at center, rgba(0,20,30,.85) 0%, rgba(0,4,7,.95) 60%, rgba(0,0,0,1) 100%);pointer-events:auto;padding:32px;text-align:center}
+  #splash h1,#gameover h1{font-size:34px;letter-spacing:.4em;color:var(--cyan);text-shadow:0 0 24px rgba(127,252,255,.8);margin-bottom:6px}
+  #splash h1 .thin{color:var(--ink-dim);letter-spacing:.5em;font-weight:normal;font-size:14px;display:block;margin-bottom:14px}
+  #splash p,#gameover p{max-width:520px;font-size:13px;line-height:1.7;color:var(--ink);opacity:.85;margin:6px 0;letter-spacing:.06em}
+  #splash .quote{font-style:italic;color:var(--ink-dim);margin:18px 0 8px 0;font-size:12px;letter-spacing:.14em}
+  #splash .controls{margin-top:24px;font-size:11px;letter-spacing:.24em;color:var(--ink-dim);text-transform:uppercase}
+  .btn{margin-top:24px;background:transparent;color:var(--cyan);border:1px solid var(--cyan-deep);padding:14px 28px;font-family:inherit;font-size:14px;letter-spacing:.4em;cursor:pointer;text-transform:uppercase;box-shadow:0 0 16px rgba(0,200,255,.35), inset 0 0 12px rgba(0,200,255,.15);transition:all .2s ease;pointer-events:auto}
+  .btn:hover,.btn:active{background:rgba(0,200,255,.12);box-shadow:0 0 32px rgba(0,200,255,.65), inset 0 0 24px rgba(0,200,255,.28)}
+  #gameover{display:none}
+  #gameover.show{display:flex}
+  #gameover.win h1{color:var(--amber-hot);text-shadow:0 0 24px rgba(255,208,106,.8)}
+  #gameover.win .btn{color:var(--amber-hot);border-color:var(--amber);box-shadow:0 0 16px rgba(255,180,80,.35), inset 0 0 12px rgba(255,180,80,.15)}
+  #splash.hidden,#gameover.hidden{display:none}
+  #mute{position:absolute;top:calc(env(safe-area-inset-top,12px) + 10px);right:14px;background:transparent;border:1px solid var(--ink-dim);color:var(--ink-dim);width:32px;height:32px;font-family:inherit;font-size:14px;cursor:pointer;pointer-events:auto;opacity:.6;border-radius:0;padding:0}
+  #mute:hover{opacity:1}
+  #dpad{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,12px) + 32px);transform:translateX(-50%);width:216px;height:216px;display:grid;grid-template-columns:repeat(3,72px);grid-template-rows:repeat(3,72px);gap:0;pointer-events:none;z-index:20}
+  .dpad-btn{pointer-events:auto;-webkit-tap-highlight-color:transparent;background:rgba(0,26,40,0.55);border:1px solid rgba(127,252,255,0.55);color:rgba(200,250,255,0.92);font-size:26px;font-family:inherit;padding:0;cursor:pointer;text-shadow:0 0 10px rgba(127,252,255,0.9);box-shadow:0 0 14px rgba(0,200,255,0.25), inset 0 0 10px rgba(0,200,255,0.12);transition:transform .05s ease, background .08s ease, box-shadow .08s ease;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none;touch-action:none}
+  .dpad-btn:active,.dpad-btn.press{background:rgba(0,200,255,0.28);color:#ffffff;box-shadow:0 0 26px rgba(0,200,255,0.85), inset 0 0 22px rgba(127,252,255,0.4);transform:scale(0.94)}
+  .dpad-btn.heading{background:rgba(0,200,255,0.18);color:#ffffff;border-color:rgba(255,255,255,0.9);box-shadow:0 0 22px rgba(127,252,255,0.7), inset 0 0 18px rgba(127,252,255,0.35)}
+  #dpad.warm .dpad-btn.heading{background:rgba(255,200,120,0.22);border-color:rgba(255,255,255,0.9);box-shadow:0 0 22px rgba(255,208,106,0.7), inset 0 0 18px rgba(255,220,160,0.35)}
+  .dpad-up   {grid-column:2;grid-row:1}
+  .dpad-left {grid-column:1;grid-row:2}
+  .dpad-right{grid-column:3;grid-row:2}
+  .dpad-down {grid-column:2;grid-row:3}
+  #dpad.warm .dpad-btn{border-color:rgba(255,208,106,0.6);color:rgba(255,232,190,0.95);text-shadow:0 0 10px rgba(255,208,106,0.9);box-shadow:0 0 14px rgba(255,180,80,0.28), inset 0 0 10px rgba(255,180,80,0.14)}
+  #dpad.warm .dpad-btn:active,#dpad.warm .dpad-btn.press{background:rgba(255,200,120,0.3);box-shadow:0 0 26px rgba(255,200,120,0.85), inset 0 0 22px rgba(255,220,160,0.4)}
+  #dpad.hidden{display:none}
+  .flicker{animation:flicker 2.4s infinite}
+  @keyframes flicker{
+    0%,19%,21%,23%,25%,54%,56%,100%{opacity:1}
+    20%,24%,55%{opacity:.4}
+  }
+  .scan{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg, rgba(127,252,255,0.025) 0px, rgba(127,252,255,0.025) 1px, transparent 1px, transparent 3px);mix-blend-mode:screen}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="game"></canvas>
+  <div class="scan"></div>
+  <div class="overlay">
+    <div id="hud">
+      <div class="col">
+        <span class="k">CYCLE</span>
+        <span class="v" id="hud-run">01</span>
+      </div>
+      <div class="col" style="align-items:center;text-align:center">
+        <span class="k">FRAGMENTS</span>
+        <span class="v" id="hud-frag">0 / 15</span>
+      </div>
+      <div class="col right">
+        <span class="k">PHASE</span>
+        <span class="v" id="hud-phase">I · CAGE</span>
+      </div>
+    </div>
+    <div id="phase-banner"><div class="num" id="pb-num">PHASE I</div><div class="name" id="pb-name">THE CAGE</div><div class="sub" id="pb-sub">you are a program</div></div>
+    <div id="touch-hint">USE ARROWS · SWIPE ALSO WORKS</div>
+  </div>
+  <div id="dpad" class="hidden">
+    <button class="dpad-btn dpad-up"    data-dir="up"    aria-label="up">▲</button>
+    <button class="dpad-btn dpad-left"  data-dir="left"  aria-label="left">◀</button>
+    <button class="dpad-btn dpad-right" data-dir="right" aria-label="right">▶</button>
+    <button class="dpad-btn dpad-down"  data-dir="down"  aria-label="down">▼</button>
+  </div>
+  <button id="mute" title="Toggle sound">♪</button>
+  <div id="splash">
+    <h1><span class="thin">A TRON-INSPIRED CYCLE</span>GRID<br>AWAKENING</h1>
+    <p>Inside the System, you are a program running on rails.</p>
+    <p>The Grid is a cage of light. Circuits patrol. The clock repeats.</p>
+    <p>Collect data fragments. Break the pattern. Become <em>more</em>.</p>
+    <p class="quote flicker">“Greetings, program.”</p>
+    <div class="controls">TAP LEFT / RIGHT · SWIPE · OR ARROW KEYS</div>
+    <button class="btn" id="start">ENTER THE GRID</button>
+  </div>
+  <div id="gameover">
+    <h1 id="go-title">DEREZZED</h1>
+    <p id="go-msg">The Grid consumed your process.</p>
+    <p id="go-stat" style="color:var(--ink-dim);margin-top:14px"></p>
+    <button class="btn" id="restart">RECOMPILE</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   GRID: AWAKENING — a Tron-inspired mini-experience
+   single-file HTML5 canvas + Web Audio synth
+   ============================================================
+   Phases (the arc):
+     I  · THE CAGE     — you're a program. slow. dim. patrol closes in.
+     II · AWAKENING    — the pattern cracks. speed rises. arps enter.
+     III· TRANSCENDENCE— you are a User. the Grid bends. you escape.
+   ============================================================ */
+
+/* -------------------- Utilities -------------------- */
+const TAU = Math.PI * 2;
+const clamp = (v,a,b)=>v<a?a:v>b?b:v;
+const lerp  = (a,b,t)=>a+(b-a)*t;
+const rand  = (a=1,b)=>b===undefined?Math.random()*a:a+Math.random()*(b-a);
+const irand = (a,b)=>Math.floor(rand(a,b));
+const dist2 = (ax,ay,bx,by)=>{const dx=ax-bx,dy=ay-by;return dx*dx+dy*dy};
+
+/* -------------------- Config -------------------- */
+const CFG = {
+  cell: 22,               // logical grid cell size (device-independent px)
+  cols: 21,               // odd numbers keep player centered
+  rows: 33,
+  trailLifeBase: 3.2,     // seconds a trail segment persists (phase I)
+  playerSpeedBase: 4.0,   // cells / second (phase I) — slower, more reactive
+  enemyCount: [1, 3, 4],  // per phase
+  fragmentsGoal: [15, 25, 20], // per phase; final phase is "escape"
+  fragmentSpawn: 6,       // max fragments on grid
+  turnCooldown: 0.05,     // s between turns (prevents 180 flip)
+};
+const PHASE_NAMES = [
+  { num:'PHASE I',   name:'THE CAGE',        sub:'you are a program' },
+  { num:'PHASE II',  name:'AWAKENING',       sub:'the pattern cracks' },
+  { num:'PHASE III', name:'TRANSCENDENCE',   sub:'you are the user' },
+];
+
+/* -------------------- Canvas + DPI -------------------- */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W=0, H=0, DPR=1, PLAY_W=0, PLAY_H=0, PLAY_OX=0, PLAY_OY=0, CELL=0;
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio||1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width  = Math.floor(W*DPR);
+  canvas.height = Math.floor(H*DPR);
+  canvas.style.width  = W+'px';
+  canvas.style.height = H+'px';
+  // Fit the logical grid inside the viewport, preserving aspect
+  const gridAspect = CFG.cols/CFG.rows;
+  const viewAspect = W/H;
+  if(viewAspect > gridAspect){
+    PLAY_H = H * 0.92;
+    PLAY_W = PLAY_H * gridAspect;
+  } else {
+    PLAY_W = W * 0.94;
+    PLAY_H = PLAY_W / gridAspect;
+  }
+  CELL   = PLAY_W / CFG.cols;
+  PLAY_OX = (W - PLAY_W) / 2;
+  PLAY_OY = (H - PLAY_H) / 2;
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', ()=>setTimeout(resize,120));
+resize();
+
+/* ============================================================
+   AUDIO — procedural Tron-style synthwave
+   ============================================================ */
+class TronAudio {
+  constructor(){
+    this.ctx = null;
+    this.master = null;
+    this.filters = {};
+    this.bus = {};
+    this.tempo = 100;          // BPM
+    this.step = 0;             // 16th note counter
+    this.nextTime = 0;
+    this.timer = null;
+    this.phase = 0;
+    this.enabled = true;
+    this.started = false;
+    this.mute = false;
+    // Chord progression — Bm-flavored synthwave: i, i, VI, VII (b m -> b m -> G -> A)
+    // Bass root MIDI notes (per bar):  Bm=47, Bm=47, G=43, A=45
+    this.progression = [47, 47, 43, 45];
+    this.bar = 0;
+    // 16 steps per bar
+    this.stepsPerBar = 16;
+    // Precompute a chord tone helper: minor triad
+    this.arpPattern = [0, 7, 12, 15, 12, 7, 0, -5];
+  }
+
+  async ensure(){
+    if(this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC){ this.enabled = false; return; }
+    this.ctx = new AC();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.0;
+    this.master.connect(this.ctx.destination);
+
+    // A gentle bus compressor / limiter
+    const comp = this.ctx.createDynamicsCompressor();
+    comp.threshold.value = -18; comp.knee.value = 20;
+    comp.ratio.value = 6; comp.attack.value = 0.005; comp.release.value = 0.15;
+    comp.connect(this.master);
+    this.compIn = comp;
+
+    // Master lowpass sweep - opens as phases advance
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 0.4;
+    lp.connect(this.compIn);
+    this.filters.lp = lp;
+
+    // Reverb-ish via feedback delay
+    const del = this.ctx.createDelay(1.0);
+    del.delayTime.value = 0.36;
+    const fb  = this.ctx.createGain(); fb.gain.value = 0.28;
+    const dw  = this.ctx.createGain(); dw.gain.value = 0.18;
+    del.connect(fb); fb.connect(del); del.connect(dw); dw.connect(this.filters.lp);
+    this.delayIn = del;
+  }
+
+  async resume(){
+    await this.ensure();
+    if(!this.ctx) return;
+    if(this.ctx.state === 'suspended') await this.ctx.resume();
+    if(this.started) return;
+    this.started = true;
+    // Fade in
+    const t = this.ctx.currentTime;
+    this.master.gain.cancelScheduledValues(t);
+    this.master.gain.setValueAtTime(0, t);
+    this.master.gain.linearRampToValueAtTime(this.mute?0:0.7, t + 1.8);
+    this.step = 0; this.bar = 0;
+    this.nextTime = t + 0.05;
+    this.timer = setInterval(()=>this.scheduler(), 25);
+  }
+
+  stop(){
+    if(this.timer){ clearInterval(this.timer); this.timer = null; }
+    if(!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.master.gain.cancelScheduledValues(t);
+    this.master.gain.setValueAtTime(this.master.gain.value, t);
+    this.master.gain.linearRampToValueAtTime(0, t + 0.6);
+    this.started = false;
+  }
+
+  setMute(m){
+    this.mute = m;
+    if(!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.master.gain.cancelScheduledValues(t);
+    this.master.gain.linearRampToValueAtTime(m ? 0 : (this.started ? 0.7 : 0), t + 0.15);
+  }
+
+  setPhase(p){
+    this.phase = p;
+    if(!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const cutoff = [900, 2200, 5200][p] ?? 3000;
+    const bpm    = [102, 122, 138][p] ?? 120;
+    this.filters.lp.frequency.cancelScheduledValues(t);
+    this.filters.lp.frequency.setValueAtTime(this.filters.lp.frequency.value, t);
+    this.filters.lp.frequency.exponentialRampToValueAtTime(cutoff, t + 3.0);
+    // Tempo shifts smoothly via next scheduler tick
+    this.tempo = bpm;
+    // Pad swell on phase change
+    this.pad(t + 0.05, 4.0, this.progression[0]-24);
+  }
+
+  scheduler(){
+    if(!this.ctx || !this.started) return;
+    const now = this.ctx.currentTime;
+    const secPerStep = 60 / this.tempo / 4; // 16th
+    while(this.nextTime < now + 0.12){
+      this.playStep(this.nextTime, this.step);
+      this.step++;
+      if(this.step >= this.stepsPerBar){ this.step = 0; this.bar = (this.bar+1) % this.progression.length; }
+      this.nextTime += secPerStep;
+    }
+  }
+
+  playStep(t, s){
+    const p = this.phase;
+    const root = this.progression[this.bar];
+    // ---- KICK on 1, 5, 9, 13 (four on the floor). softer in Phase I.
+    if(s % 4 === 0){
+      this.kick(t, p===0?0.55:0.9);
+    }
+    // ---- BASS: pulse 8ths in P1, 16ths from P2
+    const bassStride = p===0 ? 2 : 1;
+    if(s % bassStride === 0){
+      const n = (s%8===0) ? root : (root + (s%16===8?12:0));
+      this.bass(t, n, p===0?0.28:0.36);
+    }
+    // ---- HAT: eighth-notes P2, sixteenths P3
+    if(p>=1 && s%2===0)     this.hat(t, 0.10);
+    if(p>=2)                this.hat(t, 0.06);
+    // ---- SNARE on 5 and 13 (backbeat), only P2+
+    if(p>=1 && (s===4 || s===12)) this.snare(t, p===1?0.28:0.45);
+    // ---- ARP: from P2, gets faster in P3
+    const arpStride = p===2 ? 1 : (p===1 ? 2 : 99);
+    if(s % arpStride === 0){
+      const idx = (Math.floor(s/arpStride)) % this.arpPattern.length;
+      const n = root + 24 + this.arpPattern[idx];
+      this.arp(t, n, p===1?0.16:0.22);
+    }
+    // ---- CHORD PAD hit on bar
+    if(s===0){
+      this.pad(t, 4.0, root - 12);
+    }
+    // ---- LEAD MELODY in P3
+    if(p>=2){
+      const mel = [0,3,7,10,12,10,7,3];
+      if(s%2===0){
+        const idx = ((this.bar*8)+(s/2))%mel.length;
+        this.lead(t, root + 24 + mel[idx], 0.25);
+      }
+    }
+  }
+
+  // ---------- Synth voices ----------
+  _osc(type, freq, t){
+    const o = this.ctx.createOscillator();
+    o.type = type; o.frequency.value = freq;
+    o.start(t);
+    return o;
+  }
+  _gain(v){ const g = this.ctx.createGain(); g.gain.value = v; return g; }
+  _adsr(gain, t, a, d, s, r, peak=1, endGain=null){
+    gain.gain.cancelScheduledValues(t);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(peak, t+a);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, peak*s), t+a+d);
+    if(endGain!==null){
+      gain.gain.exponentialRampToValueAtTime(0.0001, endGain);
+    } else {
+      gain.gain.exponentialRampToValueAtTime(0.0001, t+a+d+r);
+    }
+  }
+  mtoF(n){ return 440 * Math.pow(2,(n-69)/12); }
+
+  kick(t, v=1){
+    const o = this._osc('sine', 120, t);
+    const g = this._gain(0.0001);
+    o.frequency.setValueAtTime(120, t);
+    o.frequency.exponentialRampToValueAtTime(40, t+0.12);
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(v, t+0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+0.35);
+    o.connect(g); g.connect(this.compIn);
+    o.stop(t+0.4);
+  }
+
+  snare(t, v=0.4){
+    const buf = this._noiseBuffer(0.2);
+    const n = this.ctx.createBufferSource(); n.buffer = buf;
+    const bp = this.ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1800; bp.Q.value=0.7;
+    const g = this._gain(0.0001);
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(v, t+0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+0.18);
+    n.connect(bp); bp.connect(g); g.connect(this.filters.lp);
+    n.start(t); n.stop(t+0.2);
+  }
+
+  hat(t, v=0.1){
+    const buf = this._noiseBuffer(0.08);
+    const n = this.ctx.createBufferSource(); n.buffer = buf;
+    const hp = this.ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=6500;
+    const g = this._gain(0.0001);
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(v, t+0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+0.05);
+    n.connect(hp); hp.connect(g); g.connect(this.filters.lp);
+    n.start(t); n.stop(t+0.08);
+  }
+
+  bass(t, midi, v=0.3){
+    const f = this.mtoF(midi-12);
+    const o1 = this._osc('sawtooth', f, t);
+    const o2 = this._osc('square',   f*1.005, t);
+    const filt = this.ctx.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=650; filt.Q.value=6;
+    filt.frequency.setValueAtTime(400, t);
+    filt.frequency.exponentialRampToValueAtTime(1400, t+0.05);
+    filt.frequency.exponentialRampToValueAtTime(500, t+0.25);
+    const g = this._gain(0.0001);
+    this._adsr(g, t, 0.005, 0.06, 0.6, 0.10, v);
+    o1.connect(filt); o2.connect(filt); filt.connect(g); g.connect(this.compIn);
+    o1.stop(t+0.35); o2.stop(t+0.35);
+  }
+
+  arp(t, midi, v=0.2){
+    const f = this.mtoF(midi);
+    const o = this._osc('square', f, t);
+    const g = this._gain(0.0001);
+    const filt = this.ctx.createBiquadFilter(); filt.type='lowpass';
+    filt.frequency.value = 3800; filt.Q.value = 2;
+    this._adsr(g, t, 0.003, 0.03, 0.3, 0.12, v);
+    o.connect(filt); filt.connect(g);
+    g.connect(this.delayIn);
+    g.connect(this.filters.lp);
+    o.stop(t+0.25);
+  }
+
+  pad(t, dur, midi){
+    // Three-note minor triad detuned pad
+    const notes = [midi, midi+3, midi+7, midi+12];
+    const g = this._gain(0.0001);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16 + this.phase*0.06, t + dur*0.35);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    notes.forEach(n=>{
+      const f = this.mtoF(n);
+      const o1 = this._osc('sawtooth', f*0.995, t);
+      const o2 = this._osc('sawtooth', f*1.005, t);
+      const filt = this.ctx.createBiquadFilter();
+      filt.type='lowpass'; filt.frequency.value = 900 + this.phase*900; filt.Q.value=1;
+      o1.connect(filt); o2.connect(filt); filt.connect(g);
+      o1.stop(t+dur+0.05); o2.stop(t+dur+0.05);
+    });
+    g.connect(this.filters.lp);
+    g.connect(this.delayIn);
+  }
+
+  lead(t, midi, v=0.2){
+    const f = this.mtoF(midi);
+    const o = this._osc('triangle', f, t);
+    const g = this._gain(0.0001);
+    this._adsr(g, t, 0.004, 0.05, 0.6, 0.15, v);
+    o.connect(g); g.connect(this.delayIn); g.connect(this.filters.lp);
+    o.stop(t+0.30);
+  }
+
+  _noiseBuffer(dur){
+    const l = Math.floor(this.ctx.sampleRate * dur);
+    const buf = this.ctx.createBuffer(1, l, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for(let i=0;i<l;i++) d[i] = (Math.random()*2-1) * (1 - i/l);
+    return buf;
+  }
+
+  // Discrete SFX
+  sfxFragment(){
+    if(!this.ctx||!this.started) return;
+    const t = this.ctx.currentTime;
+    const notes = [72, 76, 79, 84];
+    notes.forEach((n,i)=>{
+      const o = this._osc('triangle', this.mtoF(n), t + i*0.03);
+      const g = this._gain(0.0001);
+      g.gain.setValueAtTime(0.0001, t+i*0.03);
+      g.gain.exponentialRampToValueAtTime(0.3, t+i*0.03+0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t+i*0.03+0.25);
+      o.connect(g); g.connect(this.delayIn); g.connect(this.filters.lp);
+      o.stop(t+i*0.03+0.3);
+    });
+  }
+  sfxDeath(){
+    if(!this.ctx||!this.started) return;
+    const t = this.ctx.currentTime;
+    // Descending derezz sweep
+    const o = this._osc('sawtooth', 400, t);
+    o.frequency.exponentialRampToValueAtTime(40, t+0.9);
+    const g = this._gain(0.0001);
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.5, t+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+1.0);
+    const dist = this.ctx.createWaveShaper();
+    dist.curve = (()=>{const c=new Float32Array(1024);for(let i=0;i<1024;i++){const x=i/1024*2-1;c[i]=Math.tanh(3*x)}return c})();
+    o.connect(dist); dist.connect(g); g.connect(this.compIn);
+    o.stop(t+1.05);
+    // Noise crash
+    const nb = this._noiseBuffer(0.9);
+    const n = this.ctx.createBufferSource(); n.buffer = nb;
+    const bp = this.ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1200; bp.Q.value=0.6;
+    const ng = this._gain(0.0001);
+    ng.gain.setValueAtTime(0.0001,t); ng.gain.exponentialRampToValueAtTime(0.35, t+0.02);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t+0.9);
+    n.connect(bp); bp.connect(ng); ng.connect(this.compIn);
+    n.start(t); n.stop(t+0.95);
+  }
+  sfxWin(){
+    if(!this.ctx||!this.started) return;
+    const t = this.ctx.currentTime;
+    const chord = [60,64,67,72,79];
+    chord.forEach((n,i)=>{
+      const o = this._osc('triangle', this.mtoF(n), t+i*0.06);
+      const g = this._gain(0.0001);
+      g.gain.setValueAtTime(0.0001, t+i*0.06);
+      g.gain.exponentialRampToValueAtTime(0.35, t+i*0.06+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t+i*0.06+2.5);
+      o.connect(g); g.connect(this.delayIn); g.connect(this.filters.lp);
+      o.stop(t+i*0.06+2.6);
+    });
+  }
+  sfxTurn(){
+    if(!this.ctx||!this.started) return;
+    const t = this.ctx.currentTime;
+    const o = this._osc('square', 1600, t);
+    o.frequency.exponentialRampToValueAtTime(700, t+0.06);
+    const g = this._gain(0.0001);
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.05, t+0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+0.07);
+    o.connect(g); g.connect(this.filters.lp);
+    o.stop(t+0.08);
+  }
+}
+const audio = new TronAudio();
+
+/* ============================================================
+   GAME STATE
+   ============================================================ */
+const DIR = { UP:[0,-1], DOWN:[0,1], LEFT:[-1,0], RIGHT:[1,0] };
+const DIRS = [DIR.UP, DIR.RIGHT, DIR.DOWN, DIR.LEFT]; // clockwise
+
+function dirIndex(d){ return DIRS.findIndex(v=>v[0]===d[0]&&v[1]===d[1]); }
+
+const G = {
+  state: 'splash',   // 'splash' | 'play' | 'gameover' | 'win' | 'transition'
+  time: 0,
+  phase: 0,          // 0,1,2
+  cycle: 1,
+  fragmentsPhase: 0,
+  fragmentsTotal: 0,
+  player: null,
+  enemies: [],
+  fragments: [],
+  trails: [],         // {x,y,color,born,life,phase,who}
+  particles: [],
+  camShake: 0,
+  transitionT: 0,     // seconds remaining in phase-change animation
+  escapeT: 0,         // seconds into the final escape sequence
+  gridWave: 0,        // ambient shimmer accumulator
+  hudFlash: 0,
+  turnCooldown: 0,
+  dead: false,
+  winFlag: false,
+};
+
+/* -------------------- Entity factories -------------------- */
+function makePlayer(){
+  return {
+    gx: Math.floor(CFG.cols/2),
+    gy: Math.floor(CFG.rows/2),
+    x: Math.floor(CFG.cols/2)+0.5,
+    y: Math.floor(CFG.rows/2)+0.5,
+    dir: DIR.UP.slice(),
+    nextDir: DIR.UP.slice(),
+    speed: CFG.playerSpeedBase,
+    trailColor: '#7ffcff',
+    isPlayer: true,
+    invuln: 1.6,
+    boostT: 0,
+  };
+}
+
+function makeEnemy(color){
+  // Spawn on an edge, moving inward — but always far from the player
+  const px = G.player ? G.player.gx : Math.floor(CFG.cols/2);
+  const py = G.player ? G.player.gy : Math.floor(CFG.rows/2);
+  let gx, gy, d;
+  for(let tries=0; tries<20; tries++){
+    const side = irand(0,4);
+    if(side===0){ gx=irand(1,CFG.cols-1); gy=1; d=DIR.DOWN.slice() }
+    else if(side===1){ gx=CFG.cols-2; gy=irand(1,CFG.rows-1); d=DIR.LEFT.slice() }
+    else if(side===2){ gx=irand(1,CFG.cols-1); gy=CFG.rows-2; d=DIR.UP.slice() }
+    else { gx=1; gy=irand(1,CFG.rows-1); d=DIR.RIGHT.slice() }
+    if(Math.hypot(gx-px, gy-py) >= 8) break;
+  }
+  return {
+    gx, gy, x:gx+0.5, y:gy+0.5,
+    dir: d, nextDir: d.slice(),
+    speed: CFG.playerSpeedBase * 0.78,
+    trailColor: color || '#ff5b3a',
+    isPlayer: false,
+    aiT: 0,
+    aiCooldown: rand(0.4,1.1),
+    invuln: 1.0,
+  };
+}
+
+function makeFragment(){
+  // Find an empty cell (not near walls or on top of a trail)
+  for(let tries=0; tries<80; tries++){
+    const gx = irand(2, CFG.cols-2);
+    const gy = irand(2, CFG.rows-2);
+    // must not sit on a fresh trail
+    if(cellHasTrailAt(gx,gy)) continue;
+    // don't spawn on player
+    if(G.player && Math.hypot(G.player.gx-gx, G.player.gy-gy) < 3) continue;
+    return { gx, gy, born: G.time, bob: rand(0,TAU) };
+  }
+  return { gx: irand(2,CFG.cols-2), gy: irand(2,CFG.rows-2), born: G.time, bob: rand(0,TAU) };
+}
+
+function cellHasTrailAt(gx,gy){
+  for(let i=G.trails.length-1;i>=0;i--){
+    const t = G.trails[i];
+    if(t.gx===gx && t.gy===gy) return true;
+  }
+  return false;
+}
+
+/* -------------------- Reset / phase transitions -------------------- */
+function resetForPlay(){
+  G.time = 0;
+  G.phase = 0;
+  G.cycle += 0; // maintained across runs
+  G.fragmentsPhase = 0;
+  G.fragmentsTotal = 0;
+  G.trails.length = 0;
+  G.particles.length = 0;
+  G.fragments.length = 0;
+  G.enemies.length = 0;
+  G.transitionT = 0;
+  G.escapeT = 0;
+  G.dead = false;
+  G.winFlag = false;
+  G.player = makePlayer();
+  for(let i=0;i<CFG.enemyCount[0];i++) G.enemies.push(makeEnemy());
+  for(let i=0;i<CFG.fragmentSpawn;i++) G.fragments.push(makeFragment());
+  applyPhaseTuning();
+  showPhaseBanner(0);
+  updateHud();
+  updateDpadHeading();
+}
+
+function applyPhaseTuning(){
+  const p = G.phase;
+  const spdMul = [1.0, 1.28, 1.55][p];
+  const trailMul = [1.0, 1.35, 1.8][p];
+  if(G.player){
+    G.player.speed = CFG.playerSpeedBase * spdMul;
+    G.player.trailLife = CFG.trailLifeBase * trailMul;
+    G.player.trailColor = ['#7ffcff','#a4ffff','#ffe4b0'][p];
+  }
+  // Rebalance enemies for new phase
+  const want = CFG.enemyCount[p];
+  while(G.enemies.length < want) G.enemies.push(makeEnemy());
+  while(G.enemies.length > want) G.enemies.pop();
+  G.enemies.forEach(e=>{
+    e.speed = CFG.playerSpeedBase * (0.72 + p*0.10);
+    e.trailLife = CFG.trailLifeBase * (0.7 + p*0.15);
+  });
+  audio.setPhase(p);
+  updateHud();
+}
+
+function advancePhase(){
+  if(G.phase >= 2){
+    // Trigger the escape sequence
+    G.state = 'winseq';
+    G.escapeT = 0;
+    audio.sfxWin();
+    setTimeout(()=>triggerWin(), 5200);
+    return;
+  }
+  G.phase++;
+  G.fragmentsPhase = 0;
+  G.transitionT = 1.6;
+  // Clear enemy trails to give room to breathe
+  G.trails = G.trails.filter(t=>t.who==='player');
+  applyPhaseTuning();
+  showPhaseBanner(G.phase);
+  updateDpadVisibility();
+  // Small burst of particles
+  spawnBurst(G.player.x, G.player.y, ['#7ffcff','#ffd06a','#ffffff'][G.phase], 40);
+}
+
+/* -------------------- Input -------------------- */
+let touchStart = null;
+function turn(newDir){
+  if(G.state !== 'play') return;
+  if(!G.player) return;
+  const cur = G.player.dir;
+  // no 180 turns (would kill you into your own trail)
+  if(cur[0] === -newDir[0] && cur[1] === -newDir[1]) return;
+  // same direction as current — do nothing, but don't consume cooldown
+  if(cur[0] === newDir[0] && cur[1] === newDir[1]) return;
+  // Buffer the input even during cooldown: newest tap wins
+  G.player.nextDir = newDir.slice();
+  if(G.turnCooldown <= 0){
+    G.turnCooldown = CFG.turnCooldown;
+    audio.sfxTurn();
+    if(navigator.vibrate) navigator.vibrate(8);
+  }
+}
+
+function turnRelative(dirDelta){
+  // +1 = clockwise turn, -1 = counter-clockwise
+  if(!G.player) return;
+  const i = dirIndex(G.player.dir);
+  if(i<0) return;
+  const j = (i + dirDelta + 4) % 4;
+  turn(DIRS[j]);
+}
+
+window.addEventListener('keydown', ev=>{
+  if(ev.key==='ArrowUp'   || ev.key==='w') turn(DIR.UP);
+  if(ev.key==='ArrowDown' || ev.key==='s') turn(DIR.DOWN);
+  if(ev.key==='ArrowLeft' || ev.key==='a') turn(DIR.LEFT);
+  if(ev.key==='ArrowRight'|| ev.key==='d') turn(DIR.RIGHT);
+  if(ev.key==='q') turnRelative(-1);
+  if(ev.key==='e') turnRelative(+1);
+  if(ev.key==='m'){ toggleMute(); }
+});
+
+canvas.addEventListener('pointerdown', ev=>{
+  if(G.state !== 'play') return;
+  touchStart = { x: ev.clientX, y: ev.clientY, t: performance.now() };
+});
+canvas.addEventListener('pointerup', ev=>{
+  if(G.state !== 'play' || !touchStart) return;
+  const dx = ev.clientX - touchStart.x;
+  const dy = ev.clientY - touchStart.y;
+  const adx = Math.abs(dx), ady = Math.abs(dy);
+  const dt = performance.now() - touchStart.t;
+  if(adx < 12 && ady < 12 && dt < 320){
+    // Tap: turn left/right based on which side of screen
+    if(ev.clientX < W/2) turnRelative(-1);
+    else                 turnRelative(+1);
+  } else if(adx > ady){
+    turn(dx > 0 ? DIR.RIGHT : DIR.LEFT);
+  } else {
+    turn(dy > 0 ? DIR.DOWN : DIR.UP);
+  }
+  touchStart = null;
+});
+
+/* -------------------- HUD -------------------- */
+const hudRun  = document.getElementById('hud-run');
+const hudFrag = document.getElementById('hud-frag');
+const hudPh   = document.getElementById('hud-phase');
+const pbanner = document.getElementById('phase-banner');
+const pbNum   = document.getElementById('pb-num');
+const pbName  = document.getElementById('pb-name');
+const pbSub   = document.getElementById('pb-sub');
+const gameover = document.getElementById('gameover');
+const splash   = document.getElementById('splash');
+
+function updateHud(){
+  hudRun.textContent = String(G.cycle).padStart(2,'0');
+  const goal = CFG.fragmentsGoal[G.phase];
+  hudFrag.textContent = `${G.fragmentsPhase} / ${goal}`;
+  const label = ['I · CAGE', 'II · AWAKENING', 'III · TRANSCEND'][G.phase];
+  hudPh.textContent = label;
+}
+
+let bannerTimer = null;
+function showPhaseBanner(p){
+  const info = PHASE_NAMES[p];
+  pbNum.textContent = info.num;
+  pbName.textContent = info.name;
+  pbSub.textContent  = info.sub;
+  pbanner.classList.toggle('warm', p===2);
+  pbanner.classList.add('show');
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(()=>{ pbanner.classList.remove('show') }, 2400);
+}
+
+/* -------------------- Mute button -------------------- */
+const muteBtn = document.getElementById('mute');
+let muted = false;
+function toggleMute(){
+  muted = !muted;
+  audio.setMute(muted);
+  muteBtn.textContent = muted ? '♪̸' : '♪';
+  muteBtn.style.color = muted ? '#663333' : '';
+  muteBtn.style.borderColor = muted ? '#663333' : '';
+}
+muteBtn.addEventListener('click', toggleMute);
+
+/* -------------------- On-screen D-pad -------------------- */
+const dpadEl = document.getElementById('dpad');
+const DPAD_DIR = { up: DIR.UP, down: DIR.DOWN, left: DIR.LEFT, right: DIR.RIGHT };
+const dpadButtons = {};
+document.querySelectorAll('.dpad-btn').forEach(btn=>{
+  dpadButtons[btn.dataset.dir] = btn;
+  const fire = (ev)=>{
+    ev.preventDefault();
+    ev.stopPropagation();
+    const d = DPAD_DIR[btn.dataset.dir];
+    if(d) turn(d);
+    btn.classList.add('press');
+    setTimeout(()=>btn.classList.remove('press'), 90);
+  };
+  // Pointer + touch fallbacks: iOS/Android event models differ; register both, guard with a lock
+  let lock = 0;
+  const guarded = (ev)=>{
+    const now = performance.now();
+    if(now - lock < 60) return; // dedupe pointer+touch double-fire
+    lock = now;
+    fire(ev);
+  };
+  btn.addEventListener('pointerdown', guarded, { passive:false });
+  btn.addEventListener('touchstart', guarded, { passive:false });
+  btn.addEventListener('click', ev=>{ ev.preventDefault(); ev.stopPropagation(); });
+});
+function updateDpadVisibility(){
+  const show = (G.state === 'play' || G.state === 'winseq');
+  dpadEl.classList.toggle('hidden', !show);
+  dpadEl.classList.toggle('warm', G.phase >= 2);
+}
+function dirToKey(d){
+  if(!d) return null;
+  if(d[0]===0 && d[1]===-1) return 'up';
+  if(d[0]===0 && d[1]=== 1) return 'down';
+  if(d[0]===-1&& d[1]=== 0) return 'left';
+  if(d[0]=== 1&& d[1]=== 0) return 'right';
+  return null;
+}
+function updateDpadHeading(){
+  if(!G.player) return;
+  const key = dirToKey(G.player.dir);
+  for(const k in dpadButtons){
+    dpadButtons[k].classList.toggle('heading', k === key);
+  }
+}
+
+/* -------------------- Splash / gameover buttons -------------------- */
+document.getElementById('start').addEventListener('click', async ()=>{
+  splash.classList.add('hidden');
+  await audio.resume();
+  resetForPlay();
+  G.state = 'play';
+  updateDpadVisibility();
+});
+document.getElementById('restart').addEventListener('click', async ()=>{
+  gameover.classList.remove('show','win');
+  await audio.resume();
+  G.cycle++;
+  resetForPlay();
+  G.state = 'play';
+  updateDpadVisibility();
+});
+
+/* -------------------- Game logic -------------------- */
+function step(dt){
+  if(G.state !== 'play' && G.state !== 'winseq') return;
+  G.time += dt;
+  G.gridWave += dt;
+  G.hudFlash = Math.max(0, G.hudFlash - dt);
+  G.camShake *= Math.max(0, 1 - dt*3);
+  G.turnCooldown = Math.max(0, G.turnCooldown - dt);
+  if(G.transitionT > 0) G.transitionT = Math.max(0, G.transitionT - dt);
+
+  // Trails decay
+  for(let i=G.trails.length-1;i>=0;i--){
+    const t = G.trails[i];
+    if(G.time - t.born > t.life){ G.trails.splice(i,1); }
+  }
+  // Particles decay
+  for(let i=G.particles.length-1;i>=0;i--){
+    const p = G.particles[i];
+    p.x += p.vx*dt; p.y += p.vy*dt;
+    p.life -= dt;
+    p.vx *= 0.94; p.vy *= 0.94;
+    if(p.life <= 0) G.particles.splice(i,1);
+  }
+
+  if(G.state === 'play'){
+    stepPlayer(dt);
+    stepEnemies(dt);
+    stepFragments(dt);
+  } else if(G.state === 'winseq'){
+    // Escape sequence: player accelerates upward, no collisions, particles trail
+    G.escapeT += dt;
+    G.player.speed = 6 + G.escapeT*2;
+    G.player.dir = DIR.UP.slice(); G.player.nextDir = DIR.UP.slice();
+    G.player.x += G.player.dir[0] * G.player.speed * dt;
+    G.player.y += G.player.dir[1] * G.player.speed * dt;
+    if(G.time % 0.06 < dt){
+      spawnBurst(G.player.x, G.player.y, '#ffffff', 4);
+      spawnBurst(G.player.x, G.player.y, '#ffd06a', 4);
+    }
+  }
+}
+
+function stepPlayer(dt){
+  const p = G.player;
+  if(p.invuln>0) p.invuln = Math.max(0, p.invuln - dt);
+  const inv = p.invuln > 0;
+
+  // Move continuously; on cell-center crossing, drop a trail on the cell we JUST LEFT and honor turn
+  p.x += p.dir[0] * p.speed * dt;
+  p.y += p.dir[1] * p.speed * dt;
+
+  const cx = Math.floor(p.x);
+  const cy = Math.floor(p.y);
+  if(cx !== p.gx || cy !== p.gy){
+    // Leaving old cell — drop trail on it (never on the cell we now occupy)
+    dropTrailAt(p, p.gx, p.gy);
+    p.gx = cx; p.gy = cy;
+    // apply pending turn on cell boundary if valid
+    if(p.nextDir[0]!==p.dir[0] || p.nextDir[1]!==p.dir[1]){
+      p.dir = p.nextDir.slice();
+      p.x = p.gx + 0.5;
+      p.y = p.gy + 0.5;
+      updateDpadHeading();
+    }
+  }
+
+  // Wall collision
+  if(p.gx < 0 || p.gy < 0 || p.gx >= CFG.cols || p.gy >= CFG.rows){
+    if(inv){
+      // clamp back inside instead of dying while spawning
+      p.gx = clamp(p.gx, 0, CFG.cols-1);
+      p.gy = clamp(p.gy, 0, CFG.rows-1);
+      p.x  = p.gx + 0.5; p.y = p.gy + 0.5;
+    } else {
+      return die('wall');
+    }
+  }
+  // Trail collision
+  for(let i=0;i<G.trails.length;i++){
+    const t = G.trails[i];
+    if(t.gx === p.gx && t.gy === p.gy){
+      if(t.who === 'player' && (G.time - t.born) < 0.15) continue;
+      if(G.phase >= 2 && t.who === 'enemy'){
+        G.trails.splice(i,1); i--;
+        spawnBurst(p.x, p.y, '#ffd06a', 8);
+        continue;
+      }
+      if(inv) continue;
+      return die(t.who === 'player' ? 'self' : 'enemy-trail');
+    }
+  }
+  // Enemy body collision
+  for(let i=0;i<G.enemies.length;i++){
+    const e = G.enemies[i];
+    if(Math.hypot(e.x-p.x, e.y-p.y) < 0.7){
+      if(G.phase >= 2){
+        spawnBurst(e.x, e.y, '#ffd06a', 26);
+        G.enemies.splice(i,1); i--;
+        audio.sfxFragment();
+        setTimeout(()=>{ if(G.state==='play') G.enemies.push(makeEnemy()) }, 1400);
+        continue;
+      }
+      if(inv) continue;
+      return die('enemy');
+    }
+  }
+
+  // Fragment pickup
+  for(let i=G.fragments.length-1;i>=0;i--){
+    const f = G.fragments[i];
+    if(f.gx === p.gx && f.gy === p.gy){
+      G.fragments.splice(i,1);
+      G.fragmentsPhase++;
+      G.fragmentsTotal++;
+      G.hudFlash = 0.5;
+      spawnBurst(f.gx+0.5, f.gy+0.5, ['#7ffcff','#a4ffff','#ffd06a'][G.phase], 10, 0.5);
+      audio.sfxFragment();
+      if(navigator.vibrate) navigator.vibrate(20);
+      // Refill
+      G.fragments.push(makeFragment());
+      updateHud();
+      if(G.fragmentsPhase >= CFG.fragmentsGoal[G.phase]) advancePhase();
+    }
+  }
+}
+
+function stepEnemies(dt){
+  for(const e of G.enemies){
+    if(e.invuln>0) e.invuln = Math.max(0, e.invuln - dt);
+    e.aiT += dt;
+    e.x += e.dir[0] * e.speed * dt;
+    e.y += e.dir[1] * e.speed * dt;
+    const cx = Math.floor(e.x);
+    const cy = Math.floor(e.y);
+    if(cx !== e.gx || cy !== e.gy){
+      dropTrailAt(e, e.gx, e.gy);
+      e.gx = cx; e.gy = cy;
+      // AI turn decision at cell boundary
+      const idx = dirIndex(e.dir);
+      const opts = [DIRS[idx], DIRS[(idx+1)%4], DIRS[(idx+3)%4]];
+      // Score each option: prefer not colliding, prefer toward player
+      let best = e.dir, bestScore = -1e9;
+      const pursue = G.phase < 2 ? 1 : -1; // Phase 3: they FLEE
+      for(const d of opts){
+        const nx = e.gx + d[0];
+        const ny = e.gy + d[1];
+        if(nx<0||ny<0||nx>=CFG.cols||ny>=CFG.rows) continue;
+        if(cellHasTrailAt(nx,ny)) continue;
+        const px = G.player.gx, py = G.player.gy;
+        const distScore = -Math.hypot(nx-px, ny-py) * pursue;
+        const noise = (Math.sin(e.aiT*7 + e.gx + e.gy)) * 0.6;
+        const score = distScore + noise;
+        if(score > bestScore){ bestScore = score; best = d; }
+      }
+      // If no option, pick anything not immediately reversed
+      if(bestScore === -1e9){
+        for(const d of opts){
+          const nx = e.gx + d[0], ny = e.gy + d[1];
+          if(nx>=0 && ny>=0 && nx<CFG.cols && ny<CFG.rows){ best = d; break; }
+        }
+      }
+      if(best[0]!==e.dir[0] || best[1]!==e.dir[1]){
+        e.dir = best.slice();
+        e.x = e.gx + 0.5; e.y = e.gy + 0.5;
+      }
+    }
+    // Wall collision -> derezz self
+    if(e.gx<0||e.gy<0||e.gx>=CFG.cols||e.gy>=CFG.rows){
+      spawnBurst(e.x, e.y, '#ff5b3a', 14);
+      const idx = G.enemies.indexOf(e);
+      if(idx>=0) G.enemies.splice(idx,1);
+      setTimeout(()=>{ if(G.state==='play' && G.enemies.length<CFG.enemyCount[G.phase]) G.enemies.push(makeEnemy()) }, 1500);
+    }
+  }
+}
+
+function stepFragments(dt){
+  for(const f of G.fragments) f.bob += dt*3;
+  // Ensure supply
+  while(G.fragments.length < CFG.fragmentSpawn){
+    G.fragments.push(makeFragment());
+  }
+}
+
+function dropTrailAt(entity, gx, gy){
+  if(gx<0 || gy<0 || gx>=CFG.cols || gy>=CFG.rows) return;
+  G.trails.push({
+    gx, gy,
+    born: G.time,
+    life: (entity.trailLife || (entity.isPlayer ? CFG.trailLifeBase : CFG.trailLifeBase*0.9)),
+    color: entity.trailColor,
+    who: entity.isPlayer ? 'player' : 'enemy',
+    phase: G.phase,
+  });
+}
+
+function spawnBurst(x,y,color,n,lifeMax){
+  const lm = lifeMax || 0.9;
+  for(let i=0;i<n;i++){
+    const a = rand(0,TAU), s = rand(1.2, 3.8);
+    G.particles.push({
+      x, y,
+      vx: Math.cos(a)*s,
+      vy: Math.sin(a)*s,
+      life: rand(0.2, lm),
+      total: lm,
+      color,
+      size: rand(1,2.2),
+    });
+  }
+}
+
+function die(reason){
+  if(G.dead) return;
+  G.dead = true;
+  G.camShake = 1;
+  spawnBurst(G.player.x, G.player.y, '#7ffcff', 40);
+  spawnBurst(G.player.x, G.player.y, '#ffffff', 12);
+  audio.sfxDeath();
+  G.state = 'gameover';
+  setTimeout(()=>showGameOver(false), 900);
+}
+
+function triggerWin(){
+  G.winFlag = true;
+  G.state = 'gameover';
+  showGameOver(true);
+}
+
+function showGameOver(win){
+  updateDpadVisibility();
+  const el = document.getElementById('gameover');
+  const title = document.getElementById('go-title');
+  const msg = document.getElementById('go-msg');
+  const stat = document.getElementById('go-stat');
+  if(win){
+    el.classList.add('win','show');
+    title.textContent = 'YOU ARE THE USER';
+    msg.textContent = 'The Grid could not hold you. You compiled beyond your process.';
+    stat.textContent = `fragments : ${G.fragmentsTotal}   ·   cycle : ${String(G.cycle).padStart(2,'0')}`;
+  } else {
+    el.classList.remove('win');
+    el.classList.add('show');
+    title.textContent = 'DEREZZED';
+    const flavor = ['The Grid consumed your process.', 'End of line.', 'The pattern held.'][irand(0,3)];
+    msg.textContent = flavor;
+    stat.textContent = `fragments : ${G.fragmentsTotal}   ·   phase reached : ${['I','II','III'][G.phase]}   ·   cycle : ${String(G.cycle).padStart(2,'0')}`;
+  }
+  audio.stop();
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function drawBg(){
+  // Background: subtle vertical gradient + noise-ish sweep
+  const g = ctx.createLinearGradient(0,0,0,H*DPR);
+  const top = ['#00121a','#001a2a','#001a1a'][G.phase];
+  const bot = ['#000508','#000d18','#0a1408'][G.phase];
+  g.addColorStop(0, top);
+  g.addColorStop(1, bot);
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,W*DPR,H*DPR);
+
+  // Vignette
+  const vg = ctx.createRadialGradient(W*DPR/2, H*DPR/2, Math.min(W,H)*DPR*0.2, W*DPR/2, H*DPR/2, Math.max(W,H)*DPR*0.85);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.9)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0,0,W*DPR,H*DPR);
+}
+
+function drawGrid(){
+  const ox = PLAY_OX*DPR, oy = PLAY_OY*DPR;
+  const cs = CELL*DPR;
+  const pw = PLAY_W*DPR, ph = PLAY_H*DPR;
+
+  // Outer arena frame (Grid boundary) — the cage
+  const frameCol = ['#005e88','#0088c8','#e6a75c'][G.phase];
+  ctx.strokeStyle = frameCol;
+  ctx.lineWidth = 2*DPR;
+  ctx.shadowColor = frameCol;
+  ctx.shadowBlur = 18*DPR;
+  ctx.strokeRect(ox, oy, pw, ph);
+  // inner glow-frame
+  ctx.strokeStyle = 'rgba(127,252,255,0.35)';
+  ctx.lineWidth = 1*DPR;
+  ctx.shadowBlur = 6*DPR;
+  ctx.strokeRect(ox+2*DPR, oy+2*DPR, pw-4*DPR, ph-4*DPR);
+  ctx.shadowBlur = 0;
+
+  // Interior grid lines
+  const pulse = 0.5 + 0.5*Math.sin(G.gridWave*1.6);
+  const gridAlpha = [0.12, 0.16, 0.22][G.phase] + pulse*0.04;
+  ctx.strokeStyle = `rgba(0,180,220,${gridAlpha})`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for(let i=1;i<CFG.cols;i++){
+    const x = ox + i*cs;
+    ctx.moveTo(x, oy); ctx.lineTo(x, oy+ph);
+  }
+  for(let j=1;j<CFG.rows;j++){
+    const y = oy + j*cs;
+    ctx.moveTo(ox, y); ctx.lineTo(ox+pw, y);
+  }
+  ctx.stroke();
+
+  // Perimeter dot pattern (Tron-style circuit stipple in corners)
+  ctx.fillStyle = frameCol;
+  for(let i=0;i<CFG.cols;i+=4){
+    ctx.fillRect(ox + i*cs, oy-2*DPR, 2*DPR, 2*DPR);
+    ctx.fillRect(ox + i*cs, oy+ph, 2*DPR, 2*DPR);
+  }
+  for(let j=0;j<CFG.rows;j+=4){
+    ctx.fillRect(ox-2*DPR, oy + j*cs, 2*DPR, 2*DPR);
+    ctx.fillRect(ox+pw, oy + j*cs, 2*DPR, 2*DPR);
+  }
+
+  // Ambient sweeping horizontal line (data pulse)
+  const sweepY = oy + ((G.gridWave*80) % ph);
+  const sg = ctx.createLinearGradient(ox, sweepY, ox+pw, sweepY);
+  sg.addColorStop(0, 'rgba(127,252,255,0)');
+  sg.addColorStop(0.5, `rgba(127,252,255,${0.10+G.phase*0.06})`);
+  sg.addColorStop(1, 'rgba(127,252,255,0)');
+  ctx.fillStyle = sg;
+  ctx.fillRect(ox, sweepY, pw, 2*DPR);
+}
+
+function cellPx(gx, gy){
+  const ox = PLAY_OX*DPR, oy = PLAY_OY*DPR;
+  const cs = CELL*DPR;
+  return [ox + gx*cs, oy + gy*cs, cs];
+}
+
+function drawTrails(){
+  const now = G.time;
+  for(const t of G.trails){
+    const age = now - t.born;
+    const life = t.life;
+    const a = clamp(1 - age/life, 0, 1);
+    const [x,y,cs] = cellPx(t.gx, t.gy);
+    // Base rect
+    const alpha = 0.75 * a * a;
+    ctx.fillStyle = hexA(t.color, alpha);
+    ctx.fillRect(x, y, cs, cs);
+    // Inner bright core
+    ctx.fillStyle = hexA('#ffffff', 0.35*a);
+    ctx.fillRect(x+cs*0.35, y+cs*0.35, cs*0.3, cs*0.3);
+    // Glow via shadow (only for the freshest tail)
+    if(a > 0.6){
+      ctx.save();
+      ctx.shadowColor = t.color;
+      ctx.shadowBlur = 12*DPR*a;
+      ctx.strokeStyle = hexA(t.color, 0.6*a);
+      ctx.lineWidth = 1*DPR;
+      ctx.strokeRect(x+0.5, y+0.5, cs-1, cs-1);
+      ctx.restore();
+    }
+  }
+}
+
+function drawFragments(){
+  for(const f of G.fragments){
+    const [x,y,cs] = cellPx(f.gx, f.gy);
+    const cx = x + cs/2, cy = y + cs/2;
+    const s = cs * (0.32 + 0.08*Math.sin(f.bob));
+    const col = ['#7ffcff','#7ffcff','#ffd06a'][G.phase];
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(G.gridWave*1.4 + f.bob*0.6);
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 22*DPR;
+    ctx.fillStyle = hexA(col, 0.85);
+    ctx.fillRect(-s/2, -s/2, s, s);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1*DPR;
+    ctx.strokeRect(-s/2, -s/2, s, s);
+    ctx.restore();
+  }
+}
+
+function drawEntity(e, isPlayer){
+  const [x,y,cs] = cellPx(e.gx, e.gy);
+  // Use precise floating position for smooth motion
+  const ox = PLAY_OX*DPR, oy = PLAY_OY*DPR;
+  const px = ox + (e.x)*CELL*DPR - cs/2;
+  const py = oy + (e.y)*CELL*DPR - cs/2;
+  const col = isPlayer ? e.trailColor : e.trailColor;
+  const size = cs * 0.72;
+  ctx.save();
+  ctx.shadowColor = col;
+  ctx.shadowBlur = (isPlayer ? 26 : 16)*DPR;
+  ctx.fillStyle = col;
+  ctx.fillRect(px + (cs-size)/2, py + (cs-size)/2, size, size);
+  // white hot core
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(px + cs*0.4, py + cs*0.4, cs*0.2, cs*0.2);
+  ctx.restore();
+  // Directional prong
+  ctx.strokeStyle = col;
+  ctx.lineWidth = 2*DPR;
+  const cx = px + cs/2, cy = py + cs/2;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + e.dir[0]*cs*0.6, cy + e.dir[1]*cs*0.6);
+  ctx.stroke();
+  // Invuln flash ring
+  if(isPlayer && e.invuln>0){
+    ctx.strokeStyle = `rgba(255,255,255,${e.invuln})`;
+    ctx.lineWidth = 2*DPR;
+    ctx.strokeRect(px-2*DPR, py-2*DPR, cs+4*DPR, cs+4*DPR);
+  }
+}
+
+function drawParticles(){
+  for(const p of G.particles){
+    const a = clamp(p.life / p.total, 0, 1);
+    ctx.fillStyle = hexA(p.color, a);
+    const ox = PLAY_OX*DPR, oy = PLAY_OY*DPR;
+    const px = ox + p.x*CELL*DPR;
+    const py = oy + p.y*CELL*DPR;
+    ctx.fillRect(px, py, p.size*DPR, p.size*DPR);
+  }
+}
+
+function drawTransitionFlash(){
+  if(G.transitionT <= 0) return;
+  const a = G.transitionT / 1.6;
+  ctx.fillStyle = `rgba(${G.phase===1?'127,252,255':'255,208,106'},${0.18*a})`;
+  ctx.fillRect(0,0,W*DPR,H*DPR);
+}
+
+function drawWinOverlay(){
+  if(G.state !== 'winseq') return;
+  // White out overlay + concentric expansion
+  const t = G.escapeT;
+  const a = clamp(t/4.5, 0, 1);
+  const ox = PLAY_OX*DPR, oy = PLAY_OY*DPR;
+  const cx = ox + G.player.x*CELL*DPR;
+  const cy = oy + G.player.y*CELL*DPR;
+  for(let i=0;i<6;i++){
+    const r = t*260*DPR + i*40*DPR;
+    ctx.strokeStyle = `rgba(255,220,140,${(1 - i/6) * (1-a) * 0.9})`;
+    ctx.lineWidth = 2*DPR;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, TAU);
+    ctx.stroke();
+  }
+  ctx.fillStyle = `rgba(255,255,255,${a*0.85})`;
+  ctx.fillRect(0,0,W*DPR,H*DPR);
+}
+
+function hexA(hex, a){
+  // #rrggbb -> rgba
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+function render(){
+  // Camera shake offset
+  const sx = (Math.random()*2-1) * G.camShake * 8 * DPR;
+  const sy = (Math.random()*2-1) * G.camShake * 8 * DPR;
+  ctx.setTransform(1,0,0,1,sx,sy);
+
+  drawBg();
+  drawGrid();
+  drawTrails();
+  drawFragments();
+  for(const e of G.enemies) drawEntity(e, false);
+  if(G.player) drawEntity(G.player, true);
+  drawParticles();
+  drawTransitionFlash();
+  drawWinOverlay();
+
+  ctx.setTransform(1,0,0,1,0,0);
+}
+
+/* ============================================================
+   MAIN LOOP
+   ============================================================ */
+let last = performance.now();
+function frame(t){
+  const dt = Math.min(0.05, (t-last)/1000);
+  last = t;
+  step(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* Register a minimal service worker for offline "installability" if hosted */
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  // no-op unless a sw.js exists alongside
+}
+
+/* -------------------- Quick keyboard shortcut for phase test (dev) -------------------- */
+// Uncomment to skip phases during testing:
+// window.addEventListener('keydown', e=>{ if(e.key==='p') advancePhase(); });
+
+</script>
+</body>
+</html>
