@@ -52,6 +52,16 @@
   #splash.hidden,#gameover.hidden{display:none}
   #mute{position:absolute;top:calc(env(safe-area-inset-top,12px) + 10px);right:14px;background:transparent;border:1px solid var(--ink-dim);color:var(--ink-dim);width:32px;height:32px;font-family:inherit;font-size:14px;cursor:pointer;pointer-events:auto;opacity:.6;border-radius:0;padding:0}
   #mute:hover{opacity:1}
+  #dpad{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,12px) + 44px);transform:translateX(-50%);width:186px;height:186px;display:grid;grid-template-columns:repeat(3,62px);grid-template-rows:repeat(3,62px);gap:0;pointer-events:none;z-index:5}
+  .dpad-btn{pointer-events:auto;-webkit-tap-highlight-color:transparent;background:rgba(0,26,40,0.55);border:1px solid rgba(127,252,255,0.55);color:rgba(200,250,255,0.92);font-size:22px;font-family:inherit;padding:0;cursor:pointer;text-shadow:0 0 10px rgba(127,252,255,0.9);box-shadow:0 0 14px rgba(0,200,255,0.25), inset 0 0 10px rgba(0,200,255,0.12);transition:transform .05s ease, background .08s ease, box-shadow .08s ease;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none;touch-action:none}
+  .dpad-btn:active,.dpad-btn.press{background:rgba(0,200,255,0.28);color:#ffffff;box-shadow:0 0 26px rgba(0,200,255,0.85), inset 0 0 22px rgba(127,252,255,0.4);transform:scale(0.94)}
+  .dpad-up   {grid-column:2;grid-row:1}
+  .dpad-left {grid-column:1;grid-row:2}
+  .dpad-right{grid-column:3;grid-row:2}
+  .dpad-down {grid-column:2;grid-row:3}
+  #dpad.warm .dpad-btn{border-color:rgba(255,208,106,0.6);color:rgba(255,232,190,0.95);text-shadow:0 0 10px rgba(255,208,106,0.9);box-shadow:0 0 14px rgba(255,180,80,0.28), inset 0 0 10px rgba(255,180,80,0.14)}
+  #dpad.warm .dpad-btn:active,#dpad.warm .dpad-btn.press{background:rgba(255,200,120,0.3);box-shadow:0 0 26px rgba(255,200,120,0.85), inset 0 0 22px rgba(255,220,160,0.4)}
+  #dpad.hidden{display:none}
   .flicker{animation:flicker 2.4s infinite}
   @keyframes flicker{
     0%,19%,21%,23%,25%,54%,56%,100%{opacity:1}
@@ -80,7 +90,13 @@
       </div>
     </div>
     <div id="phase-banner"><div class="num" id="pb-num">PHASE I</div><div class="name" id="pb-name">THE CAGE</div><div class="sub" id="pb-sub">you are a program</div></div>
-    <div id="touch-hint">TAP LEFT OR RIGHT · TURN</div>
+    <div id="touch-hint">USE ARROWS · SWIPE ALSO WORKS</div>
+  </div>
+  <div id="dpad" class="hidden">
+    <button class="dpad-btn dpad-up"    data-dir="up"    aria-label="up">▲</button>
+    <button class="dpad-btn dpad-left"  data-dir="left"  aria-label="left">◀</button>
+    <button class="dpad-btn dpad-right" data-dir="right" aria-label="right">▶</button>
+    <button class="dpad-btn dpad-down"  data-dir="down"  aria-label="down">▼</button>
   </div>
   <button id="mute" title="Toggle sound">♪</button>
   <div id="splash">
@@ -667,6 +683,7 @@ function advancePhase(){
   G.trails = G.trails.filter(t=>t.who==='player');
   applyPhaseTuning();
   showPhaseBanner(G.phase);
+  updateDpadVisibility();
   // Small burst of particles
   spawnBurst(G.player.x, G.player.y, ['#7ffcff','#ffd06a','#ffffff'][G.phase], 40);
 }
@@ -769,12 +786,34 @@ function toggleMute(){
 }
 muteBtn.addEventListener('click', toggleMute);
 
+/* -------------------- On-screen D-pad -------------------- */
+const dpadEl = document.getElementById('dpad');
+const DPAD_DIR = { up: DIR.UP, down: DIR.DOWN, left: DIR.LEFT, right: DIR.RIGHT };
+document.querySelectorAll('.dpad-btn').forEach(btn=>{
+  const fire = (ev)=>{
+    ev.preventDefault();
+    ev.stopPropagation();
+    const d = DPAD_DIR[btn.dataset.dir];
+    if(d) turn(d);
+    btn.classList.add('press');
+    setTimeout(()=>btn.classList.remove('press'), 90);
+  };
+  btn.addEventListener('pointerdown', fire, { passive:false });
+  btn.addEventListener('click', ev=>{ ev.preventDefault(); ev.stopPropagation(); });
+});
+function updateDpadVisibility(){
+  const show = (G.state === 'play' || G.state === 'winseq');
+  dpadEl.classList.toggle('hidden', !show);
+  dpadEl.classList.toggle('warm', G.phase >= 2);
+}
+
 /* -------------------- Splash / gameover buttons -------------------- */
 document.getElementById('start').addEventListener('click', async ()=>{
   splash.classList.add('hidden');
   await audio.resume();
   resetForPlay();
   G.state = 'play';
+  updateDpadVisibility();
 });
 document.getElementById('restart').addEventListener('click', async ()=>{
   gameover.classList.remove('show','win');
@@ -782,6 +821,7 @@ document.getElementById('restart').addEventListener('click', async ()=>{
   G.cycle++;
   resetForPlay();
   G.state = 'play';
+  updateDpadVisibility();
 });
 
 /* -------------------- Game logic -------------------- */
@@ -1011,6 +1051,7 @@ function triggerWin(){
 }
 
 function showGameOver(win){
+  updateDpadVisibility();
   const el = document.getElementById('gameover');
   const title = document.getElementById('go-title');
   const msg = document.getElementById('go-msg');
