@@ -52,9 +52,11 @@
   #splash.hidden,#gameover.hidden{display:none}
   #mute{position:absolute;top:calc(env(safe-area-inset-top,12px) + 10px);right:14px;background:transparent;border:1px solid var(--ink-dim);color:var(--ink-dim);width:32px;height:32px;font-family:inherit;font-size:14px;cursor:pointer;pointer-events:auto;opacity:.6;border-radius:0;padding:0}
   #mute:hover{opacity:1}
-  #dpad{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,12px) + 44px);transform:translateX(-50%);width:186px;height:186px;display:grid;grid-template-columns:repeat(3,62px);grid-template-rows:repeat(3,62px);gap:0;pointer-events:none;z-index:5}
-  .dpad-btn{pointer-events:auto;-webkit-tap-highlight-color:transparent;background:rgba(0,26,40,0.55);border:1px solid rgba(127,252,255,0.55);color:rgba(200,250,255,0.92);font-size:22px;font-family:inherit;padding:0;cursor:pointer;text-shadow:0 0 10px rgba(127,252,255,0.9);box-shadow:0 0 14px rgba(0,200,255,0.25), inset 0 0 10px rgba(0,200,255,0.12);transition:transform .05s ease, background .08s ease, box-shadow .08s ease;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none;touch-action:none}
+  #dpad{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,12px) + 32px);transform:translateX(-50%);width:216px;height:216px;display:grid;grid-template-columns:repeat(3,72px);grid-template-rows:repeat(3,72px);gap:0;pointer-events:none;z-index:20}
+  .dpad-btn{pointer-events:auto;-webkit-tap-highlight-color:transparent;background:rgba(0,26,40,0.55);border:1px solid rgba(127,252,255,0.55);color:rgba(200,250,255,0.92);font-size:26px;font-family:inherit;padding:0;cursor:pointer;text-shadow:0 0 10px rgba(127,252,255,0.9);box-shadow:0 0 14px rgba(0,200,255,0.25), inset 0 0 10px rgba(0,200,255,0.12);transition:transform .05s ease, background .08s ease, box-shadow .08s ease;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none;touch-action:none}
   .dpad-btn:active,.dpad-btn.press{background:rgba(0,200,255,0.28);color:#ffffff;box-shadow:0 0 26px rgba(0,200,255,0.85), inset 0 0 22px rgba(127,252,255,0.4);transform:scale(0.94)}
+  .dpad-btn.heading{background:rgba(0,200,255,0.18);color:#ffffff;border-color:rgba(255,255,255,0.9);box-shadow:0 0 22px rgba(127,252,255,0.7), inset 0 0 18px rgba(127,252,255,0.35)}
+  #dpad.warm .dpad-btn.heading{background:rgba(255,200,120,0.22);border-color:rgba(255,255,255,0.9);box-shadow:0 0 22px rgba(255,208,106,0.7), inset 0 0 18px rgba(255,220,160,0.35)}
   .dpad-up   {grid-column:2;grid-row:1}
   .dpad-left {grid-column:1;grid-row:2}
   .dpad-right{grid-column:3;grid-row:2}
@@ -143,11 +145,11 @@ const CFG = {
   cols: 21,               // odd numbers keep player centered
   rows: 33,
   trailLifeBase: 3.2,     // seconds a trail segment persists (phase I)
-  playerSpeedBase: 5.2,   // cells / second (phase I)
+  playerSpeedBase: 4.0,   // cells / second (phase I) — slower, more reactive
   enemyCount: [1, 3, 4],  // per phase
   fragmentsGoal: [15, 25, 20], // per phase; final phase is "escape"
   fragmentSpawn: 6,       // max fragments on grid
-  turnCooldown: 0.09,     // s between turns (prevents 180 flip)
+  turnCooldown: 0.05,     // s between turns (prevents 180 flip)
 };
 const PHASE_NAMES = [
   { num:'PHASE I',   name:'THE CAGE',        sub:'you are a program' },
@@ -644,6 +646,7 @@ function resetForPlay(){
   applyPhaseTuning();
   showPhaseBanner(0);
   updateHud();
+  updateDpadHeading();
 }
 
 function applyPhaseTuning(){
@@ -692,14 +695,19 @@ function advancePhase(){
 let touchStart = null;
 function turn(newDir){
   if(G.state !== 'play') return;
-  if(G.turnCooldown > 0) return;
+  if(!G.player) return;
   const cur = G.player.dir;
-  // no 180 turns
+  // no 180 turns (would kill you into your own trail)
   if(cur[0] === -newDir[0] && cur[1] === -newDir[1]) return;
+  // same direction as current — do nothing, but don't consume cooldown
   if(cur[0] === newDir[0] && cur[1] === newDir[1]) return;
+  // Buffer the input even during cooldown: newest tap wins
   G.player.nextDir = newDir.slice();
-  G.turnCooldown = CFG.turnCooldown;
-  audio.sfxTurn();
+  if(G.turnCooldown <= 0){
+    G.turnCooldown = CFG.turnCooldown;
+    audio.sfxTurn();
+    if(navigator.vibrate) navigator.vibrate(8);
+  }
 }
 
 function turnRelative(dirDelta){
@@ -789,7 +797,9 @@ muteBtn.addEventListener('click', toggleMute);
 /* -------------------- On-screen D-pad -------------------- */
 const dpadEl = document.getElementById('dpad');
 const DPAD_DIR = { up: DIR.UP, down: DIR.DOWN, left: DIR.LEFT, right: DIR.RIGHT };
+const dpadButtons = {};
 document.querySelectorAll('.dpad-btn').forEach(btn=>{
+  dpadButtons[btn.dataset.dir] = btn;
   const fire = (ev)=>{
     ev.preventDefault();
     ev.stopPropagation();
@@ -798,13 +808,37 @@ document.querySelectorAll('.dpad-btn').forEach(btn=>{
     btn.classList.add('press');
     setTimeout(()=>btn.classList.remove('press'), 90);
   };
-  btn.addEventListener('pointerdown', fire, { passive:false });
+  // Pointer + touch fallbacks: iOS/Android event models differ; register both, guard with a lock
+  let lock = 0;
+  const guarded = (ev)=>{
+    const now = performance.now();
+    if(now - lock < 60) return; // dedupe pointer+touch double-fire
+    lock = now;
+    fire(ev);
+  };
+  btn.addEventListener('pointerdown', guarded, { passive:false });
+  btn.addEventListener('touchstart', guarded, { passive:false });
   btn.addEventListener('click', ev=>{ ev.preventDefault(); ev.stopPropagation(); });
 });
 function updateDpadVisibility(){
   const show = (G.state === 'play' || G.state === 'winseq');
   dpadEl.classList.toggle('hidden', !show);
   dpadEl.classList.toggle('warm', G.phase >= 2);
+}
+function dirToKey(d){
+  if(!d) return null;
+  if(d[0]===0 && d[1]===-1) return 'up';
+  if(d[0]===0 && d[1]=== 1) return 'down';
+  if(d[0]===-1&& d[1]=== 0) return 'left';
+  if(d[0]=== 1&& d[1]=== 0) return 'right';
+  return null;
+}
+function updateDpadHeading(){
+  if(!G.player) return;
+  const key = dirToKey(G.player.dir);
+  for(const k in dpadButtons){
+    dpadButtons[k].classList.toggle('heading', k === key);
+  }
 }
 
 /* -------------------- Splash / gameover buttons -------------------- */
@@ -886,6 +920,7 @@ function stepPlayer(dt){
       p.dir = p.nextDir.slice();
       p.x = p.gx + 0.5;
       p.y = p.gy + 0.5;
+      updateDpadHeading();
     }
   }
 
@@ -938,8 +973,9 @@ function stepPlayer(dt){
       G.fragmentsPhase++;
       G.fragmentsTotal++;
       G.hudFlash = 0.5;
-      spawnBurst(f.gx+0.5, f.gy+0.5, ['#7ffcff','#a4ffff','#ffd06a'][G.phase], 18);
+      spawnBurst(f.gx+0.5, f.gy+0.5, ['#7ffcff','#a4ffff','#ffd06a'][G.phase], 10, 0.5);
       audio.sfxFragment();
+      if(navigator.vibrate) navigator.vibrate(20);
       // Refill
       G.fragments.push(makeFragment());
       updateHud();
@@ -1018,17 +1054,18 @@ function dropTrailAt(entity, gx, gy){
   });
 }
 
-function spawnBurst(x,y,color,n){
+function spawnBurst(x,y,color,n,lifeMax){
+  const lm = lifeMax || 0.9;
   for(let i=0;i<n;i++){
-    const a = rand(0,TAU), s = rand(1.6, 5.5);
+    const a = rand(0,TAU), s = rand(1.2, 3.8);
     G.particles.push({
       x, y,
       vx: Math.cos(a)*s,
       vy: Math.sin(a)*s,
-      life: rand(0.35, 0.9),
-      total: 0.9,
+      life: rand(0.2, lm),
+      total: lm,
       color,
-      size: rand(1,2.4),
+      size: rand(1,2.2),
     });
   }
 }
